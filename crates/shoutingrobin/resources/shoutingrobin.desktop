@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Shouting Robin
+Comment=SEO Crawler
+Exec=shoutingrobin %U
+Icon=shoutingrobin
+Terminal=false
+Categories=Development;Utility;
+MimeType=text/plain;
+StartupNotify=true
+StartupWMClass=shoutingrobin
+Keywords=SEO;HTTP;Testing;Development;

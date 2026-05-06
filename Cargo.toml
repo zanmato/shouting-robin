@@ -1,0 +1,95 @@
+[workspace]
+members = ["crates/shoutingrobin", "crates/gpui_tokio", "crates/ui"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Andreas Johansson <z@zanmato.se>"]
+license = "Apache-2.0"
+homepage = "https://github.com/zanmato/shouting-robin"
+repository = "https://github.com/zanmato/shouting-robin"
+description = "Ecommerce-first SEO crawler"
+publish = false
+
+[workspace.dependencies]
+# Core GPUI dependencies
+gpui = { git = "https://github.com/zed-industries/zed" }
+gpui-macros = "0.2.2"
+gpui-component = { git = "https://github.com/longbridge/gpui-component/", features = [
+    "tree-sitter-languages",
+] }
+gpui-component-macros = { git = "https://github.com/longbridge/gpui-component/" }
+gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
+    "font-kit",
+    "x11",
+    "wayland",
+    "runtime_shaders",
+] }
+
+# Database
+sqlx = { version = "0.8", features = [
+    "runtime-async-std",
+    "sqlite",
+    "chrono",
+    "json",
+] }
+
+# Core
+rust-embed = { version = "8", features = ["interpolate-folder-path"] }
+chrono = "0.4"
+tracing = "0.1.40"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+anyhow = "1.0"
+smol = "2.0"
+dirs = "5"
+url = "2"
+flume = "0.11"
+
+# Async runtime bridge
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+
+# Crawl backend
+spider = { git = "https://github.com/zanmato/spider", branch = "fix-chrome-page", default-features = false, features = [
+    "chrome",
+    "chrome_intercept",
+    "chrome_stealth",
+    "chrome_store_page",
+    "sync",
+    "sitemap",
+    "regex",
+    "serde",
+    "time",
+] }
+
+# HTML parsing
+scraper = "0.21"
+
+# Hashing
+md5 = "0.7"
+
+# XML parsing
+quick-xml = "0.37"
+
+# HTTP client (reuse from spider's dep tree)
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+] }
+
+# Local
+shoutingrobin-ui = { path = "crates/ui" }
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+type_complexity = "allow"
+
+[profile.release]
+opt-level = 3
+
+[profile.profiling]
+inherits = "release"
+debug = true

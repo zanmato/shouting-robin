@@ -1,0 +1,47 @@
+[package]
+name = "shoutingrobin"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "shoutingrobin"
+path = "src/main.rs"
+
+[dependencies]
+gpui = { workspace = true }
+gpui-component = { workspace = true }
+gpui_platform = { workspace = true }
+gpui_tokio = { path = "../gpui_tokio" }
+shoutingrobin-ui = { path = "../ui" }
+
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true, features = ["serde"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+sqlx = { workspace = true }
+smol = { workspace = true }
+dirs = { workspace = true }
+rust-embed = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+flume = { workspace = true }
+tokio = { workspace = true }
+
+spider = { workspace = true }
+scraper = { workspace = true }
+md5 = { workspace = true }
+quick-xml = { workspace = true }
+reqwest = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+sqlx = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tikv-jemallocator = "0.6"
