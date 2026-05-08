@@ -53,6 +53,9 @@ impl Settings {
                     settings.crawl.near_duplicate_threshold =
                         value.parse().unwrap_or(90).clamp(50, 100);
                 }
+                "crawl.content_selector" => {
+                    settings.crawl.content_selector = value.clone();
+                }
                 "appearance.theme" => {
                     settings.appearance.theme = value.clone();
                 }
@@ -92,6 +95,7 @@ pub struct CrawlSettings {
     pub respect_robots_txt: bool,
     pub follow_sitemaps: bool,
     pub near_duplicate_threshold: u8,
+    pub content_selector: String,
 }
 
 impl Default for CrawlSettings {
@@ -104,6 +108,7 @@ impl Default for CrawlSettings {
             respect_robots_txt: true,
             follow_sitemaps: true,
             near_duplicate_threshold: 90,
+            content_selector: String::new(),
         }
     }
 }

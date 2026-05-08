@@ -119,6 +119,46 @@ fn a11y_impact_tone(impact: &str) -> Tone {
     }
 }
 
+fn serp_preview(rec: &PageRecord, _fg: Hsla, muted: Hsla) -> AnyElement {
+    let title = rec
+        .title
+        .as_deref()
+        .filter(|t| !t.is_empty())
+        .unwrap_or("No title");
+    let url_display = rec.url.clone();
+    let desc = rec
+        .meta_description
+        .as_deref()
+        .filter(|d| !d.is_empty())
+        .unwrap_or("No meta description");
+
+    div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .px_2()
+        .py_1p5()
+        .child(
+            div()
+                .text_sm()
+                .text_color(gpui::rgb(0x1a0dab))
+                .child(SharedString::from(title.to_string())),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(gpui::rgb(0x006621))
+                .child(SharedString::from(url_display)),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(muted)
+                .child(SharedString::from(desc.to_string())),
+        )
+        .into_any_element()
+}
+
 fn a11y_issue_row(issue: &A11yIssue, muted: Hsla, fg: Hsla, border: Hsla, cx: &App) -> AnyElement {
     let impact_tag =
         tone_tag(a11y_impact_tone(&issue.impact)).child(SharedString::from(issue.impact.clone()));
@@ -684,6 +724,10 @@ impl Render for DetailsPanel {
                     .into_any_element();
 
                 // Link metrics
+                let link_score_str = rec
+                    .link_score
+                    .map(|s| format!("{s:.1}"))
+                    .unwrap_or_else(|| "-".into());
                 let links_body = div()
                     .flex()
                     .flex_col()
@@ -696,6 +740,12 @@ impl Render for DetailsPanel {
                     .child(row(
                         "Outlinks",
                         SharedString::from(rec.outlinks.len().to_string()),
+                        muted,
+                    ))
+                    .child(row("Link Score", SharedString::from(link_score_str), muted))
+                    .child(row(
+                        "Backlinks",
+                        SharedString::from(rec.backlinks.len().to_string()),
                         muted,
                     ))
                     .child(row(
@@ -905,6 +955,175 @@ impl Render for DetailsPanel {
                         border,
                         images_section_body,
                     ))
+                    .child(section(
+                        "SERP Preview",
+                        None,
+                        None,
+                        muted,
+                        border,
+                        serp_preview(rec, fg, muted),
+                    ))
+                    .when(!rec.hreflang_issues.is_empty(), |el| {
+                        let mut body = div().flex().flex_col().gap_0p5();
+                        for issue in &rec.hreflang_issues {
+                            let label = match issue {
+                                crate::crawl::event::HreflangIssue::MissingReturnTag {
+                                    lang,
+                                    target_url,
+                                } => {
+                                    format!("Missing return tag: {lang} -> {target_url}")
+                                }
+                                crate::crawl::event::HreflangIssue::InvalidLanguageCode {
+                                    code,
+                                } => {
+                                    format!("Invalid language code: {code}")
+                                }
+                                crate::crawl::event::HreflangIssue::MissingXDefault => {
+                                    "Missing x-default".into()
+                                }
+                                crate::crawl::event::HreflangIssue::NonCanonicalUrl {
+                                    hreflang_url,
+                                } => {
+                                    format!("Non-canonical target: {hreflang_url}")
+                                }
+                            };
+                            body = body.child(
+                                div()
+                                    .text_xs()
+                                    .text_color(gpui::hsla(0. / 360., 0.84, 0.60, 1.0))
+                                    .child(SharedString::from(label)),
+                            );
+                        }
+                        el.child(section(
+                            "Hreflang Issues",
+                            None,
+                            Some(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(SharedString::from(
+                                        rec.hreflang_issues.len().to_string(),
+                                    ))
+                                    .into_any_element(),
+                            ),
+                            muted,
+                            border,
+                            body.into_any_element(),
+                        ))
+                    })
+                    .when(!rec.backlinks.is_empty(), |el| {
+                        let mut body = div().flex().flex_col().gap_0p5();
+                        for bl in &rec.backlinks {
+                            body = body.child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_0p5()
+                                    .pt_1()
+                                    .border_t_1()
+                                    .border_color(border)
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .font_family(cx.theme().mono_font_family.clone())
+                                            .text_color(fg)
+                                            .child(SharedString::from(bl.source_url.clone())),
+                                    )
+                                    .child(
+                                        div().text_xs().text_color(muted).child(
+                                            SharedString::from(
+                                                bl.anchor
+                                                    .as_deref()
+                                                    .map(|a| format!("Anchor: {a}"))
+                                                    .unwrap_or_else(|| "No anchor".into()),
+                                            ),
+                                        ),
+                                    ),
+                            );
+                        }
+                        el.child(section(
+                            "Inlinks (From)",
+                            None,
+                            Some(
+                                SharedString::from(format!("{} links", rec.backlinks.len()))
+                                    .into_any_element(),
+                            ),
+                            muted,
+                            border,
+                            body.into_any_element(),
+                        ))
+                    })
+                    .when(!rec.outlinks.is_empty(), |el| {
+                        let mut body = div().flex().flex_col().gap_0p5();
+                        let display_count = rec.outlinks.len().min(50);
+                        for link in &rec.outlinks[..display_count] {
+                            let is_nofollow = link
+                                .rel
+                                .as_deref()
+                                .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
+                            body = body.child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_0p5()
+                                    .pt_1()
+                                    .border_t_1()
+                                    .border_color(border)
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .child(
+                                                div()
+                                                    .text_xs()
+                                                    .font_family(
+                                                        cx.theme().mono_font_family.clone(),
+                                                    )
+                                                    .text_color(fg)
+                                                    .child(SharedString::from(
+                                                        link.dst_url.clone(),
+                                                    )),
+                                            )
+                                            .when(is_nofollow, |el| {
+                                                el.child(
+                                                    tone_tag(Tone::Warn)
+                                                        .child(SharedString::from("nofollow")),
+                                                )
+                                            }),
+                                    )
+                                    .child(
+                                        div().text_xs().text_color(muted).child(
+                                            SharedString::from(
+                                                link.anchor
+                                                    .as_deref()
+                                                    .map(|a| a.to_string())
+                                                    .unwrap_or_else(|| "-".into()),
+                                            ),
+                                        ),
+                                    ),
+                            );
+                        }
+                        if rec.outlinks.len() > display_count {
+                            body = body.child(div().text_xs().text_color(muted).pt_1().child(
+                                SharedString::from(format!(
+                                    "... and {} more",
+                                    rec.outlinks.len() - display_count
+                                )),
+                            ));
+                        }
+                        el.child(section(
+                            "Outlinks (To)",
+                            None,
+                            Some(
+                                SharedString::from(format!("{} links", rec.outlinks.len()))
+                                    .into_any_element(),
+                            ),
+                            muted,
+                            border,
+                            body.into_any_element(),
+                        ))
+                    })
                     .when(!rec.headers.is_empty(), |el| {
                         let mut headers_body = div().flex().flex_col().gap_0p5();
                         for (key, value) in &rec.headers {

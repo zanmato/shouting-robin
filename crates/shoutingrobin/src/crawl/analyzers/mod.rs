@@ -10,7 +10,7 @@ use crate::crawl::event::{
     EcommerceAudit, ImageRef, Outlink, PageRecord, SdFormat, SdIssue, SdItem, SdSeverity,
 };
 
-pub fn analyze_html(record: &mut PageRecord, html: &str) {
+pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str) {
     let doc = Html::parse_document(html);
 
     record.title = select_text(&doc, "title");
@@ -27,10 +27,14 @@ pub fn analyze_html(record: &mut PageRecord, html: &str) {
         .content_type
         .clone()
         .or_else(|| Some("text/html".into()));
-    record.word_count = Some(word_count(&doc));
-    let body_text = extract_body_text(&doc);
-    record.content_hash = Some(compute_content_hash(&body_text));
-    record.simhash = Some(compute_simhash(&body_text));
+    let content_text = if !content_selector.is_empty() {
+        extract_selector_text(&doc, content_selector).unwrap_or_else(|| extract_body_text(&doc))
+    } else {
+        extract_body_text(&doc)
+    };
+    record.word_count = Some(content_text.split_whitespace().count() as u32);
+    record.content_hash = Some(compute_content_hash(&content_text));
+    record.simhash = Some(compute_simhash(&content_text));
     record.title_count = count_elements(&doc, "title");
     record.h1_count = count_elements(&doc, "h1");
     record.h2_count = count_elements(&doc, "h2");
@@ -455,11 +459,6 @@ fn char_pixel_width(ch: char) -> u32 {
     }
 }
 
-fn word_count(doc: &Html) -> u32 {
-    let text = extract_body_text(doc);
-    text.split_whitespace().count() as u32
-}
-
 fn extract_body_text(doc: &Html) -> String {
     let Ok(body_sel) = Selector::parse("body") else {
         return String::new();
@@ -468,6 +467,21 @@ fn extract_body_text(doc: &Html) -> String {
         return String::new();
     };
     body.text().collect::<Vec<_>>().join(" ")
+}
+
+fn extract_selector_text(doc: &Html, selector_str: &str) -> Option<String> {
+    let sel = Selector::parse(selector_str).ok()?;
+    let elements: Vec<_> = doc.select(&sel).collect();
+    if elements.is_empty() {
+        return None;
+    }
+    Some(
+        elements
+            .iter()
+            .flat_map(|el| el.text())
+            .collect::<Vec<_>>()
+            .join(" "),
+    )
 }
 
 fn compute_content_hash(text: &str) -> String {
@@ -519,7 +533,13 @@ mod tests {
 
     fn analyze(html: &str) -> PageRecord {
         let mut record = PageRecord::default();
-        analyze_html(&mut record, html);
+        analyze_html(&mut record, html, "");
+        record
+    }
+
+    fn analyze_with_selector(html: &str, selector: &str) -> PageRecord {
+        let mut record = PageRecord::default();
+        analyze_html(&mut record, html, selector);
         record
     }
 
@@ -1061,5 +1081,36 @@ mod tests {
         );
         let audit = r.ecommerce.as_ref().unwrap();
         assert_eq!(audit.brand.as_deref(), Some("Acme Corp"));
+    }
+
+    #[test]
+    fn content_selector_scopes_word_count() {
+        let r = analyze_with_selector(
+            r#"<html><head><title>T</title></head><body>
+            <nav>Navigation text here</nav>
+            <main><p>Main content only</p></main>
+            </body></html>"#,
+            "main",
+        );
+        assert_eq!(r.word_count, Some(3));
+    }
+
+    #[test]
+    fn content_selector_falls_back_to_body_when_no_match() {
+        let r = analyze_with_selector(
+            r#"<html><head><title>T</title></head><body>
+            <p>Hello world</p>
+            </body></html>"#,
+            "article",
+        );
+        assert_eq!(r.word_count, Some(2));
+    }
+
+    #[test]
+    fn empty_selector_uses_full_body() {
+        let r = analyze(
+            r#"<html><head><title>T</title></head><body><nav>Nav</nav><main><p>Content</p></main></body></html>"#,
+        );
+        assert_eq!(r.word_count, Some(2));
     }
 }

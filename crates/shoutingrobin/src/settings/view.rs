@@ -433,6 +433,32 @@ impl SettingsView {
                     )
                     .description("Minimum similarity percentage to flag pages as near duplicates."),
                 ]),
+                SettingGroup::new().title("Content Analysis").items(vec![
+                    SettingItem::new(
+                        "Content Selector",
+                        SettingField::input(
+                            move |cx: &App| {
+                                SharedString::from(AppSettings::global(cx).settings.crawl.content_selector.clone())
+                            },
+                            {
+                                let view_handle = view_handle.clone();
+                                move |val: SharedString, cx: &mut App| {
+                                    AppSettings::global_mut(cx).settings.crawl.content_selector = val.to_string();
+
+                                    let key = "crawl.content_selector".to_string();
+                                    let value = val.to_string();
+                                    if let Some(view) = view_handle.upgrade() {
+                                        view.update(cx, |view, cx| {
+                                            view.save_setting_debounced(key, value, cx);
+                                        });
+                                    }
+                                }
+                            },
+                        )
+                        .default_value(SharedString::from("")),
+                    )
+                    .description("CSS selector to scope word count and duplicate detection. Leave empty to use full page body."),
+                ]),
             ]),
             SettingPage::new("Appearance").resettable(true).groups(vec![
                 SettingGroup::new().title("Theme").items(vec![

@@ -51,6 +51,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0012_sd_issues",
         include_str!("../../migrations/0012_sd_issues.sql"),
     ),
+    (
+        "0013_link_score",
+        include_str!("../../migrations/0013_link_score.sql"),
+    ),
+    (
+        "0014_hreflang_issues",
+        include_str!("../../migrations/0014_hreflang_issues.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -399,6 +407,94 @@ async fn insert_sd_issues(
     Ok(())
 }
 
+pub async fn insert_redirect_hops(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    page_url: &str,
+    hops: &[crate::crawl::event::RedirectHop],
+) -> Result<(), sqlx::Error> {
+    for (index, hop) in hops.iter().enumerate() {
+        sqlx::query(
+            "INSERT INTO redirect_hops (crawl_id, page_url, hop_index, url, status) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(crawl_id)
+        .bind(page_url)
+        .bind(index as i64)
+        .bind(&hop.url)
+        .bind(hop.status as i64)
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn update_link_scores(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    scores: &[(String, f32)],
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (url, score) in scores {
+        sqlx::query("UPDATE pages SET link_score = ? WHERE crawl_id = ? AND url = ?")
+            .bind(*score)
+            .bind(crawl_id)
+            .bind(url)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn update_hreflang_issues(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    issues: &[(String, Vec<crate::crawl::event::HreflangIssue>)],
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (url, page_issues) in issues {
+        let json = if page_issues.is_empty() {
+            None
+        } else {
+            serde_json::to_string(page_issues).ok()
+        };
+        sqlx::query("UPDATE pages SET hreflang_issues_json = ? WHERE crawl_id = ? AND url = ?")
+            .bind(json)
+            .bind(crawl_id)
+            .bind(url)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn load_backlinks_for_crawl(
+    pool: &SqlitePool,
+    crawl_id: i64,
+) -> Result<std::collections::HashMap<String, Vec<crate::crawl::event::Backlink>>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
+        "SELECT dst_url, src_url, anchor, rel FROM links WHERE crawl_id = ? AND kind = 'internal'",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut backlinks: std::collections::HashMap<String, Vec<crate::crawl::event::Backlink>> =
+        std::collections::HashMap::new();
+    for (dst_url, src_url, anchor, rel) in rows {
+        backlinks
+            .entry(dst_url)
+            .or_default()
+            .push(crate::crawl::event::Backlink {
+                source_url: src_url,
+                anchor,
+                rel,
+            });
+    }
+    Ok(backlinks)
+}
+
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 pub struct ImageAggregate {
@@ -604,9 +700,19 @@ pub async fn load_pages_for_crawl(
     .fetch_all(pool)
     .await?;
 
-    let sd_meta_rows = sqlx::query_as::<_, (String, i64, i64, Option<String>, Option<String>)>(
+    let sd_meta_rows = sqlx::query_as::<
+        _,
+        (
+            String,
+            i64,
+            i64,
+            Option<String>,
+            Option<String>,
+            Option<String>,
+        ),
+    >(
         r#"
-        SELECT url, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json
+        SELECT url, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, hreflang_issues_json
         FROM pages WHERE crawl_id = ?
         ORDER BY id
         "#,
@@ -830,6 +936,39 @@ pub async fn load_pages_for_crawl(
         .map(|(url, count)| (url, count as u32))
         .collect();
 
+    let link_score_rows = sqlx::query_as::<_, (String, Option<f32>)>(
+        "SELECT url, link_score FROM pages WHERE crawl_id = ? ORDER BY id",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+
+    let link_scores: std::collections::HashMap<String, f32> = link_score_rows
+        .into_iter()
+        .filter_map(|(url, score)| score.map(|s| (url, s)))
+        .collect();
+
+    let hop_rows = sqlx::query_as::<_, (String, i64, String, i64)>(
+        "SELECT page_url, hop_index, url, status FROM redirect_hops WHERE crawl_id = ? ORDER BY page_url, hop_index",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut hops_by_url: std::collections::HashMap<String, Vec<crate::crawl::event::RedirectHop>> =
+        std::collections::HashMap::new();
+    for (page_url, _index, url, status) in &hop_rows {
+        hops_by_url
+            .entry(page_url.clone())
+            .or_default()
+            .push(crate::crawl::event::RedirectHop {
+                url: url.clone(),
+                status: *status as u16,
+            });
+    }
+
+    let mut backlinks = load_backlinks_for_crawl(pool, crawl_id).await?;
+
     let mut headers_by_url: std::collections::HashMap<String, Vec<(String, String)>> =
         std::collections::HashMap::new();
     for (url, headers_json) in &header_rows {
@@ -899,13 +1038,24 @@ pub async fn load_pages_for_crawl(
                         a11y_errors,
                         a11y_warnings,
                     ),
-                    (_, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json),
+                    (
+                        _,
+                        sd_errors,
+                        sd_warnings,
+                        hreflang_tags_json,
+                        sd_types_json,
+                        hreflang_issues_json,
+                    ),
                 ),
                 (_, content_hash, simhash, closest_similarity, near_duplicate_count),
             )| {
                 let is_internal = is_same_domain(root_url, &url);
                 let images = images_by_url.remove(&url).unwrap_or_default();
                 let hreflang_tags: Vec<(String, String)> = hreflang_tags_json
+                    .as_deref()
+                    .and_then(|j| serde_json::from_str(j).ok())
+                    .unwrap_or_default();
+                let hreflang_issues: Vec<crate::crawl::event::HreflangIssue> = hreflang_issues_json
                     .as_deref()
                     .and_then(|j| serde_json::from_str(j).ok())
                     .unwrap_or_default();
@@ -941,6 +1091,9 @@ pub async fn load_pages_for_crawl(
                 let page_headers = headers_by_url.remove(&url).unwrap_or_default();
                 let page_redirect = redirect_by_url.get(&url).cloned();
                 let page_secondary = secondary_by_url.get(&url);
+                let page_link_score = link_scores.get(&url).copied();
+                let page_redirect_hops = hops_by_url.remove(&url).unwrap_or_default();
+                let page_backlinks = backlinks.remove(&url).unwrap_or_default();
 
                 PageRecord {
                     url,
@@ -994,6 +1147,10 @@ pub async fn load_pages_for_crawl(
                     title_pixel_width: page_secondary.and_then(|s| s.title_pixel_width),
                     meta_description_pixel_width: page_secondary
                         .and_then(|s| s.meta_description_pixel_width),
+                    link_score: page_link_score,
+                    redirect_hops: page_redirect_hops,
+                    backlinks: page_backlinks,
+                    hreflang_issues,
                     ..Default::default()
                 }
             },

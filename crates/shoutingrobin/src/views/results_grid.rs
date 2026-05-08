@@ -10,18 +10,54 @@ use gpui_component::{
 };
 
 use crate::crawl::engine::is_same_domain;
-use crate::crawl::event::{A11yIssue, ImageRef, Outlink, PageRecord, SdFormat, SdItem};
+use crate::crawl::event::{
+    A11yIssue, HreflangIssue, ImageRef, Outlink, PageRecord, SdFormat, SdItem,
+};
 use crate::ui::tag::{Tone, count_tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::ResultTab;
 
 #[derive(Clone, Debug)]
 enum FlatRow {
-    Image { page: usize, item: usize },
-    Outlink { page: usize, item: usize },
-    A11yIssue { page: usize, item: usize },
-    Hreflang { page: usize, item: usize },
-    SdItem { page: usize, item: usize },
-    OverviewIssue { label: String, count: usize },
+    Image {
+        page: usize,
+        item: usize,
+    },
+    Outlink {
+        page: usize,
+        item: usize,
+    },
+    A11yIssue {
+        page: usize,
+        item: usize,
+    },
+    Hreflang {
+        page: usize,
+        item: usize,
+    },
+    SdItem {
+        page: usize,
+        item: usize,
+    },
+    OverviewIssue {
+        label: String,
+        count: usize,
+    },
+    IssuesRow {
+        index: usize,
+    },
+    LinkRow {
+        page: usize,
+        item: usize,
+    },
+    DirectoryAggregate {
+        path: String,
+        depth: u32,
+        page_count: usize,
+        avg_word_count: u64,
+        total_size: u64,
+        non_indexable: usize,
+        indexable: usize,
+    },
 }
 
 fn tab_is_flattened(tab: ResultTab) -> bool {
@@ -33,6 +69,9 @@ fn tab_is_flattened(tab: ResultTab) -> bool {
             | ResultTab::Hreflang
             | ResultTab::StructuredData
             | ResultTab::Overview
+            | ResultTab::Issues
+            | ResultTab::Links
+            | ResultTab::SiteStructure
     )
 }
 
@@ -62,6 +101,10 @@ pub enum IssueFilter {
     Html,
     #[allow(dead_code)]
     Images,
+    Css,
+    JavaScript,
+    Pdf,
+    OtherResource,
     Status2xx,
     Status3xx,
     Status4xx,
@@ -72,6 +115,10 @@ pub enum IssueFilter {
     MissingCanonical,
     ContainsHreflang,
     MissingHreflang,
+    HreflangMissingReturnTag,
+    HreflangInvalidLang,
+    HreflangMissingXDefault,
+    HreflangNonCanonical,
     HasStructuredData,
     MissingStructuredData,
     SdErrors,
@@ -139,6 +186,19 @@ pub enum IssueFilter {
     RedirectLoop,
     OverPixelWidth,
     UnderPixelWidth,
+    IssueTypeError,
+    IssueTypeOpportunity,
+    IssueTypeWarning,
+    PriorityHigh,
+    PriorityMedium,
+    PriorityLow,
+    LinkBroken,
+    LinkRedirected,
+    LinkNofollow,
+    LinkExternal,
+    DepthShallow,
+    DepthMedium,
+    DepthDeep,
 }
 
 impl IssueFilter {
@@ -154,6 +214,10 @@ impl IssueFilter {
             IssueFilter::NonIndexable => "Non-Indexable",
             IssueFilter::Html => "HTML",
             IssueFilter::Images => "Images",
+            IssueFilter::Css => "CSS",
+            IssueFilter::JavaScript => "JavaScript",
+            IssueFilter::Pdf => "PDF",
+            IssueFilter::OtherResource => "Other",
             IssueFilter::Status2xx => "2xx",
             IssueFilter::Status3xx => "3xx",
             IssueFilter::Status4xx => "4xx",
@@ -164,6 +228,10 @@ impl IssueFilter {
             IssueFilter::MissingCanonical => "Missing",
             IssueFilter::ContainsHreflang => "Contains Hreflang",
             IssueFilter::MissingHreflang => "Missing",
+            IssueFilter::HreflangMissingReturnTag => "Missing Return Tags",
+            IssueFilter::HreflangInvalidLang => "Invalid Language Code",
+            IssueFilter::HreflangMissingXDefault => "Missing x-default",
+            IssueFilter::HreflangNonCanonical => "Non-Canonical Target",
             IssueFilter::HasStructuredData => "Has Structured Data",
             IssueFilter::MissingStructuredData => "Missing",
             IssueFilter::SdErrors => "Errors",
@@ -231,6 +299,19 @@ impl IssueFilter {
             IssueFilter::RedirectLoop => "Redirect Loop",
             IssueFilter::OverPixelWidth => "Over Pixel Width",
             IssueFilter::UnderPixelWidth => "Under Pixel Width",
+            IssueFilter::IssueTypeError => "Errors",
+            IssueFilter::IssueTypeOpportunity => "Opportunities",
+            IssueFilter::IssueTypeWarning => "Warnings",
+            IssueFilter::PriorityHigh => "High Priority",
+            IssueFilter::PriorityMedium => "Medium Priority",
+            IssueFilter::PriorityLow => "Low Priority",
+            IssueFilter::LinkBroken => "Broken (4xx/5xx)",
+            IssueFilter::LinkRedirected => "Redirected (3xx)",
+            IssueFilter::LinkNofollow => "Nofollow",
+            IssueFilter::LinkExternal => "External",
+            IssueFilter::DepthShallow => "Depth 0-1",
+            IssueFilter::DepthMedium => "Depth 2-3",
+            IssueFilter::DepthDeep => "Depth 4+",
         }
     }
 
@@ -240,6 +321,10 @@ impl IssueFilter {
             Self::All
             | Self::Html
             | Self::Images
+            | Self::Css
+            | Self::JavaScript
+            | Self::Pdf
+            | Self::OtherResource
             | Self::Status2xx
             | Self::Status3xx
             | Self::ContainsCanonical
@@ -325,7 +410,27 @@ impl IssueFilter {
             | Self::DirectiveNoarchive
             | Self::DirectiveNosnippet
             | Self::OverPixelWidth
-            | Self::UnderPixelWidth => Tone::Warn,
+            | Self::UnderPixelWidth
+            | Self::IssueTypeError
+            | Self::PriorityHigh
+            | Self::LinkBroken
+            | Self::HreflangMissingReturnTag
+            | Self::HreflangInvalidLang
+            | Self::HreflangNonCanonical
+            | Self::HreflangMissingXDefault => Tone::Err,
+
+            Self::IssueTypeOpportunity
+            | Self::PriorityMedium
+            | Self::LinkRedirected
+            | Self::LinkNofollow => Tone::Warn,
+
+            Self::IssueTypeWarning
+            | Self::PriorityLow
+            | Self::LinkExternal
+            | Self::DepthShallow
+            | Self::DepthMedium => Tone::Neutral,
+
+            Self::DepthDeep => Tone::Warn,
         }
     }
 }
@@ -335,6 +440,11 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
         ResultTab::Internal => &[
             IssueFilter::All,
             IssueFilter::Html,
+            IssueFilter::Css,
+            IssueFilter::JavaScript,
+            IssueFilter::Images,
+            IssueFilter::Pdf,
+            IssueFilter::OtherResource,
             IssueFilter::NonIndexable,
         ],
         ResultTab::External => &[IssueFilter::All],
@@ -405,6 +515,10 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::All,
             IssueFilter::ContainsHreflang,
             IssueFilter::MissingHreflang,
+            IssueFilter::HreflangMissingReturnTag,
+            IssueFilter::HreflangInvalidLang,
+            IssueFilter::HreflangMissingXDefault,
+            IssueFilter::HreflangNonCanonical,
         ],
         ResultTab::StructuredData => &[
             IssueFilter::All,
@@ -487,6 +601,28 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::DirectiveNone,
         ],
         ResultTab::Overview => &[IssueFilter::All],
+        ResultTab::Issues => &[
+            IssueFilter::All,
+            IssueFilter::IssueTypeError,
+            IssueFilter::IssueTypeOpportunity,
+            IssueFilter::IssueTypeWarning,
+            IssueFilter::PriorityHigh,
+            IssueFilter::PriorityMedium,
+            IssueFilter::PriorityLow,
+        ],
+        ResultTab::Links => &[
+            IssueFilter::All,
+            IssueFilter::LinkBroken,
+            IssueFilter::LinkRedirected,
+            IssueFilter::LinkNofollow,
+            IssueFilter::LinkExternal,
+        ],
+        ResultTab::SiteStructure => &[
+            IssueFilter::All,
+            IssueFilter::DepthShallow,
+            IssueFilter::DepthMedium,
+            IssueFilter::DepthDeep,
+        ],
     }
 }
 
@@ -554,8 +690,11 @@ impl ResultsDelegate {
                 | FlatRow::Outlink { page, .. }
                 | FlatRow::A11yIssue { page, .. }
                 | FlatRow::Hreflang { page, .. }
-                | FlatRow::SdItem { page, .. } => *page,
-                FlatRow::OverviewIssue { .. } => return None,
+                | FlatRow::SdItem { page, .. }
+                | FlatRow::LinkRow { page, .. } => *page,
+                FlatRow::OverviewIssue { .. }
+                | FlatRow::IssuesRow { .. }
+                | FlatRow::DirectoryAggregate { .. } => return None,
             };
             self.all_pages.get(page_index)
         } else {
@@ -580,6 +719,10 @@ impl ResultsDelegate {
 
     pub(super) fn flat_rows(&self) -> &[FlatRow] {
         &self.flat_rows
+    }
+
+    pub(super) fn all_pages(&self) -> &[PageRecord] {
+        &self.all_pages
     }
 
     pub fn compute_tab_counts(&self) -> HashMap<ResultTab, TabCounts> {
@@ -930,6 +1073,56 @@ impl ResultsDelegate {
                 warnings: 0,
             },
         );
+        let issues_entries = build_issues_entries(&self.all_pages);
+        let issues_errors = issues_entries
+            .iter()
+            .filter(|e| e.issue_type == IssueType::Issue)
+            .count();
+        let issues_warnings = issues_entries.len() - issues_errors;
+        counts.insert(
+            ResultTab::Issues,
+            TabCounts {
+                total: issues_entries.len(),
+                errors: issues_errors,
+                warnings: issues_warnings,
+            },
+        );
+        let internal_links: usize = self
+            .all_pages
+            .iter()
+            .filter(|p| p.is_internal)
+            .map(|p| {
+                p.outlinks
+                    .iter()
+                    .filter(|l| is_same_domain(&p.url, &l.dst_url))
+                    .count()
+            })
+            .sum();
+        counts.insert(
+            ResultTab::Links,
+            TabCounts {
+                total: internal_links,
+                errors: 0,
+                warnings: 0,
+            },
+        );
+
+        let unique_dirs: std::collections::HashSet<String> = internal
+            .iter()
+            .filter_map(|p| {
+                let path = p.url.strip_prefix(self.root_origin.as_deref()?)?;
+                Some(directory_path(path))
+            })
+            .collect();
+        counts.insert(
+            ResultTab::SiteStructure,
+            TabCounts {
+                total: unique_dirs.len(),
+                errors: 0,
+                warnings: 0,
+            },
+        );
+
         counts
     }
 
@@ -951,6 +1144,37 @@ impl ResultsDelegate {
         }
         if self.active_tab == ResultTab::Overview {
             self.flat_rows = build_overview_rows(&self.all_pages);
+            return;
+        }
+        if self.active_tab == ResultTab::Issues {
+            self.flat_rows = build_issues_rows(&self.all_pages);
+            return;
+        }
+        if self.active_tab == ResultTab::SiteStructure {
+            self.flat_rows =
+                build_directory_aggregates(&self.all_pages, self.root_origin.as_deref());
+            return;
+        }
+        if self.active_tab == ResultTab::Links {
+            self.flat_rows = self
+                .filtered_indices
+                .iter()
+                .flat_map(|&page_index| {
+                    let Some(page) = self.all_pages.get(page_index) else {
+                        return Vec::<FlatRow>::new();
+                    };
+                    page.outlinks
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, link)| is_same_domain(&page.url, &link.dst_url))
+                        .map(|(item_index, _)| FlatRow::LinkRow {
+                            page: page_index,
+                            item: item_index,
+                        })
+                        .collect()
+                })
+                .collect();
+            self.filter_flat_rows();
             return;
         }
         let active_tab = self.active_tab;
@@ -993,14 +1217,38 @@ impl ResultsDelegate {
         if self.issue_filter == IssueFilter::All {
             return;
         }
+        if self.active_tab == ResultTab::Issues {
+            let entries = build_issues_entries(&self.all_pages);
+            self.flat_rows.retain(|row| {
+                let FlatRow::IssuesRow { index } = row else {
+                    return true;
+                };
+                let Some(entry) = entries.get(*index) else {
+                    return false;
+                };
+                match self.issue_filter {
+                    IssueFilter::IssueTypeError => entry.issue_type == IssueType::Issue,
+                    IssueFilter::IssueTypeOpportunity => entry.issue_type == IssueType::Opportunity,
+                    IssueFilter::IssueTypeWarning => entry.issue_type == IssueType::Warning,
+                    IssueFilter::PriorityHigh => entry.priority == IssuePriority::High,
+                    IssueFilter::PriorityMedium => entry.priority == IssuePriority::Medium,
+                    IssueFilter::PriorityLow => entry.priority == IssuePriority::Low,
+                    _ => true,
+                }
+            });
+            return;
+        }
         self.flat_rows.retain(|row| {
             let page_index = match row {
                 FlatRow::Image { page, .. }
                 | FlatRow::Outlink { page, .. }
                 | FlatRow::A11yIssue { page, .. }
                 | FlatRow::Hreflang { page, .. }
-                | FlatRow::SdItem { page, .. } => *page,
-                FlatRow::OverviewIssue { .. } => return true,
+                | FlatRow::SdItem { page, .. }
+                | FlatRow::LinkRow { page, .. } => *page,
+                FlatRow::OverviewIssue { .. }
+                | FlatRow::IssuesRow { .. }
+                | FlatRow::DirectoryAggregate { .. } => return true,
             };
             let Some(page) = self.all_pages.get(page_index) else {
                 return false;
@@ -1018,6 +1266,22 @@ impl ResultsDelegate {
         );
         if self.active_tab == ResultTab::Overview {
             return self.flat_rows.len();
+        }
+        if self.active_tab == ResultTab::Issues {
+            let entries = build_issues_entries(&self.all_pages);
+            return entries
+                .iter()
+                .filter(|entry| match filter {
+                    IssueFilter::All => true,
+                    IssueFilter::IssueTypeError => entry.issue_type == IssueType::Issue,
+                    IssueFilter::IssueTypeOpportunity => entry.issue_type == IssueType::Opportunity,
+                    IssueFilter::IssueTypeWarning => entry.issue_type == IssueType::Warning,
+                    IssueFilter::PriorityHigh => entry.priority == IssuePriority::High,
+                    IssueFilter::PriorityMedium => entry.priority == IssuePriority::Medium,
+                    IssueFilter::PriorityLow => entry.priority == IssuePriority::Low,
+                    _ => true,
+                })
+                .count();
         }
         if tab_is_flattened(self.active_tab) {
             if filter == IssueFilter::All {
@@ -1082,6 +1346,7 @@ fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("redirect_url", "Redirect URI", 350., None),
             col("closest_similarity", "Closest Sim.", 90., None),
             col("near_duplicate_count", "Near Dups", 80., None),
+            col("link_score", "Link Score", 80., None),
         ],
         ResultTab::External => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
@@ -1102,6 +1367,7 @@ fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
         ResultTab::PageTitles => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
             col("title", "Title", 350., None),
+            col("title_2", "Title 2", 350., None),
             col("title_length", "Title Len", 90., None),
             col("title_pixel_width", "Pixel Width", 90., None),
             col("occurrences", "Occurrences", 100., None),
@@ -1110,6 +1376,7 @@ fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
         ResultTab::MetaDesc => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
             col("meta_desc", "Meta Desc", 350., None),
+            col("meta_desc_2", "Meta Desc 2", 350., None),
             col("meta_desc_length", "Meta Desc Len", 110., None),
             col("meta_desc_pixel_width", "Pixel Width", 90., None),
             col("occurrences", "Occurrences", 100., None),
@@ -1118,6 +1385,7 @@ fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
         ResultTab::H1 => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
             col("h1", "H1", 300., None),
+            col("h1_2", "H1-2", 300., None),
             col("h1_length", "H1 Len", 80., None),
             col("occurrences", "Occurrences", 100., None),
             col("indexability", "Indexability", 110., None),
@@ -1125,6 +1393,7 @@ fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
         ResultTab::H2 => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
             col("h2", "H2", 300., None),
+            col("h2_2", "H2-2", 300., None),
             col("h2_length", "H2 Len", 80., None),
             col("occurrences", "Occurrences", 100., None),
             col("indexability", "Indexability", 110., None),
@@ -1234,6 +1503,30 @@ fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("issue", "Issue", 300., Some(ColumnFixed::Left)),
             col("count", "Count", 80., None),
         ],
+        ResultTab::Issues => vec![
+            col("issue_name", "Issue", 360., Some(ColumnFixed::Left)),
+            col("issue_type", "Type", 110., None),
+            col("priority", "Priority", 90., None),
+            col("count", "URLs", 70., None),
+            col("pct", "% of Total", 80., None),
+        ],
+        ResultTab::Links => vec![
+            col("source", "Source", 380., Some(ColumnFixed::Left)),
+            col("destination", "Destination", 380., None),
+            col("anchor", "Anchor", 200., None),
+            col("rel", "Rel", 100., None),
+            col("status_code", "Code", 70., None),
+            col("link_type", "Type", 90., None),
+        ],
+        ResultTab::SiteStructure => vec![
+            col("dir_path", "Directory", 400., Some(ColumnFixed::Left)),
+            col("dir_page_count", "Pages", 80., None),
+            col("dir_depth", "Depth", 70., None),
+            col("dir_avg_words", "Avg Words", 100., None),
+            col("dir_total_size", "Total Size", 100., None),
+            col("dir_indexable", "Indexable", 80., None),
+            col("dir_non_indexable", "Non-Idx", 80., None),
+        ],
     }
 }
 
@@ -1317,7 +1610,8 @@ fn filter_for_tab(
         | ResultTab::Accessibility
         | ResultTab::Security
         | ResultTab::Url
-        | ResultTab::Directives => pages
+        | ResultTab::Directives
+        | ResultTab::SiteStructure => pages
             .iter()
             .enumerate()
             .filter(|(_, p)| p.is_internal)
@@ -1338,6 +1632,18 @@ fn filter_for_tab(
             .iter()
             .enumerate()
             .filter(|(_, p)| p.is_internal && !p.images.is_empty())
+            .map(|(i, _)| i)
+            .collect(),
+        ResultTab::Issues => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.is_internal)
+            .map(|(i, _)| i)
+            .collect(),
+        ResultTab::Links => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.is_internal && !p.outlinks.is_empty())
             .map(|(i, _)| i)
             .collect(),
         _ => (0..pages.len()).collect(),
@@ -1365,7 +1671,16 @@ fn filter_for_tab(
                     IssueFilter::UnderLength => {
                         thresholds.is_some_and(|(min, _)| len < min && len > 0)
                     }
-                    IssueFilter::Multiple => count > 1,
+                    IssueFilter::Multiple => {
+                        let has_secondary = match field_key {
+                            "title" => page.title_2.is_some(),
+                            "meta_description" => page.meta_description_2.is_some(),
+                            "h1" => page.h1_2.is_some(),
+                            "h2" => page.h2_2.is_some(),
+                            _ => false,
+                        };
+                        count > 1 || has_secondary
+                    }
                     IssueFilter::SameAsH1 => page
                         .h1
                         .as_deref()
@@ -1387,6 +1702,32 @@ fn filter_for_tab(
                     .content_type
                     .as_deref()
                     .is_some_and(|ct| ct.starts_with("image/"))
+            }),
+            IssueFilter::Css => indices.retain(|&idx| {
+                pages[idx]
+                    .content_type
+                    .as_deref()
+                    .is_some_and(|ct| ct.contains("css"))
+            }),
+            IssueFilter::JavaScript => indices.retain(|&idx| {
+                pages[idx]
+                    .content_type
+                    .as_deref()
+                    .is_some_and(|ct| ct.contains("javascript"))
+            }),
+            IssueFilter::Pdf => indices.retain(|&idx| {
+                pages[idx]
+                    .content_type
+                    .as_deref()
+                    .is_some_and(|ct| ct.contains("pdf"))
+            }),
+            IssueFilter::OtherResource => indices.retain(|&idx| {
+                let ct = pages[idx].content_type.as_deref().unwrap_or("");
+                !ct.starts_with("text/html")
+                    && !ct.starts_with("image/")
+                    && !ct.contains("css")
+                    && !ct.contains("javascript")
+                    && !ct.contains("pdf")
             }),
             IssueFilter::NonIndexable => indices.retain(|&idx| {
                 pages[idx]
@@ -1433,6 +1774,30 @@ fn filter_for_tab(
             IssueFilter::MissingHreflang => {
                 indices.retain(|&idx| pages[idx].hreflang_tags.is_empty())
             }
+            IssueFilter::HreflangMissingReturnTag => indices.retain(|&idx| {
+                pages[idx]
+                    .hreflang_issues
+                    .iter()
+                    .any(|i| matches!(i, HreflangIssue::MissingReturnTag { .. }))
+            }),
+            IssueFilter::HreflangInvalidLang => indices.retain(|&idx| {
+                pages[idx]
+                    .hreflang_issues
+                    .iter()
+                    .any(|i| matches!(i, HreflangIssue::InvalidLanguageCode { .. }))
+            }),
+            IssueFilter::HreflangMissingXDefault => indices.retain(|&idx| {
+                pages[idx]
+                    .hreflang_issues
+                    .iter()
+                    .any(|i| matches!(i, HreflangIssue::MissingXDefault))
+            }),
+            IssueFilter::HreflangNonCanonical => indices.retain(|&idx| {
+                pages[idx]
+                    .hreflang_issues
+                    .iter()
+                    .any(|i| matches!(i, HreflangIssue::NonCanonicalUrl { .. }))
+            }),
             IssueFilter::HasStructuredData => {
                 indices.retain(|&idx| !pages[idx].sd_types.is_empty())
             }
@@ -1778,16 +2143,22 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
     match label {
         "Missing Page Title" => Some((ResultTab::PageTitles, IssueFilter::Missing)),
         "Duplicate Page Title" => Some((ResultTab::PageTitles, IssueFilter::Duplicate)),
+        "Page Title Over 60 Characters" => Some((ResultTab::PageTitles, IssueFilter::OverLength)),
         "Missing Meta Description" => Some((ResultTab::MetaDesc, IssueFilter::Missing)),
+        "Duplicate Meta Description" => Some((ResultTab::MetaDesc, IssueFilter::Duplicate)),
         "Missing H1" => Some((ResultTab::H1, IssueFilter::Missing)),
+        "Duplicate H1" => Some((ResultTab::H1, IssueFilter::Duplicate)),
         "Non-Indexable Pages" => Some((ResultTab::Internal, IssueFilter::NonIndexable)),
-        "Missing Canonical" => Some((ResultTab::Canonicals, IssueFilter::MissingCanonical)),
+        "Missing Canonical Tag" => Some((ResultTab::Canonicals, IssueFilter::MissingCanonical)),
         "Missing HTTPS" => Some((ResultTab::Security, IssueFilter::MissingHttps)),
         "Images Missing Alt" => Some((ResultTab::Images, IssueFilter::MissingAltText)),
+        "Images Missing Alt Text" => Some((ResultTab::Images, IssueFilter::MissingAltText)),
         "Structured Data Errors" => Some((ResultTab::StructuredData, IssueFilter::SdErrors)),
         "Structured Data Warnings" => Some((ResultTab::StructuredData, IssueFilter::SdWarnings)),
         "Slow LCP" => Some((ResultTab::Performance, IssueFilter::SlowLcp)),
         "Slow CLS" => Some((ResultTab::Performance, IssueFilter::SlowCls)),
+        "Slow Largest Contentful Paint" => Some((ResultTab::Performance, IssueFilter::SlowLcp)),
+        "High Cumulative Layout Shift" => Some((ResultTab::Performance, IssueFilter::SlowCls)),
         "A11y Critical Issues" => Some((ResultTab::Accessibility, IssueFilter::All)),
         "A11y Warnings" => Some((ResultTab::Accessibility, IssueFilter::All)),
         "HTTP Errors (4xx/5xx)" => Some((ResultTab::ResponseCodes, IssueFilter::Status4xx)),
@@ -1804,6 +2175,18 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Uppercase URLs" => Some((ResultTab::Url, IssueFilter::UrlUppercase)),
         "URLs with Underscores" => Some((ResultTab::Url, IssueFilter::UrlUnderscores)),
         "Long URLs" => Some((ResultTab::Url, IssueFilter::UrlOverLength)),
+        "Hreflang Missing Return Tags" => {
+            Some((ResultTab::Hreflang, IssueFilter::HreflangMissingReturnTag))
+        }
+        "Hreflang Invalid Language Codes" => {
+            Some((ResultTab::Hreflang, IssueFilter::HreflangInvalidLang))
+        }
+        "Hreflang Missing x-default" => {
+            Some((ResultTab::Hreflang, IssueFilter::HreflangMissingXDefault))
+        }
+        "Hreflang Non-Canonical Targets" => {
+            Some((ResultTab::Hreflang, IssueFilter::HreflangNonCanonical))
+        }
         _ => None,
     }
 }
@@ -2112,7 +2495,17 @@ fn flat_row_matches_filter(row: &FlatRow, page: &PageRecord, filter: IssueFilter
             };
             sd_item_matches_filter(sd_item, page, filter)
         }
-        FlatRow::Outlink { .. } | FlatRow::Hreflang { .. } | FlatRow::OverviewIssue { .. } => true,
+        FlatRow::Outlink { .. }
+        | FlatRow::Hreflang { .. }
+        | FlatRow::OverviewIssue { .. }
+        | FlatRow::IssuesRow { .. }
+        | FlatRow::LinkRow { .. } => true,
+        FlatRow::DirectoryAggregate { depth, .. } => match filter {
+            IssueFilter::DepthShallow => *depth <= 1,
+            IssueFilter::DepthMedium => *depth >= 2 && *depth <= 3,
+            IssueFilter::DepthDeep => *depth >= 4,
+            _ => true,
+        },
     }
 }
 
@@ -2167,6 +2560,621 @@ fn col(key: &str, name: &str, width: f32, fixed: Option<ColumnFixed>) -> Column 
         ..Default::default()
     }
     .sortable()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IssueType {
+    Issue,
+    Opportunity,
+    Warning,
+}
+
+impl IssueType {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Issue => "Issue",
+            Self::Opportunity => "Opportunity",
+            Self::Warning => "Warning",
+        }
+    }
+
+    fn tone(self) -> Tone {
+        match self {
+            Self::Issue => Tone::Err,
+            Self::Opportunity => Tone::Warn,
+            Self::Warning => Tone::Neutral,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum IssuePriority {
+    High,
+    Medium,
+    Low,
+}
+
+impl IssuePriority {
+    fn label(self) -> &'static str {
+        match self {
+            Self::High => "High",
+            Self::Medium => "Medium",
+            Self::Low => "Low",
+        }
+    }
+
+    fn tone(self) -> Tone {
+        match self {
+            Self::High => Tone::Err,
+            Self::Medium => Tone::Warn,
+            Self::Low => Tone::Neutral,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct IssueEntry {
+    pub name: String,
+    pub issue_type: IssueType,
+    pub priority: IssuePriority,
+    pub count: usize,
+    pub pct: f32,
+    pub description: String,
+    pub hint: String,
+}
+
+fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
+    let internal: Vec<&PageRecord> = pages.iter().filter(|p| p.is_internal).collect();
+    let total = internal.len().max(1) as f32;
+    let all_total = pages.len().max(1) as f32;
+    let mut entries = Vec::new();
+
+    let missing_title = internal
+        .iter()
+        .filter(|p| p.title.as_deref() == Some(""))
+        .count();
+    if missing_title > 0 {
+        entries.push(IssueEntry {
+            name: "Missing Page Title".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: missing_title,
+            pct: missing_title as f32 / total * 100.0,
+            description: "Pages with an empty or missing <title> tag.".into(),
+            hint: "Add a unique, descriptive title (30-60 chars) to each page.".into(),
+        });
+    }
+
+    let duplicate_title = {
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for p in &internal {
+            *counts.entry(p.title.as_deref().unwrap_or("")).or_insert(0) += 1;
+        }
+        internal
+            .iter()
+            .filter(|p| *counts.get(p.title.as_deref().unwrap_or("")).unwrap_or(&0) > 1)
+            .count()
+    };
+    if duplicate_title > 0 {
+        entries.push(IssueEntry {
+            name: "Duplicate Page Title".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: duplicate_title,
+            pct: duplicate_title as f32 / total * 100.0,
+            description: "Multiple pages share the same title text.".into(),
+            hint: "Give each page a unique title that reflects its content.".into(),
+        });
+    }
+
+    let over_title = internal
+        .iter()
+        .filter(|p| {
+            p.title
+                .as_deref()
+                .is_some_and(|t| t.len() > 60 && !t.is_empty())
+        })
+        .count();
+    if over_title > 0 {
+        entries.push(IssueEntry {
+            name: "Page Title Over 60 Characters".into(),
+            issue_type: IssueType::Warning,
+            priority: IssuePriority::Medium,
+            count: over_title,
+            pct: over_title as f32 / total * 100.0,
+            description: "Titles exceeding 60 characters may be truncated in search results."
+                .into(),
+            hint: "Keep titles between 30 and 60 characters.".into(),
+        });
+    }
+
+    let missing_desc = internal
+        .iter()
+        .filter(|p| p.meta_description.as_deref() == Some(""))
+        .count();
+    if missing_desc > 0 {
+        entries.push(IssueEntry {
+            name: "Missing Meta Description".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: missing_desc,
+            pct: missing_desc as f32 / total * 100.0,
+            description: "Pages with an empty or missing meta description.".into(),
+            hint: "Write a compelling meta description (50-160 chars) for each page.".into(),
+        });
+    }
+
+    let duplicate_desc = {
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for p in &internal {
+            *counts
+                .entry(p.meta_description.as_deref().unwrap_or(""))
+                .or_insert(0) += 1;
+        }
+        internal
+            .iter()
+            .filter(|p| {
+                *counts
+                    .get(p.meta_description.as_deref().unwrap_or(""))
+                    .unwrap_or(&0)
+                    > 1
+            })
+            .count()
+    };
+    if duplicate_desc > 0 {
+        entries.push(IssueEntry {
+            name: "Duplicate Meta Description".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::Medium,
+            count: duplicate_desc,
+            pct: duplicate_desc as f32 / total * 100.0,
+            description: "Multiple pages share the same meta description.".into(),
+            hint: "Write a unique meta description for each page.".into(),
+        });
+    }
+
+    let missing_h1 = internal
+        .iter()
+        .filter(|p| p.h1.as_deref() == Some(""))
+        .count();
+    if missing_h1 > 0 {
+        entries.push(IssueEntry {
+            name: "Missing H1".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: missing_h1,
+            pct: missing_h1 as f32 / total * 100.0,
+            description: "Pages with an empty or missing H1 heading.".into(),
+            hint: "Add a single H1 heading that describes the page topic.".into(),
+        });
+    }
+
+    let duplicate_h1 = {
+        let mut counts: HashMap<&str, usize> = HashMap::new();
+        for p in &internal {
+            *counts.entry(p.h1.as_deref().unwrap_or("")).or_insert(0) += 1;
+        }
+        internal
+            .iter()
+            .filter(|p| *counts.get(p.h1.as_deref().unwrap_or("")).unwrap_or(&0) > 1)
+            .count()
+    };
+    if duplicate_h1 > 0 {
+        entries.push(IssueEntry {
+            name: "Duplicate H1".into(),
+            issue_type: IssueType::Warning,
+            priority: IssuePriority::Medium,
+            count: duplicate_h1,
+            pct: duplicate_h1 as f32 / total * 100.0,
+            description: "Multiple pages share the same H1 heading text.".into(),
+            hint: "Make each H1 unique to the page's primary topic.".into(),
+        });
+    }
+
+    let non_indexable = internal
+        .iter()
+        .filter(|p| p.indexability.as_deref() == Some("Non-Indexable"))
+        .count();
+    if non_indexable > 0 {
+        entries.push(IssueEntry {
+            name: "Non-Indexable Pages".into(),
+            issue_type: IssueType::Warning,
+            priority: IssuePriority::High,
+            count: non_indexable,
+            pct: non_indexable as f32 / total * 100.0,
+            description: "Pages blocked from indexing via noindex or other directives.".into(),
+            hint: "Verify each non-indexable page is intentionally excluded. Remove noindex from pages that should rank.".into(),
+        });
+    }
+
+    let missing_canonical = internal
+        .iter()
+        .filter(|p| p.canonical.as_deref() == Some(""))
+        .count();
+    if missing_canonical > 0 {
+        entries.push(IssueEntry {
+            name: "Missing Canonical Tag".into(),
+            issue_type: IssueType::Opportunity,
+            priority: IssuePriority::Medium,
+            count: missing_canonical,
+            pct: missing_canonical as f32 / total * 100.0,
+            description: "Pages without a self-referencing canonical link element.".into(),
+            hint: "Add a canonical tag to every page to prevent duplicate content issues.".into(),
+        });
+    }
+
+    let status_errors = pages
+        .iter()
+        .filter(|p| p.status.is_some_and(|c| c >= 400))
+        .count();
+    if status_errors > 0 {
+        entries.push(IssueEntry {
+            name: "HTTP Errors (4xx/5xx)".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: status_errors,
+            pct: status_errors as f32 / all_total * 100.0,
+            description: "Pages returning client or server error status codes.".into(),
+            hint: "Fix broken links (404), resolve server errors, and redirect moved content."
+                .into(),
+        });
+    }
+
+    let redirects = pages.iter().filter(|p| p.redirect_url.is_some()).count();
+    if redirects > 0 {
+        entries.push(IssueEntry {
+            name: "Redirects".into(),
+            issue_type: IssueType::Warning,
+            priority: IssuePriority::Medium,
+            count: redirects,
+            pct: redirects as f32 / all_total * 100.0,
+            description: "URLs that redirect to another location.".into(),
+            hint: "Update internal links to point directly to the final URL.".into(),
+        });
+    }
+
+    let missing_alt: usize = internal
+        .iter()
+        .flat_map(|p| p.images.iter())
+        .filter(|img| !img.has_alt_attr || img.alt.as_deref().is_none_or(|a| a.is_empty()))
+        .count();
+    if missing_alt > 0 {
+        entries.push(IssueEntry {
+            name: "Images Missing Alt Text".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::Medium,
+            count: missing_alt,
+            pct: missing_alt as f32
+                / internal
+                    .iter()
+                    .map(|p| p.images.len())
+                    .sum::<usize>()
+                    .max(1) as f32
+                * 100.0,
+            description: "Images without alt text or with an empty alt attribute.".into(),
+            hint: "Add descriptive alt text to every meaningful image.".into(),
+        });
+    }
+
+    let sd_errors = internal.iter().filter(|p| p.sd_errors > 0).count();
+    if sd_errors > 0 {
+        entries.push(IssueEntry {
+            name: "Structured Data Errors".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: sd_errors,
+            pct: sd_errors as f32 / total * 100.0,
+            description: "Pages with invalid structured data that may prevent rich results.".into(),
+            hint: "Fix JSON-LD or microdata syntax errors. Test with Google's Rich Results Test."
+                .into(),
+        });
+    }
+
+    let near_dups = internal
+        .iter()
+        .filter(|p| p.near_duplicate_count.is_some_and(|c| c > 0))
+        .count();
+    if near_dups > 0 {
+        entries.push(IssueEntry {
+            name: "Near Duplicate Content".into(),
+            issue_type: IssueType::Opportunity,
+            priority: IssuePriority::Medium,
+            count: near_dups,
+            pct: near_dups as f32 / total * 100.0,
+            description: "Pages with highly similar content (90%+ match).".into(),
+            hint: "Differentiate pages with unique content, merge thin variants, or use canonical tags.".into(),
+        });
+    }
+
+    let low_content = internal
+        .iter()
+        .filter(|p| p.word_count.is_some_and(|w| w > 0 && w < 100))
+        .count();
+    if low_content > 0 {
+        entries.push(IssueEntry {
+            name: "Low Content Pages".into(),
+            issue_type: IssueType::Opportunity,
+            priority: IssuePriority::Low,
+            count: low_content,
+            pct: low_content as f32 / total * 100.0,
+            description: "Pages with fewer than 100 words of body text.".into(),
+            hint: "Add substantive content or consolidate thin pages.".into(),
+        });
+    }
+
+    let slow_lcp = internal
+        .iter()
+        .filter(|p| p.lcp_ms.is_some_and(|ms| ms > 4000))
+        .count();
+    if slow_lcp > 0 {
+        entries.push(IssueEntry {
+            name: "Slow Largest Contentful Paint".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: slow_lcp,
+            pct: slow_lcp as f32 / total * 100.0,
+            description: "Pages with LCP over 4 seconds.".into(),
+            hint: "Optimize images, eliminate render-blocking resources, improve server response time.".into(),
+        });
+    }
+
+    let slow_cls = internal
+        .iter()
+        .filter(|p| p.cls.is_some_and(|v| v > 0.25))
+        .count();
+    if slow_cls > 0 {
+        entries.push(IssueEntry {
+            name: "High Cumulative Layout Shift".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::Medium,
+            count: slow_cls,
+            pct: slow_cls as f32 / total * 100.0,
+            description: "Pages with CLS above 0.25, causing visible layout shifts.".into(),
+            hint: "Set explicit dimensions on images/videos, avoid inserting content above existing content.".into(),
+        });
+    }
+
+    let a11y_critical = internal
+        .iter()
+        .flat_map(|p| p.a11y_issues.iter())
+        .filter(|i| matches!(i.impact.as_str(), "critical" | "serious"))
+        .count();
+    if a11y_critical > 0 {
+        entries.push(IssueEntry {
+            name: "Accessibility Critical Issues".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: a11y_critical,
+            pct: a11y_critical as f32 / total * 100.0,
+            description: "Critical or serious accessibility violations.".into(),
+            hint: "Fix missing labels, ARIA roles, color contrast, and heading hierarchy.".into(),
+        });
+    }
+
+    let missing_https = internal
+        .iter()
+        .filter(|p| !p.url.starts_with("https://"))
+        .count();
+    if missing_https > 0 {
+        entries.push(IssueEntry {
+            name: "Missing HTTPS".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: missing_https,
+            pct: missing_https as f32 / total * 100.0,
+            description: "Pages served over HTTP instead of HTTPS.".into(),
+            hint: "Enable HTTPS across the entire site and redirect HTTP to HTTPS.".into(),
+        });
+    }
+
+    let missing_hsts = internal
+        .iter()
+        .filter(|p| !header_exists(&p.headers, "strict-transport-security"))
+        .count();
+    if missing_hsts > 0 {
+        entries.push(IssueEntry {
+            name: "Missing HSTS Header".into(),
+            issue_type: IssueType::Warning,
+            priority: IssuePriority::Low,
+            count: missing_hsts,
+            pct: missing_hsts as f32 / total * 100.0,
+            description: "Pages missing the Strict-Transport-Security header.".into(),
+            hint: "Add the Strict-Transport-Security header to enforce HTTPS.".into(),
+        });
+    }
+
+    let hreflang_missing_return = internal
+        .iter()
+        .filter(|p| {
+            p.hreflang_issues
+                .iter()
+                .any(|i| matches!(i, HreflangIssue::MissingReturnTag { .. }))
+        })
+        .count();
+    if hreflang_missing_return > 0 {
+        entries.push(IssueEntry {
+            name: "Hreflang Missing Return Tags".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: hreflang_missing_return,
+            pct: hreflang_missing_return as f32 / total * 100.0,
+            description: "Pages with hreflang tags that are not reciprocated by the target URL.".into(),
+            hint: "Ensure every hreflang link is bidirectional: if A links to B, B must link back to A.".into(),
+        });
+    }
+
+    let hreflang_invalid_lang = internal
+        .iter()
+        .filter(|p| {
+            p.hreflang_issues
+                .iter()
+                .any(|i| matches!(i, HreflangIssue::InvalidLanguageCode { .. }))
+        })
+        .count();
+    if hreflang_invalid_lang > 0 {
+        entries.push(IssueEntry {
+            name: "Hreflang Invalid Language Codes".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::Medium,
+            count: hreflang_invalid_lang,
+            pct: hreflang_invalid_lang as f32 / total * 100.0,
+            description: "Pages using hreflang codes that don't follow the BCP-47 standard.".into(),
+            hint: "Use valid ISO 639-1 language codes (e.g. 'en', 'de') and optional region subtags (e.g. 'en-US').".into(),
+        });
+    }
+
+    let hreflang_missing_xdefault = internal
+        .iter()
+        .filter(|p| {
+            p.hreflang_issues
+                .iter()
+                .any(|i| matches!(i, HreflangIssue::MissingXDefault))
+        })
+        .count();
+    if hreflang_missing_xdefault > 0 {
+        entries.push(IssueEntry {
+            name: "Hreflang Missing x-default".into(),
+            issue_type: IssueType::Warning,
+            priority: IssuePriority::Medium,
+            count: hreflang_missing_xdefault,
+            pct: hreflang_missing_xdefault as f32 / total * 100.0,
+            description: "Pages with hreflang but no x-default fallback tag.".into(),
+            hint: "Add an hreflang x-default tag pointing to the default page for unmatched languages.".into(),
+        });
+    }
+
+    let hreflang_noncanonical = internal
+        .iter()
+        .filter(|p| {
+            p.hreflang_issues
+                .iter()
+                .any(|i| matches!(i, HreflangIssue::NonCanonicalUrl { .. }))
+        })
+        .count();
+    if hreflang_noncanonical > 0 {
+        entries.push(IssueEntry {
+            name: "Hreflang Non-Canonical Targets".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: hreflang_noncanonical,
+            pct: hreflang_noncanonical as f32 / total * 100.0,
+            description:
+                "Hreflang URLs pointing to pages whose canonical differs from the hreflang target."
+                    .into(),
+            hint: "Ensure hreflang URLs match the canonical URL of the target page.".into(),
+        });
+    }
+
+    entries.sort_by(|a, b| match a.issue_type.cmp(&b.issue_type) {
+        std::cmp::Ordering::Equal => match a.priority.cmp(&b.priority) {
+            std::cmp::Ordering::Equal => b.count.cmp(&a.count),
+            other => other,
+        },
+        other => other,
+    });
+
+    entries
+}
+
+fn build_issues_rows(pages: &[PageRecord]) -> Vec<FlatRow> {
+    build_issues_entries(pages)
+        .into_iter()
+        .enumerate()
+        .map(|(index, _)| FlatRow::IssuesRow { index })
+        .collect()
+}
+
+fn directory_path(url_path: &str) -> String {
+    let path = url_path.trim_end_matches('/');
+    if path.is_empty() || path == "/" {
+        return "/".to_string();
+    }
+    let last_segment = path.rsplit('/').next().unwrap_or("");
+    if last_segment.contains('.') {
+        let parent = &path[..path.len() - last_segment.len()];
+        if parent.is_empty() || parent == "/" {
+            return "/".to_string();
+        }
+        format!("{}/", parent.trim_end_matches('/'))
+    } else {
+        format!("{}/", path)
+    }
+}
+
+fn dir_format_size(bytes: u64) -> String {
+    if bytes == 0 {
+        return "-".into();
+    }
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    if bytes < 1024 * 1024 {
+        return format!("{:.1} KB", bytes as f64 / 1024.0);
+    }
+    format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+#[derive(Default)]
+struct DirAccumulator {
+    page_count: usize,
+    total_word_count: u64,
+    total_size: u64,
+    non_indexable: usize,
+    indexable: usize,
+}
+
+fn build_directory_aggregates(pages: &[PageRecord], root_origin: Option<&str>) -> Vec<FlatRow> {
+    let Some(origin) = root_origin else {
+        return Vec::new();
+    };
+
+    let mut dir_data: HashMap<String, DirAccumulator> = HashMap::new();
+
+    for page in pages.iter().filter(|p| p.is_internal) {
+        let path = page.url.strip_prefix(origin).unwrap_or(&page.url);
+        let dir_path = directory_path(path);
+
+        let acc = dir_data.entry(dir_path).or_default();
+        acc.page_count += 1;
+        acc.total_word_count += page.word_count.unwrap_or(0) as u64;
+        acc.total_size += page.size_bytes;
+        if page.indexability.as_deref() == Some("Non-Indexable") {
+            acc.non_indexable += 1;
+        } else {
+            acc.indexable += 1;
+        }
+    }
+
+    let mut rows: Vec<FlatRow> = dir_data
+        .into_iter()
+        .map(|(path, acc)| FlatRow::DirectoryAggregate {
+            depth: path.matches('/').count().saturating_sub(1) as u32,
+            avg_word_count: if acc.page_count > 0 {
+                acc.total_word_count / acc.page_count as u64
+            } else {
+                0
+            },
+            total_size: acc.total_size,
+            page_count: acc.page_count,
+            non_indexable: acc.non_indexable,
+            indexable: acc.indexable,
+            path,
+        })
+        .collect();
+
+    rows.sort_by(|a, b| {
+        let a_path = match a {
+            FlatRow::DirectoryAggregate { path, .. } => path,
+            _ => "",
+        };
+        let b_path = match b {
+            FlatRow::DirectoryAggregate { path, .. } => path,
+            _ => "",
+        };
+        a_path.cmp(b_path)
+    });
+
+    rows
 }
 
 fn header_exists(headers: &[(String, String)], name: &str) -> bool {
@@ -2254,6 +3262,7 @@ fn is_mono_column(key: &str) -> bool {
                 | "sd_raw"
                 | "last_modified"
                 | "redirect_url"
+                | "dir_path"
         )
 }
 
@@ -2286,6 +3295,11 @@ fn is_numeric_column(key: &str) -> bool {
             | "image_width"
             | "image_height"
             | "url_length"
+            | "dir_page_count"
+            | "dir_depth"
+            | "dir_avg_words"
+            | "dir_indexable"
+            | "dir_non_indexable"
     )
 }
 
@@ -2326,6 +3340,19 @@ fn page_address(record: &PageRecord, root_origin: Option<&str>) -> SharedString 
         });
     }
     SharedString::from(record.url.clone())
+}
+
+fn url_to_path(url: &str, root_origin: Option<&str>) -> SharedString {
+    let Some(origin) = root_origin else {
+        return SharedString::from(url.to_string());
+    };
+    if let Some(stripped) = url.strip_prefix(origin) {
+        if stripped.is_empty() {
+            return SharedString::from("/");
+        }
+        return SharedString::from(stripped.to_string());
+    }
+    SharedString::from(url.to_string())
 }
 
 fn flat_cell_text(
@@ -2379,7 +3406,28 @@ fn flat_cell_text(
                 }
             }
         }
-        FlatRow::OverviewIssue { .. } => SharedString::default(),
+        FlatRow::OverviewIssue { .. } | FlatRow::IssuesRow { .. } | FlatRow::LinkRow { .. } => {
+            SharedString::default()
+        }
+        FlatRow::DirectoryAggregate {
+            path,
+            depth,
+            page_count,
+            avg_word_count,
+            total_size,
+            non_indexable,
+            indexable,
+            ..
+        } => match col_key {
+            "dir_path" => SharedString::from(path.clone()),
+            "dir_page_count" => SharedString::from(page_count.to_string()),
+            "dir_depth" => SharedString::from(depth.to_string()),
+            "dir_avg_words" => SharedString::from(avg_word_count.to_string()),
+            "dir_total_size" => SharedString::from(dir_format_size(*total_size)),
+            "dir_indexable" => SharedString::from(indexable.to_string()),
+            "dir_non_indexable" => SharedString::from(non_indexable.to_string()),
+            _ => SharedString::default(),
+        },
     }
 }
 
@@ -2765,6 +3813,16 @@ fn cell_text(
         } else {
             "0".into()
         }),
+        "link_score" => SharedString::from(
+            record
+                .link_score
+                .map(|s| format!("{s:.1}"))
+                .unwrap_or_else(|| "-".into()),
+        ),
+        "title_2" => SharedString::from(record.title_2.as_deref().unwrap_or("-")),
+        "meta_desc_2" => SharedString::from(record.meta_description_2.as_deref().unwrap_or("-")),
+        "h1_2" => SharedString::from(record.h1_2.as_deref().unwrap_or("-")),
+        "h2_2" => SharedString::from(record.h2_2.as_deref().unwrap_or("-")),
         _ => SharedString::default(),
     }
 }
@@ -2904,6 +3962,94 @@ impl TableDelegate for ResultsDelegate {
                         cell.child(text)
                     }
                 }
+                FlatRow::IssuesRow { index } => {
+                    let entries = build_issues_entries(&self.all_pages);
+                    let Some(entry) = entries.get(*index) else {
+                        return cell;
+                    };
+                    let text = match key.as_ref() {
+                        "issue_name" => SharedString::from(entry.name.clone()),
+                        "issue_type" => SharedString::from(entry.issue_type.label()),
+                        "priority" => SharedString::from(entry.priority.label()),
+                        "count" => SharedString::from(entry.count.to_string()),
+                        "pct" => SharedString::from(format!("{:.1}%", entry.pct)),
+                        _ => SharedString::default(),
+                    };
+                    match key.as_ref() {
+                        "issue_type" => cell.child(tone_tag(entry.issue_type.tone()).child(text)),
+                        "priority" => cell.child(tone_tag(entry.priority.tone()).child(text)),
+                        "count" => {
+                            let tone = if entry.count > 0 {
+                                Tone::Warn
+                            } else {
+                                Tone::Ok
+                            };
+                            cell.child(tone_tag(tone).child(text))
+                        }
+                        _ => cell.child(text),
+                    }
+                }
+                FlatRow::LinkRow { page, item } => {
+                    let Some(record) = self.all_pages.get(*page) else {
+                        return cell;
+                    };
+                    let Some(link) = record.outlinks.get(*item) else {
+                        return cell;
+                    };
+                    let text = match key.as_ref() {
+                        "source" => url_to_path(&record.url, self.root_origin.as_deref()),
+                        "destination" => url_to_path(&link.dst_url, self.root_origin.as_deref()),
+                        "anchor" => SharedString::from(link.anchor.clone().unwrap_or_default()),
+                        "rel" => SharedString::from(link.rel.clone().unwrap_or_default()),
+                        "status_code" => SharedString::from("-"),
+                        "link_type" => {
+                            if is_same_domain(&record.url, &link.dst_url) {
+                                SharedString::from("Internal")
+                            } else {
+                                SharedString::from("External")
+                            }
+                        }
+                        _ => SharedString::default(),
+                    };
+                    match key.as_ref() {
+                        "link_type" => {
+                            let tone = if is_same_domain(&record.url, &link.dst_url) {
+                                Tone::Neutral
+                            } else {
+                                Tone::Warn
+                            };
+                            cell.child(tone_tag(tone).child(text))
+                        }
+                        _ => cell.child(text),
+                    }
+                }
+                FlatRow::DirectoryAggregate {
+                    path,
+                    depth,
+                    page_count,
+                    avg_word_count,
+                    total_size,
+                    non_indexable,
+                    indexable,
+                    ..
+                } => {
+                    let text = match key.as_ref() {
+                        "dir_path" => SharedString::from(path.clone()),
+                        "dir_page_count" => SharedString::from(page_count.to_string()),
+                        "dir_depth" => SharedString::from(depth.to_string()),
+                        "dir_avg_words" => SharedString::from(avg_word_count.to_string()),
+                        "dir_total_size" => SharedString::from(dir_format_size(*total_size)),
+                        "dir_indexable" => SharedString::from(indexable.to_string()),
+                        "dir_non_indexable" => SharedString::from(non_indexable.to_string()),
+                        _ => SharedString::default(),
+                    };
+                    match key.as_ref() {
+                        "dir_non_indexable" if *non_indexable > 0 => {
+                            cell.child(tone_tag(Tone::Warn).child(text))
+                        }
+                        _ => cell.child(text),
+                    }
+                }
                 _ => {
                     let page_index = match row {
                         FlatRow::Image { page, .. }
@@ -2911,7 +4057,10 @@ impl TableDelegate for ResultsDelegate {
                         | FlatRow::A11yIssue { page, .. }
                         | FlatRow::Hreflang { page, .. }
                         | FlatRow::SdItem { page, .. } => *page,
-                        FlatRow::OverviewIssue { .. } => unreachable!(),
+                        FlatRow::OverviewIssue { .. }
+                        | FlatRow::IssuesRow { .. }
+                        | FlatRow::LinkRow { .. }
+                        | FlatRow::DirectoryAggregate { .. } => unreachable!(),
                     };
                     let Some(record) = self.all_pages.get(page_index) else {
                         return cell;
@@ -2983,21 +4132,83 @@ impl TableDelegate for ResultsDelegate {
                         _ => ordering,
                     };
                 }
+                if let (FlatRow::IssuesRow { index: a_idx }, FlatRow::IssuesRow { index: b_idx }) =
+                    (a, b)
+                {
+                    let entries = build_issues_entries(&self.all_pages);
+                    let a_entry = entries.get(*a_idx);
+                    let b_entry = entries.get(*b_idx);
+                    let ordering = match (a_entry, b_entry) {
+                        (Some(ae), Some(be)) => match col_key.as_ref() {
+                            "count" => ae.count.cmp(&be.count),
+                            "pct" => ae
+                                .pct
+                                .partial_cmp(&be.pct)
+                                .unwrap_or(std::cmp::Ordering::Equal),
+                            "priority" => ae.priority.cmp(&be.priority),
+                            "issue_type" => ae.issue_type.cmp(&be.issue_type),
+                            _ => ae.name.cmp(&be.name),
+                        },
+                        _ => std::cmp::Ordering::Equal,
+                    };
+                    return match sort {
+                        ColumnSort::Descending => ordering.reverse(),
+                        _ => ordering,
+                    };
+                }
+                if let (
+                    FlatRow::DirectoryAggregate {
+                        path: a_path,
+                        depth: a_depth,
+                        page_count: a_pc,
+                        avg_word_count: a_aw,
+                        total_size: a_ts,
+                        ..
+                    },
+                    FlatRow::DirectoryAggregate {
+                        path: b_path,
+                        depth: b_depth,
+                        page_count: b_pc,
+                        avg_word_count: b_aw,
+                        total_size: b_ts,
+                        ..
+                    },
+                ) = (a, b)
+                {
+                    let ordering = match col_key.as_ref() {
+                        "dir_page_count" => a_pc.cmp(b_pc),
+                        "dir_depth" => a_depth.cmp(b_depth),
+                        "dir_avg_words" => a_aw.cmp(b_aw),
+                        "dir_total_size" => a_ts.cmp(b_ts),
+                        _ => a_path.cmp(b_path),
+                    };
+                    return match sort {
+                        ColumnSort::Descending => ordering.reverse(),
+                        _ => ordering,
+                    };
+                }
                 let a_page = match a {
                     FlatRow::Image { page, .. }
                     | FlatRow::Outlink { page, .. }
                     | FlatRow::A11yIssue { page, .. }
                     | FlatRow::Hreflang { page, .. }
-                    | FlatRow::SdItem { page, .. } => *page,
-                    FlatRow::OverviewIssue { .. } => 0,
+                    | FlatRow::SdItem { page, .. }
+                    | FlatRow::LinkRow { page, .. } => *page,
+                    FlatRow::OverviewIssue { .. }
+                    | FlatRow::IssuesRow { .. }
+                    | FlatRow::DirectoryAggregate { .. } => 0,
                 };
+
                 let b_page = match b {
                     FlatRow::Image { page, .. }
                     | FlatRow::Outlink { page, .. }
                     | FlatRow::A11yIssue { page, .. }
                     | FlatRow::Hreflang { page, .. }
-                    | FlatRow::SdItem { page, .. } => *page,
-                    FlatRow::OverviewIssue { .. } => 0,
+                    | FlatRow::SdItem { page, .. }
+                    | FlatRow::LinkRow { page, .. } => *page,
+                    FlatRow::OverviewIssue { .. }
+                    | FlatRow::IssuesRow { .. }
+                    | FlatRow::DirectoryAggregate { .. } => 0,
                 };
                 let a_record = &self.all_pages[a_page];
                 let b_record = &self.all_pages[b_page];
@@ -3067,6 +4278,17 @@ impl ResultsGrid {
                 {
                     cx.emit(ResultsGridEvent::OverviewDrillDown { tab, filter });
                     return;
+                }
+                if delegate.active_tab == ResultTab::Issues
+                    && let Some(FlatRow::IssuesRow { index }) = delegate.flat_rows().get(*row_ix)
+                {
+                    let entries = build_issues_entries(delegate.all_pages());
+                    if let Some(entry) = entries.get(*index)
+                        && let Some((tab, filter)) = overview_issue_target(&entry.name)
+                    {
+                        cx.emit(ResultsGridEvent::OverviewDrillDown { tab, filter });
+                        return;
+                    }
                 }
                 cx.emit(ResultsGridEvent::Selected(*row_ix))
             }

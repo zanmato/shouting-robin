@@ -20,15 +20,19 @@ pub enum ResultTab {
     Performance,
     Ecommerce,
     Sitemaps,
+    SiteStructure,
     Security,
     Url,
     Directives,
     Overview,
+    Issues,
+    Links,
 }
 
 impl ResultTab {
     pub const ALL: &'static [ResultTab] = &[
         ResultTab::Overview,
+        ResultTab::Issues,
         ResultTab::Internal,
         ResultTab::External,
         ResultTab::ResponseCodes,
@@ -45,9 +49,11 @@ impl ResultTab {
         ResultTab::Performance,
         ResultTab::Ecommerce,
         ResultTab::Sitemaps,
+        ResultTab::SiteStructure,
         ResultTab::Security,
         ResultTab::Url,
         ResultTab::Directives,
+        ResultTab::Links,
     ];
 
     pub fn label(self) -> SharedString {
@@ -68,10 +74,13 @@ impl ResultTab {
             ResultTab::Performance => "Performance".into(),
             ResultTab::Ecommerce => "Ecommerce".into(),
             ResultTab::Sitemaps => "Sitemaps".into(),
+            ResultTab::SiteStructure => "Site Structure".into(),
             ResultTab::Security => "Security".into(),
             ResultTab::Url => "URL".into(),
             ResultTab::Directives => "Directives".into(),
             ResultTab::Overview => "Overview".into(),
+            ResultTab::Issues => "Issues".into(),
+            ResultTab::Links => "Links".into(),
         }
     }
 
@@ -83,8 +92,11 @@ impl ResultTab {
             ResultTab::Performance => Some(Icon::Gauge),
             ResultTab::Ecommerce => Some(Icon::ShoppingBag),
             ResultTab::Sitemaps => Some(Icon::Map),
+            ResultTab::SiteStructure => Some(Icon::FolderOpen),
             ResultTab::Security => Some(Icon::ShieldCheck),
             ResultTab::Overview => Some(Icon::Layers),
+            ResultTab::Issues => Some(Icon::CircleAlert),
+            ResultTab::Links => Some(Icon::Link),
             _ => None,
         }
     }

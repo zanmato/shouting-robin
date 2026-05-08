@@ -49,12 +49,16 @@ pub struct PageRecord {
     pub headers: Vec<(String, String)>,
     pub redirect_url: Option<String>,
     pub redirect_status: Option<u16>,
+    pub redirect_hops: Vec<RedirectHop>,
+    pub link_score: Option<f32>,
+    pub backlinks: Vec<Backlink>,
     pub title_2: Option<String>,
     pub meta_description_2: Option<String>,
     pub h1_2: Option<String>,
     pub h2_2: Option<String>,
     pub title_pixel_width: Option<u32>,
     pub meta_description_pixel_width: Option<u32>,
+    pub hreflang_issues: Vec<HreflangIssue>,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +86,14 @@ pub struct SdIssue {
 pub enum SdSeverity {
     Error,
     Warning,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum HreflangIssue {
+    MissingReturnTag { lang: String, target_url: String },
+    InvalidLanguageCode { code: String },
+    MissingXDefault,
+    NonCanonicalUrl { hreflang_url: String },
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +131,19 @@ pub struct A11yIssue {
     pub impact: String,
     pub target: Option<String>,
     pub html: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RedirectHop {
+    pub url: String,
+    pub status: u16,
+}
+
+#[derive(Debug, Clone)]
+pub struct Backlink {
+    pub source_url: String,
+    pub anchor: Option<String>,
+    pub rel: Option<String>,
 }
 
 impl PageRecord {

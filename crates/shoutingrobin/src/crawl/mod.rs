@@ -16,4 +16,5 @@ pub struct CrawlConfig {
     pub timeout_seconds: u32,
     pub respect_robots_txt: bool,
     pub near_duplicate_threshold: u8,
+    pub content_selector: String,
 }

@@ -158,6 +158,7 @@ impl CrawlEngine {
             let pool_pages = pool.clone();
             let root_for_pump = root_url.clone();
             let chrome_mode = matches!(render_mode, RenderMode::Chrome);
+            let content_selector_for_pump = config.content_selector.clone();
             let sitemap_for_pump = sitemap_lookup;
             let pump = tokio::spawn(async move {
                 let mut subscribe_guard = subscribe_guard;
@@ -231,7 +232,11 @@ impl CrawlEngine {
                             html_len = html.len(),
                             "received html for analysis"
                         );
-                        crate::crawl::analyzers::analyze_html(&mut record, html);
+                        crate::crawl::analyzers::analyze_html(
+                            &mut record,
+                            html,
+                            &content_selector_for_pump,
+                        );
                     }
 
                     if chrome_mode {
@@ -314,6 +319,10 @@ impl CrawlEngine {
 
             run_near_duplicate_analysis(&pool, crawl_id, config.near_duplicate_threshold).await;
 
+            run_pagerank_analysis(&pool, crawl_id).await;
+
+            run_hreflang_validation(&pool, crawl_id).await;
+
             if let Ok(orphans) = storage::load_sitemap_orphans(&pool, crawl_id).await {
                 for orphan in &orphans {
                     let record = PageRecord {
@@ -374,6 +383,217 @@ async fn run_near_duplicate_analysis(pool: &SqlitePool, crawl_id: i64, threshold
     {
         tracing::warn!(error=%e, "failed to persist near-duplicate results");
     }
+}
+
+async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) {
+    let link_rows = match sqlx::query_as::<_, (String, String)>(
+        "SELECT src_url, dst_url FROM links WHERE crawl_id = ? AND kind = 'internal'",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to load links for PageRank");
+            return;
+        }
+    };
+
+    if link_rows.is_empty() {
+        return;
+    }
+
+    let all_urls: std::collections::HashSet<String> = link_rows
+        .iter()
+        .flat_map(|(src, dst)| [src.clone(), dst.clone()])
+        .collect();
+
+    let url_count = all_urls.len();
+    let url_index: std::collections::HashMap<String, usize> = all_urls
+        .iter()
+        .enumerate()
+        .map(|(i, url)| (url.clone(), i))
+        .collect();
+
+    let mut outlinks_count = vec![0usize; url_count];
+    let mut inlinks: Vec<Vec<usize>> = vec![Vec::new(); url_count];
+    for (src, dst) in &link_rows {
+        let Some(&src_idx) = url_index.get(src) else {
+            continue;
+        };
+        let Some(&dst_idx) = url_index.get(dst) else {
+            continue;
+        };
+        outlinks_count[src_idx] += 1;
+        inlinks[dst_idx].push(src_idx);
+    }
+
+    let damping = 0.85f32;
+    let iterations = 30;
+    let mut scores = vec![1.0f32 / url_count as f32; url_count];
+
+    for _ in 0..iterations {
+        let mut new_scores = vec![(1.0 - damping) / url_count as f32; url_count];
+        for node in 0..url_count {
+            if outlinks_count[node] == 0 {
+                let share = scores[node] * damping / url_count as f32;
+                for target in 0..url_count {
+                    new_scores[target] += share;
+                }
+            } else {
+                let share = scores[node] * damping / outlinks_count[node] as f32;
+                for &target in &inlinks[node] {
+                    new_scores[target] += share;
+                }
+            }
+        }
+        scores = new_scores;
+    }
+
+    let max_score = scores.iter().copied().fold(0.0f32, f32::max);
+    if max_score > 0.0 {
+        for score in &mut scores {
+            *score = (*score / max_score) * 100.0;
+        }
+    }
+
+    let results: Vec<(String, f32)> = all_urls
+        .into_iter()
+        .enumerate()
+        .map(|(i, url)| (url, scores[i]))
+        .collect();
+
+    if let Err(e) = storage::update_link_scores(pool, crawl_id, &results).await {
+        tracing::warn!(error=%e, "failed to persist PageRank scores");
+    }
+}
+
+async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
+    let rows = match sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+        r#"SELECT url, hreflang_tags_json, canonical FROM pages WHERE crawl_id = ?"#,
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to load pages for hreflang validation");
+            return;
+        }
+    };
+
+    struct PageInfo {
+        hreflang_tags: Vec<(String, String)>,
+        canonical: Option<String>,
+    }
+
+    let mut page_map: std::collections::HashMap<String, PageInfo> =
+        std::collections::HashMap::new();
+
+    for (url, hreflang_json, canonical) in &rows {
+        let tags: Vec<(String, String)> = hreflang_json
+            .as_deref()
+            .and_then(|j| serde_json::from_str(j).ok())
+            .unwrap_or_default();
+        if !tags.is_empty() {
+            page_map.insert(
+                url.clone(),
+                PageInfo {
+                    hreflang_tags: tags,
+                    canonical: canonical.clone(),
+                },
+            );
+        }
+    }
+
+    if page_map.is_empty() {
+        return;
+    }
+
+    let mut all_issues: Vec<(String, Vec<crate::crawl::event::HreflangIssue>)> = Vec::new();
+
+    for (page_url, info) in &page_map {
+        let mut issues: Vec<crate::crawl::event::HreflangIssue> = Vec::new();
+
+        let has_x_default = info
+            .hreflang_tags
+            .iter()
+            .any(|(lang, _)| lang == "x-default");
+        if !has_x_default {
+            issues.push(crate::crawl::event::HreflangIssue::MissingXDefault);
+        }
+
+        for (lang, target_url) in &info.hreflang_tags {
+            if lang != "x-default" && !is_valid_bcp47(lang) {
+                issues.push(crate::crawl::event::HreflangIssue::InvalidLanguageCode {
+                    code: lang.clone(),
+                });
+            }
+
+            let target_info = page_map.get(target_url);
+            let return_tag_exists = target_info.is_some_and(|target| {
+                target
+                    .hreflang_tags
+                    .iter()
+                    .any(|(return_lang, return_url)| {
+                        return_url == page_url
+                            && (return_lang == lang || lang.starts_with(&format!("{return_lang}-")))
+                    })
+            });
+            if !return_tag_exists {
+                issues.push(crate::crawl::event::HreflangIssue::MissingReturnTag {
+                    lang: lang.clone(),
+                    target_url: target_url.clone(),
+                });
+            }
+
+            if let Some(target_info) = target_info {
+                if let Some(ref canonical) = target_info.canonical {
+                    if canonical != target_url {
+                        issues.push(crate::crawl::event::HreflangIssue::NonCanonicalUrl {
+                            hreflang_url: target_url.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        if !issues.is_empty() {
+            all_issues.push((page_url.clone(), issues));
+        }
+    }
+
+    if let Err(e) = storage::update_hreflang_issues(pool, crawl_id, &all_issues).await {
+        tracing::warn!(error=%e, "failed to persist hreflang issues");
+    }
+}
+
+fn is_valid_bcp47(code: &str) -> bool {
+    if code == "x-default" {
+        return true;
+    }
+    let parts: Vec<&str> = code.split('-').collect();
+    if parts.is_empty() {
+        return false;
+    }
+    let primary = parts[0];
+    if primary.len() != 2 && primary.len() != 3 {
+        return false;
+    }
+    if !primary.chars().all(|c| c.is_ascii_lowercase()) {
+        return false;
+    }
+    for part in parts.iter().skip(1) {
+        if part.len() < 2 || part.len() > 8 {
+            return false;
+        }
+        if !part.chars().all(|c| c.is_ascii_alphanumeric()) {
+            return false;
+        }
+    }
+    true
 }
 
 const METRICS_AUTOMATION_JS: &str = r#"

@@ -218,6 +218,7 @@ impl ShoutingRobinApp {
             timeout_seconds: crawl_settings.timeout_seconds,
             respect_robots_txt: crawl_settings.respect_robots_txt,
             near_duplicate_threshold: crawl_settings.near_duplicate_threshold,
+            content_selector: crawl_settings.content_selector.clone(),
         };
         let (cancel, fut) = {
             let engine = cx.global_mut::<CrawlEngine>();

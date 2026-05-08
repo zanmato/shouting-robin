@@ -98,6 +98,7 @@ fn crawl_test_site_with_mode(
                 timeout_seconds: 30,
                 respect_robots_txt: true,
                 near_duplicate_threshold: 90,
+                content_selector: String::new(),
             },
         )
     };
