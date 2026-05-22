@@ -9,6 +9,7 @@ pub use engine::CrawlEngine;
 pub use event::CrawlEvent;
 pub use render_mode::RenderMode;
 
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct CrawlConfig {
     pub max_pages: u32,
     pub max_concurrent: u32,
@@ -17,4 +18,18 @@ pub struct CrawlConfig {
     pub respect_robots_txt: bool,
     pub near_duplicate_threshold: u8,
     pub content_selector: String,
+    #[serde(default)]
+    pub user_agent: Option<String>,
+    #[serde(default)]
+    pub extra_headers: Vec<(String, String)>,
+    #[serde(default)]
+    pub include_patterns: Vec<String>,
+    #[serde(default)]
+    pub exclude_patterns: Vec<String>,
+    #[serde(default)]
+    pub crawl_subdomains: bool,
+    #[serde(default)]
+    pub list_mode: bool,
+    #[serde(default)]
+    pub seed_urls: Vec<String>,
 }

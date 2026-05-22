@@ -32,7 +32,6 @@ pub enum ResultTab {
 impl ResultTab {
     pub const ALL: &'static [ResultTab] = &[
         ResultTab::Overview,
-        ResultTab::Issues,
         ResultTab::Internal,
         ResultTab::External,
         ResultTab::ResponseCodes,
@@ -94,7 +93,7 @@ impl ResultTab {
             ResultTab::Sitemaps => Some(Icon::Map),
             ResultTab::SiteStructure => Some(Icon::FolderOpen),
             ResultTab::Security => Some(Icon::ShieldCheck),
-            ResultTab::Overview => Some(Icon::Layers),
+            ResultTab::Overview => Some(Icon::CircleAlert),
             ResultTab::Issues => Some(Icon::CircleAlert),
             ResultTab::Links => Some(Icon::Link),
             _ => None,

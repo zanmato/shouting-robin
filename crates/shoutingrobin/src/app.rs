@@ -16,7 +16,7 @@ use gpui_component::{
 };
 use shoutingrobin_ui::{Tab, TabBar};
 
-use crate::crawl::{CrawlEngine, CrawlEvent, RenderMode};
+use crate::crawl::{CrawlConfig, CrawlEngine, CrawlEvent, RenderMode};
 use crate::settings::view::SettingsView;
 use crate::views::{
     CrawlBar, CrawlsSidebar, DetailsPanel, ResultTab, ResultsGrid, StatusBar,
@@ -86,8 +86,12 @@ impl ShoutingRobinApp {
         let sub = cx.subscribe(
             &crawl_bar,
             move |this, _bar, event: &CrawlBarEvent, cx| match event {
-                CrawlBarEvent::Start { url, mode } => {
+                CrawlBarEvent::Start { url, mode, config } => {
                     results_grid_clone.update(cx, |g, cx| g.clear(cx));
+                    this.crawl_bar.update(cx, |bar, cx| {
+                        bar.has_results = false;
+                        cx.notify();
+                    });
                     status_bar_clone.update(cx, |s, cx| {
                         s.running = true;
                         s.crawled = 0;
@@ -95,7 +99,7 @@ impl ShoutingRobinApp {
                         s.queued = 0;
                         cx.notify();
                     });
-                    this.start_crawl(url.clone(), *mode, cx);
+                    this.start_crawl(url.clone(), *mode, config.clone(), cx);
                 }
                 CrawlBarEvent::Stop => {
                     this.stop_crawl(cx);
@@ -104,11 +108,15 @@ impl ShoutingRobinApp {
                         cx.notify();
                     });
                 }
+                CrawlBarEvent::ExportCsv => {
+                    this.export_csv(cx);
+                }
             },
         );
         subscriptions.push(sub);
 
         let sidebar_results_grid = results_grid.clone();
+        let sidebar_crawl_bar = crawl_bar.clone();
         let sidebar_sub = cx.subscribe(
             &sidebar,
             move |_this, _sidebar, event: &CrawlsSidebarEvent, cx| match event {
@@ -117,6 +125,7 @@ impl ShoutingRobinApp {
                     let crawl_id = *crawl_id;
                     let root_url = root_url.clone();
                     let results_grid = sidebar_results_grid.clone();
+                    let crawl_bar = sidebar_crawl_bar.clone();
                     cx.spawn(async move |_, cx| {
                         let pages =
                             crate::storage::load_pages_for_crawl(&pool, crawl_id, &root_url).await;
@@ -130,6 +139,10 @@ impl ShoutingRobinApp {
                                         for record in pages {
                                             g.push(record, cx);
                                         }
+                                    });
+                                    crawl_bar.update(cx, |bar, cx| {
+                                        bar.has_results = true;
+                                        cx.notify();
                                     });
                                 });
                             }
@@ -157,7 +170,15 @@ impl ShoutingRobinApp {
                                 results_grid.update(cx, |g, cx| g.clear(cx));
                             }
                             if let Some(app) = this.upgrade() {
-                                app.update(cx, |app, cx| app.load_crawl_history(cx));
+                                app.update(cx, |app, cx| {
+                                    if was_selected {
+                                        app.crawl_bar.update(cx, |bar, cx| {
+                                            bar.has_results = false;
+                                            cx.notify();
+                                        });
+                                    }
+                                    app.load_crawl_history(cx);
+                                });
                             }
                         });
                     })
@@ -207,18 +228,41 @@ impl ShoutingRobinApp {
         .detach();
     }
 
-    fn start_crawl(&mut self, url: String, mode: RenderMode, cx: &mut Context<Self>) {
+    fn start_crawl(
+        &mut self,
+        url: String,
+        mode: RenderMode,
+        config: crate::crawl::CrawlConfig,
+        cx: &mut Context<Self>,
+    ) {
         let (tx, rx) = crate::crawl::engine::channel();
         let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
         let crawl_settings = &crate::app_settings::AppSettings::global(cx).settings.crawl;
         let config = crate::crawl::CrawlConfig {
-            max_pages: crawl_settings.max_pages,
-            max_concurrent: crawl_settings.max_concurrent,
-            delay_ms: crawl_settings.delay_ms as u64,
-            timeout_seconds: crawl_settings.timeout_seconds,
+            max_pages: if config.max_pages > 0 {
+                config.max_pages
+            } else {
+                crawl_settings.max_pages
+            },
+            max_concurrent: if config.max_concurrent > 0 {
+                config.max_concurrent
+            } else {
+                crawl_settings.max_concurrent
+            },
+            delay_ms: if config.delay_ms > 0 {
+                config.delay_ms
+            } else {
+                crawl_settings.delay_ms as u64
+            },
+            timeout_seconds: if config.timeout_seconds > 0 {
+                config.timeout_seconds
+            } else {
+                crawl_settings.timeout_seconds
+            },
             respect_robots_txt: crawl_settings.respect_robots_txt,
             near_duplicate_threshold: crawl_settings.near_duplicate_threshold,
             content_selector: crawl_settings.content_selector.clone(),
+            ..config
         };
         let (cancel, fut) = {
             let engine = cx.global_mut::<CrawlEngine>();
@@ -232,6 +276,49 @@ impl ShoutingRobinApp {
     fn stop_crawl(&mut self, cx: &mut Context<Self>) {
         cx.global_mut::<CrawlEngine>().stop();
         self._cancel = None;
+    }
+
+    fn export_csv(&mut self, cx: &mut Context<Self>) {
+        let csv_result = self.results_grid.read(cx).export_csv(cx);
+        let csv_content = match csv_result {
+            Ok(content) => content,
+            Err(e) => {
+                tracing::error!(error=%e, "failed to generate CSV");
+                return;
+            }
+        };
+
+        let tab_name = self.active_tab.label();
+        let filename = format!(
+            "shoutingrobin-{}.csv",
+            tab_name.to_lowercase().replace(' ', "-")
+        );
+        let dir = dirs::download_dir()
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let path = cx.prompt_for_new_path(&dir, Some(&filename));
+
+        cx.spawn(async move |_, cx| {
+            let file_path = match path.await {
+                Ok(Ok(Some(p))) => p,
+                Ok(Ok(None)) => return,
+                Ok(Err(e)) => {
+                    tracing::error!(error=%e, "file dialog error");
+                    return;
+                }
+                Err(_) => return,
+            };
+            cx.update(
+                |_: &mut App| match std::fs::write(&file_path, &csv_content) {
+                    Ok(()) => tracing::info!(path = %file_path.display(), "CSV exported"),
+                    Err(e) => {
+                        tracing::error!(error=%e, path=%file_path.display(), "failed to write CSV")
+                    }
+                },
+            );
+        })
+        .detach();
     }
 
     fn spawn_event_pump(&mut self, rx: Receiver<CrawlEvent>, cx: &mut Context<Self>) {
@@ -266,6 +353,16 @@ impl ShoutingRobinApp {
                         results_grid.update(cx, |g, cx| {
                             g.push(record, cx);
                         });
+                        if let Some(this) = this.upgrade() {
+                            this.update(cx, |app, cx| {
+                                app.crawl_bar.update(cx, |bar, cx| {
+                                    if !bar.has_results {
+                                        bar.has_results = true;
+                                        cx.notify();
+                                    }
+                                });
+                            });
+                        }
                         status_bar.update(cx, |s, cx| {
                             s.crawled = s.crawled.saturating_add(1);
                             cx.notify();

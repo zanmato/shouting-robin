@@ -16,8 +16,8 @@ use super::columns::{
     build_occurrence_counts, columns_for_tab, compare_numeric, is_mono_column, is_numeric_column,
 };
 use super::data_build::{
-    build_directory_aggregates, build_issues_entries, build_issues_rows, build_overview_rows,
-    dir_format_size, flat_row_item_count, flat_row_variant,
+    build_directory_aggregates, build_issues_entries, build_issues_rows, dir_format_size,
+    flat_row_item_count, flat_row_variant,
 };
 use super::filter::{filter_for_tab, flat_row_matches_filter};
 use super::types::{FlatRow, IssueFilter, IssuePriority, IssueType, TabCounts, tab_is_flattened};
@@ -464,27 +464,18 @@ impl ResultsDelegate {
                 warnings: 0,
             },
         );
-        let overview_issue_count = build_overview_rows(&self.all_pages).len();
-        counts.insert(
-            ResultTab::Overview,
-            TabCounts {
-                total: overview_issue_count,
-                errors: overview_issue_count,
-                warnings: 0,
-            },
-        );
-        let issues_entries = build_issues_entries(&self.all_pages);
-        let issues_errors = issues_entries
+        let overview_entries = build_issues_entries(&self.all_pages);
+        let overview_errors = overview_entries
             .iter()
             .filter(|e| e.issue_type == IssueType::Issue)
             .count();
-        let issues_warnings = issues_entries.len() - issues_errors;
+        let overview_warnings = overview_entries.len() - overview_errors;
         counts.insert(
-            ResultTab::Issues,
+            ResultTab::Overview,
             TabCounts {
-                total: issues_entries.len(),
-                errors: issues_errors,
-                warnings: issues_warnings,
+                total: overview_entries.len(),
+                errors: overview_errors,
+                warnings: overview_warnings,
             },
         );
         let internal_links: usize = self
@@ -543,10 +534,6 @@ impl ResultsDelegate {
             return;
         }
         if self.active_tab == ResultTab::Overview {
-            self.flat_rows = build_overview_rows(&self.all_pages);
-            return;
-        }
-        if self.active_tab == ResultTab::Issues {
             self.flat_rows = build_issues_rows(&self.all_pages);
             return;
         }
@@ -617,7 +604,7 @@ impl ResultsDelegate {
         if self.issue_filter == IssueFilter::All {
             return;
         }
-        if self.active_tab == ResultTab::Issues {
+        if self.active_tab == ResultTab::Overview {
             let entries = build_issues_entries(&self.all_pages);
             self.flat_rows.retain(|row| {
                 let FlatRow::IssuesRow { index } = row else {
@@ -665,9 +652,6 @@ impl ResultsDelegate {
             &self.occurrence_counts,
         );
         if self.active_tab == ResultTab::Overview {
-            return self.flat_rows.len();
-        }
-        if self.active_tab == ResultTab::Issues {
             let entries = build_issues_entries(&self.all_pages);
             return entries
                 .iter()
@@ -715,6 +699,131 @@ impl ResultsDelegate {
             }
         } else {
             indices.len()
+        }
+    }
+
+    pub fn export_csv(&self) -> Result<String, csv::Error> {
+        let mut wtr = csv::Writer::from_writer(Vec::new());
+        let headers: Vec<&str> = self.columns.iter().map(|c| c.name.as_ref()).collect();
+        wtr.write_record(&headers)?;
+
+        let row_count = if tab_is_flattened(self.active_tab) {
+            self.flat_rows.len()
+        } else {
+            self.filtered_indices.len()
+        };
+
+        for row_ix in 0..row_count {
+            let mut cells: Vec<String> = Vec::with_capacity(self.columns.len());
+            for col in &self.columns {
+                let key = col.key.as_ref();
+                let text = if tab_is_flattened(self.active_tab) {
+                    let Some(row) = self.flat_rows.get(row_ix) else {
+                        cells.push(String::new());
+                        continue;
+                    };
+                    self.flat_row_cell_text(row, key)
+                } else {
+                    let Some(record) = self
+                        .filtered_indices
+                        .get(row_ix)
+                        .and_then(|&idx| self.all_pages.get(idx))
+                    else {
+                        cells.push(String::new());
+                        continue;
+                    };
+                    cell_text(
+                        record,
+                        key,
+                        &self.occurrence_counts,
+                        self.active_tab,
+                        self.root_origin.as_deref(),
+                    )
+                    .into()
+                };
+                cells.push(text);
+            }
+            wtr.write_record(&cells)?;
+        }
+
+        let bytes = wtr
+            .into_inner()
+            .map_err(|e| csv::Error::from(std::io::Error::other(e)))?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+
+    fn flat_row_cell_text(&self, row: &FlatRow, col_key: &str) -> String {
+        match row {
+            FlatRow::IssuesRow { index } => {
+                let entries = build_issues_entries(&self.all_pages);
+                let Some(entry) = entries.get(*index) else {
+                    return String::new();
+                };
+                match col_key {
+                    "issue_name" => entry.name.clone(),
+                    "issue_type" => entry.issue_type.label().to_string(),
+                    "priority" => entry.priority.label().to_string(),
+                    "count" => entry.count.to_string(),
+                    "pct" => format!("{:.1}%", entry.pct),
+                    _ => String::new(),
+                }
+            }
+            FlatRow::DirectoryAggregate {
+                path,
+                depth,
+                page_count,
+                avg_word_count,
+                total_size,
+                non_indexable,
+                indexable,
+                ..
+            } => match col_key {
+                "dir_path" => path.clone(),
+                "dir_page_count" => page_count.to_string(),
+                "dir_depth" => depth.to_string(),
+                "dir_avg_words" => avg_word_count.to_string(),
+                "dir_total_size" => dir_format_size(*total_size),
+                "dir_indexable" => indexable.to_string(),
+                "dir_non_indexable" => non_indexable.to_string(),
+                _ => String::new(),
+            },
+            FlatRow::LinkRow { page, item } => {
+                let Some(record) = self.all_pages.get(*page) else {
+                    return String::new();
+                };
+                let Some(link) = record.outlinks.get(*item) else {
+                    return String::new();
+                };
+                match col_key {
+                    "source" => url_to_path(&record.url, self.root_origin.as_deref()).into(),
+                    "destination" => url_to_path(&link.dst_url, self.root_origin.as_deref()).into(),
+                    "anchor" => link.anchor.clone().unwrap_or_default(),
+                    "rel" => link.rel.clone().unwrap_or_default(),
+                    "status_code" => "-".to_string(),
+                    "link_type" => {
+                        if is_same_domain(&record.url, &link.dst_url) {
+                            "Internal".to_string()
+                        } else {
+                            "External".to_string()
+                        }
+                    }
+                    _ => String::new(),
+                }
+            }
+            _ => {
+                let page_index = match row {
+                    FlatRow::Image { page, .. }
+                    | FlatRow::Outlink { page, .. }
+                    | FlatRow::A11yIssue { page, .. }
+                    | FlatRow::Hreflang { page, .. }
+                    | FlatRow::SdItem { page, .. } => *page,
+                    _ => return String::new(),
+                };
+                let Some(record) = self.all_pages.get(page_index) else {
+                    return String::new();
+                };
+                flat_cell_text(record, row, col_key, self.root_origin.as_deref()).into()
+            }
         }
     }
 }

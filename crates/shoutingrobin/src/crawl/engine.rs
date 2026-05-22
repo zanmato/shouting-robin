@@ -104,6 +104,12 @@ impl CrawlEngine {
                     .or_insert_with(|| entry.sitemap_url.clone());
             }
 
+            let root_url = if config.list_mode && !config.seed_urls.is_empty() {
+                config.seed_urls.first().cloned().unwrap_or_default()
+            } else {
+                root_url
+            };
+
             let mut website = Website::new(&root_url);
             website.with_respect_robots_txt(config.respect_robots_txt);
 
@@ -115,6 +121,51 @@ impl CrawlEngine {
                 website.with_delay(config.delay_ms);
             }
             website.with_request_timeout(Some(Duration::from_secs(config.timeout_seconds as u64)));
+
+            if let Some(ref ua) = config.user_agent {
+                if !ua.is_empty() {
+                    website.with_user_agent(Some(ua.as_str()));
+                }
+            }
+
+            if config.crawl_subdomains {
+                website.with_subdomains(true);
+            }
+
+            if !config.include_patterns.is_empty() {
+                let patterns: Vec<spider::compact_str::CompactString> = config
+                    .include_patterns
+                    .iter()
+                    .map(|s| spider::compact_str::CompactString::from(s.as_str()))
+                    .collect();
+                website.with_whitelist_url(Some(patterns));
+            }
+            if !config.exclude_patterns.is_empty() {
+                let patterns: Vec<spider::compact_str::CompactString> = config
+                    .exclude_patterns
+                    .iter()
+                    .map(|s| spider::compact_str::CompactString::from(s.as_str()))
+                    .collect();
+                website.with_blacklist_url(Some(patterns));
+            }
+
+            if !config.extra_headers.is_empty() {
+                let mut headers = reqwest::header::HeaderMap::new();
+                for (key, value) in &config.extra_headers {
+                    if let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_bytes())
+                        && let Ok(val) = reqwest::header::HeaderValue::from_str(value)
+                    {
+                        headers.insert(name, val);
+                    }
+                }
+                if !headers.is_empty() {
+                    website.with_headers(Some(headers));
+                }
+            }
+
+            if config.list_mode {
+                website.with_depth(0);
+            }
 
             match render_mode {
                 RenderMode::Http => {}

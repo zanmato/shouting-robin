@@ -175,8 +175,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::DirectiveNosnippet,
             IssueFilter::DirectiveNone,
         ],
-        ResultTab::Overview => &[IssueFilter::All],
-        ResultTab::Issues => &[
+        ResultTab::Overview => &[
             IssueFilter::All,
             IssueFilter::IssueTypeError,
             IssueFilter::IssueTypeOpportunity,
@@ -185,6 +184,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::PriorityMedium,
             IssueFilter::PriorityLow,
         ],
+        ResultTab::Issues => &[IssueFilter::All],
         ResultTab::Links => &[
             IssueFilter::All,
             IssueFilter::LinkBroken,

@@ -187,16 +187,13 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("indexability", "Indexability", 110., None),
         ],
         ResultTab::Overview => vec![
-            col("issue", "Issue", 300., Some(ColumnFixed::Left)),
-            col("count", "Count", 80., None),
-        ],
-        ResultTab::Issues => vec![
             col("issue_name", "Issue", 360., Some(ColumnFixed::Left)),
             col("issue_type", "Type", 110., None),
             col("priority", "Priority", 90., None),
             col("count", "URLs", 70., None),
             col("pct", "% of Total", 80., None),
         ],
+        ResultTab::Issues => vec![],
         ResultTab::Links => vec![
             col("source", "Source", 380., Some(ColumnFixed::Left)),
             col("destination", "Destination", 380., None),

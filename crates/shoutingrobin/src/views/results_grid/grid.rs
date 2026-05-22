@@ -28,14 +28,6 @@ impl ResultsGrid {
             if let TableEvent::SelectRow(row_ix) = event {
                 let delegate = this.state.read(cx).delegate();
                 if delegate.active_tab == ResultTab::Overview
-                    && let Some(FlatRow::OverviewIssue { label, .. }) =
-                        delegate.flat_rows().get(*row_ix)
-                    && let Some((tab, filter)) = overview_issue_target(label)
-                {
-                    cx.emit(ResultsGridEvent::OverviewDrillDown { tab, filter });
-                    return;
-                }
-                if delegate.active_tab == ResultTab::Issues
                     && let Some(FlatRow::IssuesRow { index }) = delegate.flat_rows().get(*row_ix)
                 {
                     let entries = build_issues_entries(delegate.all_pages());
@@ -114,6 +106,14 @@ impl ResultsGrid {
     #[allow(dead_code)]
     pub fn active_tab(&self, cx: &App) -> ResultTab {
         self.state.read(cx).delegate().active_tab()
+    }
+
+    pub fn export_csv(&self, cx: &App) -> Result<String, csv::Error> {
+        self.state.read(cx).delegate().export_csv()
+    }
+
+    pub fn has_results(&self, cx: &App) -> bool {
+        self.state.read(cx).delegate().filtered_count() > 0
     }
 }
 

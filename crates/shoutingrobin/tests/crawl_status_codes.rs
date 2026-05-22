@@ -99,6 +99,13 @@ fn crawl_test_site_with_mode(
                 respect_robots_txt: true,
                 near_duplicate_threshold: 90,
                 content_selector: String::new(),
+                user_agent: None,
+                extra_headers: Vec::new(),
+                include_patterns: Vec::new(),
+                exclude_patterns: Vec::new(),
+                crawl_subdomains: false,
+                list_mode: false,
+                seed_urls: Vec::new(),
             },
         )
     };
