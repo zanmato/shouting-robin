@@ -10,6 +10,7 @@ use gpui_component::{
 };
 
 use crate::crawl::{CrawlConfig, RenderMode};
+use crate::ui::icon::Icon;
 
 #[derive(Clone, Debug)]
 pub enum CrawlBarEvent {
@@ -58,13 +59,20 @@ impl CrawlBar {
 
         let user_agent_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Default User-Agent"));
-        let include_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("/blog/.*  (one regex per line)"));
-        let exclude_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("/tag/.*  (one regex per line)"));
+        let include_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("/blog/.*  (one regex per line)")
+                .auto_grow(3, 8)
+        });
+        let exclude_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("/tag/.*  (one regex per line)")
+                .auto_grow(3, 8)
+        });
         let list_urls_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("https://example.com/page1\nhttps://example.com/page2")
+                .auto_grow(4, 10)
         });
 
         Self {
@@ -184,7 +192,7 @@ impl Render for CrawlBar {
                     Button::new("toggle-advanced")
                         .small()
                         .ghost()
-                        .label("Settings")
+                        .icon(Icon::Settings)
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.advanced_open = !this.advanced_open;
                             cx.notify();
@@ -210,16 +218,6 @@ impl Render for CrawlBar {
                         .items_center()
                         .gap_1()
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(if matches!(default_mode, RenderMode::Http) {
-                                    cx.theme().foreground
-                                } else {
-                                    cx.theme().muted_foreground
-                                })
-                                .child("HTTP"),
-                        )
-                        .child(
                             Switch::new("mode-switch")
                                 .small()
                                 .checked(matches!(default_mode, RenderMode::Chrome))
@@ -235,6 +233,7 @@ impl Render for CrawlBar {
                         .child(
                             div()
                                 .text_xs()
+                                .pr_2()
                                 .text_color(if matches!(default_mode, RenderMode::Chrome) {
                                     cx.theme().foreground
                                 } else {
@@ -291,29 +290,27 @@ impl Render for CrawlBar {
                             .child(Input::new(&self.user_agent_input).small()),
                     )
                     .child(
-                        div().flex().flex_col().gap_1().child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(cx.theme().muted_foreground)
-                                        .child("List Mode"),
-                                )
-                                .child(
-                                    Button::new("list-mode-toggle")
-                                        .xsmall()
-                                        .when(list_mode, |b| b.primary())
-                                        .when(!list_mode, |b| b.ghost())
-                                        .label(if list_mode { "On" } else { "Off" })
-                                        .on_click(cx.listener(|this, _, _, cx| {
-                                            this.list_mode = !this.list_mode;
-                                            cx.notify();
-                                        })),
-                                ),
-                        ),
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("List Mode"),
+                            )
+                            .child(
+                                Button::new("list-mode-toggle")
+                                    .xsmall()
+                                    .when(list_mode, |b| b.primary())
+                                    .when(!list_mode, |b| b.ghost())
+                                    .label(if list_mode { "On" } else { "Off" })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.list_mode = !this.list_mode;
+                                        cx.notify();
+                                    })),
+                            ),
                     )
                     .child(
                         div()
@@ -360,7 +357,6 @@ impl Render for CrawlBar {
                         .child(
                             div()
                                 .w_full()
-                                .h(px(80.))
                                 .child(Input::new(&self.list_urls_input).small()),
                         ),
                 )

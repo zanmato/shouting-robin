@@ -407,27 +407,6 @@ async fn insert_sd_issues(
     Ok(())
 }
 
-pub async fn insert_redirect_hops(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    page_url: &str,
-    hops: &[crate::crawl::event::RedirectHop],
-) -> Result<(), sqlx::Error> {
-    for (index, hop) in hops.iter().enumerate() {
-        sqlx::query(
-            "INSERT INTO redirect_hops (crawl_id, page_url, hop_index, url, status) VALUES (?, ?, ?, ?, ?)",
-        )
-        .bind(crawl_id)
-        .bind(page_url)
-        .bind(index as i64)
-        .bind(&hop.url)
-        .bind(hop.status as i64)
-        .execute(pool)
-        .await?;
-    }
-    Ok(())
-}
-
 pub async fn update_link_scores(
     pool: &SqlitePool,
     crawl_id: i64,
@@ -948,25 +927,6 @@ pub async fn load_pages_for_crawl(
         .filter_map(|(url, score)| score.map(|s| (url, s)))
         .collect();
 
-    let hop_rows = sqlx::query_as::<_, (String, i64, String, i64)>(
-        "SELECT page_url, hop_index, url, status FROM redirect_hops WHERE crawl_id = ? ORDER BY page_url, hop_index",
-    )
-    .bind(crawl_id)
-    .fetch_all(pool)
-    .await?;
-
-    let mut hops_by_url: std::collections::HashMap<String, Vec<crate::crawl::event::RedirectHop>> =
-        std::collections::HashMap::new();
-    for (page_url, _index, url, status) in &hop_rows {
-        hops_by_url
-            .entry(page_url.clone())
-            .or_default()
-            .push(crate::crawl::event::RedirectHop {
-                url: url.clone(),
-                status: *status as u16,
-            });
-    }
-
     let mut backlinks = load_backlinks_for_crawl(pool, crawl_id).await?;
 
     let mut headers_by_url: std::collections::HashMap<String, Vec<(String, String)>> =
@@ -1092,7 +1052,6 @@ pub async fn load_pages_for_crawl(
                 let page_redirect = redirect_by_url.get(&url).cloned();
                 let page_secondary = secondary_by_url.get(&url);
                 let page_link_score = link_scores.get(&url).copied();
-                let page_redirect_hops = hops_by_url.remove(&url).unwrap_or_default();
                 let page_backlinks = backlinks.remove(&url).unwrap_or_default();
 
                 PageRecord {
@@ -1148,7 +1107,6 @@ pub async fn load_pages_for_crawl(
                     meta_description_pixel_width: page_secondary
                         .and_then(|s| s.meta_description_pixel_width),
                     link_score: page_link_score,
-                    redirect_hops: page_redirect_hops,
                     backlinks: page_backlinks,
                     hreflang_issues,
                     ..Default::default()

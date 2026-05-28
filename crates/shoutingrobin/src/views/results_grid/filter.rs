@@ -184,7 +184,6 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::PriorityMedium,
             IssueFilter::PriorityLow,
         ],
-        ResultTab::Issues => &[IssueFilter::All],
         ResultTab::Links => &[
             IssueFilter::All,
             IssueFilter::LinkBroken,
@@ -242,12 +241,6 @@ pub(super) fn filter_for_tab(
             .iter()
             .enumerate()
             .filter(|(_, p)| p.is_internal && !p.images.is_empty())
-            .map(|(i, _)| i)
-            .collect(),
-        ResultTab::Issues => pages
-            .iter()
-            .enumerate()
-            .filter(|(_, p)| p.is_internal)
             .map(|(i, _)| i)
             .collect(),
         ResultTab::Links => pages
@@ -755,7 +748,6 @@ pub(super) fn flat_row_matches_filter(
         }
         FlatRow::Outlink { .. }
         | FlatRow::Hreflang { .. }
-        | FlatRow::OverviewIssue { .. }
         | FlatRow::IssuesRow { .. }
         | FlatRow::LinkRow { .. } => true,
         FlatRow::DirectoryAggregate { depth, .. } => match filter {

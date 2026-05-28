@@ -122,10 +122,10 @@ impl CrawlEngine {
             }
             website.with_request_timeout(Some(Duration::from_secs(config.timeout_seconds as u64)));
 
-            if let Some(ref ua) = config.user_agent {
-                if !ua.is_empty() {
-                    website.with_user_agent(Some(ua.as_str()));
-                }
+            if let Some(ref ua) = config.user_agent
+                && !ua.is_empty()
+            {
+                website.with_user_agent(Some(ua.as_str()));
             }
 
             if config.crawl_subdomains {
@@ -489,8 +489,8 @@ async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) {
         for node in 0..url_count {
             if outlinks_count[node] == 0 {
                 let share = scores[node] * damping / url_count as f32;
-                for target in 0..url_count {
-                    new_scores[target] += share;
+                for new_score in &mut new_scores {
+                    *new_score += share;
                 }
             } else {
                 let share = scores[node] * damping / outlinks_count[node] as f32;
@@ -600,14 +600,13 @@ async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
                 });
             }
 
-            if let Some(target_info) = target_info {
-                if let Some(ref canonical) = target_info.canonical {
-                    if canonical != target_url {
-                        issues.push(crate::crawl::event::HreflangIssue::NonCanonicalUrl {
-                            hreflang_url: target_url.clone(),
-                        });
-                    }
-                }
+            if let Some(target_info) = target_info
+                && let Some(ref canonical) = target_info.canonical
+                && canonical != target_url
+            {
+                issues.push(crate::crawl::event::HreflangIssue::NonCanonicalUrl {
+                    hreflang_url: target_url.clone(),
+                });
             }
         }
 

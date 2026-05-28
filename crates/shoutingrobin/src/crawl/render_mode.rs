@@ -4,12 +4,3 @@ pub enum RenderMode {
     Http,
     Chrome,
 }
-
-impl RenderMode {
-    pub fn label(self) -> &'static str {
-        match self {
-            RenderMode::Http => "Crawl (HTTP)",
-            RenderMode::Chrome => "Crawl (Chrome)",
-        }
-    }
-}

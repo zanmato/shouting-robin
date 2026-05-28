@@ -25,7 +25,6 @@ pub enum ResultTab {
     Url,
     Directives,
     Overview,
-    Issues,
     Links,
 }
 
@@ -78,7 +77,6 @@ impl ResultTab {
             ResultTab::Url => "URL".into(),
             ResultTab::Directives => "Directives".into(),
             ResultTab::Overview => "Overview".into(),
-            ResultTab::Issues => "Issues".into(),
             ResultTab::Links => "Links".into(),
         }
     }
@@ -94,7 +92,6 @@ impl ResultTab {
             ResultTab::SiteStructure => Some(Icon::FolderOpen),
             ResultTab::Security => Some(Icon::ShieldCheck),
             ResultTab::Overview => Some(Icon::CircleAlert),
-            ResultTab::Issues => Some(Icon::CircleAlert),
             ResultTab::Links => Some(Icon::Link),
             _ => None,
         }

@@ -1038,7 +1038,17 @@ impl Render for DetailsPanel {
                                                     .unwrap_or_else(|| "No anchor".into()),
                                             ),
                                         ),
-                                    ),
+                                    )
+                                    .when(bl.rel.as_deref().is_some(), |el| {
+                                        el.child(
+                                            div().text_xs().text_color(muted).child(
+                                                SharedString::from(format!(
+                                                    "Rel: {}",
+                                                    bl.rel.as_deref().unwrap()
+                                                )),
+                                            ),
+                                        )
+                                    }),
                             );
                         }
                         el.child(section(

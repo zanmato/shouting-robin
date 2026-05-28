@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use gpui::{App, Context, IntoElement, ParentElement, SharedString, Styled, Window, div};
 use gpui_component::{
@@ -19,7 +19,7 @@ use super::data_build::{
     build_directory_aggregates, build_issues_entries, build_issues_rows, dir_format_size,
     flat_row_item_count, flat_row_variant,
 };
-use super::filter::{filter_for_tab, flat_row_matches_filter};
+use super::filter::{filter_for_tab, filters_for_tab, flat_row_matches_filter};
 use super::types::{FlatRow, IssueFilter, IssuePriority, IssueType, TabCounts, tab_is_flattened};
 
 pub struct ResultsDelegate {
@@ -96,8 +96,7 @@ impl ResultsDelegate {
                 | FlatRow::Hreflang { page, .. }
                 | FlatRow::SdItem { page, .. }
                 | FlatRow::LinkRow { page, .. } => *page,
-                FlatRow::OverviewIssue { .. }
-                | FlatRow::IssuesRow { .. }
+                FlatRow::IssuesRow { .. }
                 | FlatRow::DirectoryAggregate { .. } => return None,
             };
             self.all_pages.get(page_index)
@@ -130,399 +129,123 @@ impl ResultsDelegate {
     }
 
     pub fn compute_tab_counts(&self) -> HashMap<ResultTab, TabCounts> {
-        let internal: Vec<&PageRecord> = self.all_pages.iter().filter(|p| p.is_internal).collect();
-
-        let errors = self
-            .all_pages
-            .iter()
-            .filter(|p| p.status.is_some_and(|c| c >= 400))
-            .count();
-
-        let non_indexable = internal
-            .iter()
-            .filter(|p| p.indexability.as_deref() == Some("Non-Indexable"))
-            .count();
-
-        let missing_title = internal
-            .iter()
-            .filter(|p| p.title.as_deref() == Some(""))
-            .count();
-        let duplicate_title = {
-            let mut title_counts: HashMap<&str, usize> = HashMap::new();
-            for p in &internal {
-                let t = p.title.as_deref().unwrap_or("");
-                *title_counts.entry(t).or_insert(0) += 1;
-            }
-            internal
-                .iter()
-                .filter(|p| {
-                    *title_counts
-                        .get(p.title.as_deref().unwrap_or(""))
-                        .unwrap_or(&0)
-                        > 1
-                })
-                .count()
-        };
-
-        let over_length_title = internal
-            .iter()
-            .filter(|p| p.title.as_deref().is_some_and(|t| t.len() > 60))
-            .count();
-
-        let missing_desc = internal
-            .iter()
-            .filter(|p| p.meta_description.as_deref() == Some(""))
-            .count();
-        let over_length_desc = internal
-            .iter()
-            .filter(|p| p.meta_description.as_deref().is_some_and(|t| t.len() > 160))
-            .count();
-        let missing_h1 = internal
-            .iter()
-            .filter(|p| p.h1.as_deref() == Some(""))
-            .count();
-        let over_length_h1 = internal
-            .iter()
-            .filter(|p| p.h1.as_deref().is_some_and(|t| t.len() > 70))
-            .count();
-        let missing_h2 = internal
-            .iter()
-            .filter(|p| p.h2.as_deref() == Some(""))
-            .count();
-        let over_length_h2 = internal
-            .iter()
-            .filter(|p| p.h2.as_deref().is_some_and(|t| t.len() > 70))
-            .count();
-        let missing_canonical = internal
-            .iter()
-            .filter(|p| p.canonical.as_deref() == Some(""))
-            .count();
-
         let mut counts = HashMap::new();
-        counts.insert(
-            ResultTab::Internal,
-            TabCounts {
-                total: internal.len(),
-                errors,
-                warnings: non_indexable,
-            },
-        );
-        counts.insert(
-            ResultTab::External,
-            TabCounts {
-                total: internal
-                    .iter()
-                    .map(|p| {
-                        p.outlinks
-                            .iter()
-                            .filter(|link| !is_same_domain(&p.url, &link.dst_url))
-                            .count()
-                    })
-                    .sum(),
-                errors: 0,
-                warnings: 0,
-            },
-        );
-        counts.insert(
-            ResultTab::ResponseCodes,
-            TabCounts {
-                total: self.all_pages.len(),
-                errors,
-                warnings: self
-                    .all_pages
-                    .iter()
-                    .filter(|p| p.redirect_url.is_some())
-                    .count(),
-            },
-        );
-        counts.insert(
-            ResultTab::PageTitles,
-            TabCounts {
-                total: internal.len(),
-                errors: 0,
-                warnings: missing_title + duplicate_title + over_length_title,
-            },
-        );
-        counts.insert(
-            ResultTab::MetaDesc,
-            TabCounts {
-                total: internal.len(),
-                errors: 0,
-                warnings: missing_desc + over_length_desc,
-            },
-        );
-        counts.insert(
-            ResultTab::H1,
-            TabCounts {
-                total: internal.len(),
-                errors: 0,
-                warnings: missing_h1 + over_length_h1,
-            },
-        );
-        counts.insert(
-            ResultTab::H2,
-            TabCounts {
-                total: internal.len(),
-                errors: 0,
-                warnings: missing_h2 + over_length_h2,
-            },
-        );
-        let exact_dup_count = {
-            let mut hash_counts: HashMap<&str, usize> = HashMap::new();
-            for p in &internal {
-                if let Some(hash) = p.content_hash.as_deref() {
-                    *hash_counts.entry(hash).or_insert(0) += 1;
+
+        for &tab in ResultTab::ALL {
+            let filters = filters_for_tab(tab);
+            let occ_counts = build_occurrence_counts(tab, &self.all_pages);
+            let total = self.count_filter_for_tab(tab, IssueFilter::All, &occ_counts);
+
+            if tab_is_flattened(tab) {
+                let mut error_count = 0usize;
+                let mut warn_count = 0usize;
+
+                for &filter in filters.iter().skip(1) {
+                    let count = self.count_filter_for_tab(tab, filter, &occ_counts);
+                    if count > 0 {
+                        match filter.tone() {
+                            Tone::Err => error_count += count,
+                            Tone::Warn => warn_count += count,
+                            _ => {}
+                        }
+                    }
                 }
+
+                counts.insert(
+                    tab,
+                    TabCounts {
+                        total,
+                        errors: error_count,
+                        warnings: warn_count,
+                    },
+                );
+            } else {
+                let mut error_indices = HashSet::new();
+                let mut warn_indices = HashSet::new();
+
+                for &filter in filters.iter().skip(1) {
+                    let matching = filter_for_tab(tab, filter, &self.all_pages, &occ_counts);
+                    match filter.tone() {
+                        Tone::Err => error_indices.extend(matching),
+                        Tone::Warn => warn_indices.extend(matching),
+                        _ => {}
+                    }
+                }
+
+                warn_indices.retain(|ix| !error_indices.contains(ix));
+
+                counts.insert(
+                    tab,
+                    TabCounts {
+                        total,
+                        errors: error_indices.len(),
+                        warnings: warn_indices.len(),
+                    },
+                );
             }
-            internal
-                .iter()
-                .filter(|p| {
-                    p.content_hash
-                        .as_deref()
-                        .is_some_and(|h| *hash_counts.get(h).unwrap_or(&0) > 1)
-                })
-                .count()
-        };
-        let near_dup_count = internal
-            .iter()
-            .filter(|p| p.near_duplicate_count.is_some_and(|c| c > 0))
-            .count();
-        counts.insert(
-            ResultTab::Content,
-            TabCounts {
-                total: internal.len(),
-                errors: exact_dup_count,
-                warnings: near_dup_count,
-            },
-        );
-        counts.insert(
-            ResultTab::Images,
-            TabCounts {
-                total: internal.iter().map(|p| p.images.len()).sum(),
-                errors: 0,
-                warnings: internal
-                    .iter()
-                    .flat_map(|p| p.images.iter())
-                    .filter(|img| {
-                        !img.has_alt_attr || img.alt.as_deref().is_none_or(|a| a.is_empty())
-                    })
-                    .count(),
-            },
-        );
-        counts.insert(
-            ResultTab::Canonicals,
-            TabCounts {
-                total: internal.len(),
-                errors: 0,
-                warnings: missing_canonical,
-            },
-        );
-        counts.insert(
-            ResultTab::Hreflang,
-            TabCounts {
-                total: internal.len(),
-                errors: 0,
-                warnings: internal
-                    .iter()
-                    .filter(|p| p.hreflang_tags.is_empty())
-                    .count(),
-            },
-        );
-        let sd_missing = internal.iter().filter(|p| p.sd_types.is_empty()).count();
-        let sd_error_count = internal.iter().filter(|p| p.sd_errors > 0).count();
-        counts.insert(
-            ResultTab::StructuredData,
-            TabCounts {
-                total: internal.len(),
-                errors: sd_error_count,
-                warnings: sd_missing,
-            },
-        );
-        counts.insert(
-            ResultTab::Performance,
-            TabCounts {
-                total: internal.len(),
-                errors: internal
-                    .iter()
-                    .filter(|p| p.lcp_ms.is_some_and(|ms| ms > 4000))
-                    .count(),
-                warnings: internal
-                    .iter()
-                    .filter(|p| {
-                        p.lcp_ms.is_some_and(|ms| ms > 2500 && ms <= 4000)
-                            || p.cls.is_some_and(|v| v > 0.1)
-                            || p.inp_ms.is_some_and(|ms| ms > 200)
-                    })
-                    .count(),
-            },
-        );
-        counts.insert(
-            ResultTab::Accessibility,
-            TabCounts {
-                total: self
-                    .all_pages
-                    .iter()
-                    .filter(|p| p.is_internal)
-                    .map(|p| p.a11y_issues.len())
-                    .sum(),
-                errors: self
-                    .all_pages
-                    .iter()
-                    .flat_map(|p| p.a11y_issues.iter())
-                    .filter(|i| matches!(i.impact.as_str(), "critical" | "serious"))
-                    .count(),
-                warnings: self
-                    .all_pages
-                    .iter()
-                    .flat_map(|p| p.a11y_issues.iter())
-                    .filter(|i| !matches!(i.impact.as_str(), "critical" | "serious"))
-                    .count(),
-            },
-        );
-        let product_count = self
-            .all_pages
-            .iter()
-            .filter(|p| p.ecommerce.is_some())
-            .count();
-        let missing_price = self
-            .all_pages
-            .iter()
-            .filter(|p| p.ecommerce.as_ref().is_some_and(|a| a.price.is_none()))
-            .count();
-        counts.insert(
-            ResultTab::Ecommerce,
-            TabCounts {
-                total: product_count,
-                errors: 0,
-                warnings: missing_price,
-            },
-        );
-
-        use super::columns::{header_exists, header_value};
-        use super::data_build::directory_path;
-
-        let sitemap_orphan_count = self
-            .all_pages
-            .iter()
-            .filter(|p| p.in_sitemap == Some(true) && p.status.is_none())
-            .count();
-        let non_indexable_in_sitemap = self
-            .all_pages
-            .iter()
-            .filter(|p| {
-                p.in_sitemap == Some(true) && p.indexability.as_deref() == Some("Non-Indexable")
-            })
-            .count();
-        counts.insert(
-            ResultTab::Sitemaps,
-            TabCounts {
-                total: self
-                    .all_pages
-                    .iter()
-                    .filter(|p| p.in_sitemap.is_some())
-                    .count(),
-                errors: sitemap_orphan_count,
-                warnings: non_indexable_in_sitemap,
-            },
-        );
-        let missing_https = internal
-            .iter()
-            .filter(|p| !p.url.starts_with("https://"))
-            .count();
-        let missing_hsts = internal
-            .iter()
-            .filter(|p| !header_exists(&p.headers, "strict-transport-security"))
-            .count();
-        counts.insert(
-            ResultTab::Security,
-            TabCounts {
-                total: internal.len(),
-                errors: missing_https,
-                warnings: missing_hsts,
-            },
-        );
-        let url_non_ascii = internal.iter().filter(|p| !p.url.is_ascii()).count();
-        let url_uppercase = internal
-            .iter()
-            .filter(|p| p.url.chars().any(|c| c.is_ascii_uppercase()))
-            .count();
-        counts.insert(
-            ResultTab::Url,
-            TabCounts {
-                total: internal.len(),
-                errors: url_non_ascii + url_uppercase,
-                warnings: internal.iter().filter(|p| p.url.contains('_')).count(),
-            },
-        );
-        let directive_noindex = internal
-            .iter()
-            .filter(|p| {
-                p.robots
-                    .as_deref()
-                    .is_some_and(|r| r.to_ascii_lowercase().contains("noindex"))
-                    || header_value(&p.headers, "x-robots-tag")
-                        .is_some_and(|v| v.to_ascii_lowercase().contains("noindex"))
-            })
-            .count();
-        counts.insert(
-            ResultTab::Directives,
-            TabCounts {
-                total: internal.len(),
-                errors: directive_noindex,
-                warnings: 0,
-            },
-        );
-        let overview_entries = build_issues_entries(&self.all_pages);
-        let overview_errors = overview_entries
-            .iter()
-            .filter(|e| e.issue_type == IssueType::Issue)
-            .count();
-        let overview_warnings = overview_entries.len() - overview_errors;
-        counts.insert(
-            ResultTab::Overview,
-            TabCounts {
-                total: overview_entries.len(),
-                errors: overview_errors,
-                warnings: overview_warnings,
-            },
-        );
-        let internal_links: usize = self
-            .all_pages
-            .iter()
-            .filter(|p| p.is_internal)
-            .map(|p| {
-                p.outlinks
-                    .iter()
-                    .filter(|l| is_same_domain(&p.url, &l.dst_url))
-                    .count()
-            })
-            .sum();
-        counts.insert(
-            ResultTab::Links,
-            TabCounts {
-                total: internal_links,
-                errors: 0,
-                warnings: 0,
-            },
-        );
-
-        let unique_dirs: std::collections::HashSet<String> = internal
-            .iter()
-            .filter_map(|p| {
-                let path = p.url.strip_prefix(self.root_origin.as_deref()?)?;
-                Some(directory_path(path))
-            })
-            .collect();
-        counts.insert(
-            ResultTab::SiteStructure,
-            TabCounts {
-                total: unique_dirs.len(),
-                errors: 0,
-                warnings: 0,
-            },
-        );
+        }
 
         counts
+    }
+
+    fn count_filter_for_tab(
+        &self,
+        tab: ResultTab,
+        filter: IssueFilter,
+        occ_counts: &HashMap<String, usize>,
+    ) -> usize {
+        if tab == ResultTab::Overview {
+            let entries = build_issues_entries(&self.all_pages);
+            return entries
+                .iter()
+                .filter(|entry| match filter {
+                    IssueFilter::All => true,
+                    IssueFilter::IssueTypeError => entry.issue_type == IssueType::Issue,
+                    IssueFilter::IssueTypeOpportunity => entry.issue_type == IssueType::Opportunity,
+                    IssueFilter::IssueTypeWarning => entry.issue_type == IssueType::Warning,
+                    IssueFilter::PriorityHigh => entry.priority == IssuePriority::High,
+                    IssueFilter::PriorityMedium => entry.priority == IssuePriority::Medium,
+                    IssueFilter::PriorityLow => entry.priority == IssuePriority::Low,
+                    _ => true,
+                })
+                .count();
+        }
+
+        let indices = filter_for_tab(tab, filter, &self.all_pages, occ_counts);
+
+        if tab_is_flattened(tab) {
+            if filter == IssueFilter::All {
+                indices
+                    .iter()
+                    .map(|&page_ix| {
+                        self.all_pages
+                            .get(page_ix)
+                            .map(|p| flat_row_item_count(p, tab))
+                            .unwrap_or(0)
+                    })
+                    .sum::<usize>()
+            } else {
+                indices
+                    .iter()
+                    .map(|&page_ix| {
+                        self.all_pages
+                            .get(page_ix)
+                            .map(|p| {
+                                let item_count = flat_row_item_count(p, tab);
+                                (0..item_count)
+                                    .filter(|item| {
+                                        let row = flat_row_variant(tab, page_ix, *item);
+                                        flat_row_matches_filter(&row, p, filter)
+                                    })
+                                    .count()
+                            })
+                            .unwrap_or(0)
+                    })
+                    .sum::<usize>()
+            }
+        } else {
+            indices.len()
+        }
     }
 
     fn rebuild_filter(&mut self) {
@@ -633,6 +356,20 @@ impl ResultsDelegate {
             });
             return;
         }
+        if self.active_tab == ResultTab::SiteStructure {
+            self.flat_rows.retain(|row| {
+                let FlatRow::DirectoryAggregate { depth, .. } = row else {
+                    return true;
+                };
+                match self.issue_filter {
+                    IssueFilter::DepthShallow => *depth <= 1,
+                    IssueFilter::DepthMedium => *depth >= 2 && *depth <= 3,
+                    IssueFilter::DepthDeep => *depth >= 4,
+                    _ => true,
+                }
+            });
+            return;
+        }
         self.flat_rows.retain(|row| {
             let page_index = match row {
                 FlatRow::Image { page, .. }
@@ -641,8 +378,7 @@ impl ResultsDelegate {
                 | FlatRow::Hreflang { page, .. }
                 | FlatRow::SdItem { page, .. }
                 | FlatRow::LinkRow { page, .. } => *page,
-                FlatRow::OverviewIssue { .. }
-                | FlatRow::IssuesRow { .. }
+                FlatRow::IssuesRow { .. }
                 | FlatRow::DirectoryAggregate { .. } => return true,
             };
             let Some(page) = self.all_pages.get(page_index) else {
@@ -653,61 +389,7 @@ impl ResultsDelegate {
     }
 
     pub fn count_for_filter(&self, filter: IssueFilter) -> usize {
-        let indices = filter_for_tab(
-            self.active_tab,
-            filter,
-            &self.all_pages,
-            &self.occurrence_counts,
-        );
-        if self.active_tab == ResultTab::Overview {
-            let entries = build_issues_entries(&self.all_pages);
-            return entries
-                .iter()
-                .filter(|entry| match filter {
-                    IssueFilter::All => true,
-                    IssueFilter::IssueTypeError => entry.issue_type == IssueType::Issue,
-                    IssueFilter::IssueTypeOpportunity => entry.issue_type == IssueType::Opportunity,
-                    IssueFilter::IssueTypeWarning => entry.issue_type == IssueType::Warning,
-                    IssueFilter::PriorityHigh => entry.priority == IssuePriority::High,
-                    IssueFilter::PriorityMedium => entry.priority == IssuePriority::Medium,
-                    IssueFilter::PriorityLow => entry.priority == IssuePriority::Low,
-                    _ => true,
-                })
-                .count();
-        }
-        if tab_is_flattened(self.active_tab) {
-            if filter == IssueFilter::All {
-                indices
-                    .iter()
-                    .map(|&page_ix| {
-                        self.all_pages
-                            .get(page_ix)
-                            .map(|p| flat_row_item_count(p, self.active_tab))
-                            .unwrap_or(0)
-                    })
-                    .sum::<usize>()
-            } else {
-                indices
-                    .iter()
-                    .map(|&page_ix| {
-                        self.all_pages
-                            .get(page_ix)
-                            .map(|p| {
-                                let item_count = flat_row_item_count(p, self.active_tab);
-                                (0..item_count)
-                                    .filter(|item| {
-                                        let row = flat_row_variant(self.active_tab, page_ix, *item);
-                                        flat_row_matches_filter(&row, p, filter)
-                                    })
-                                    .count()
-                            })
-                            .unwrap_or(0)
-                    })
-                    .sum::<usize>()
-            }
-        } else {
-            indices.len()
-        }
+        self.count_filter_for_tab(self.active_tab, filter, &self.occurrence_counts)
     }
 
     pub fn export_csv(&self) -> Result<String, csv::Error> {
@@ -890,19 +572,6 @@ impl TableDelegate for ResultsDelegate {
                 return cell;
             };
             match row {
-                FlatRow::OverviewIssue { label, count } => {
-                    let text = match key.as_ref() {
-                        "issue" => SharedString::from(label.clone()),
-                        "count" => SharedString::from(count.to_string()),
-                        _ => SharedString::default(),
-                    };
-                    if key.as_ref() == "count" {
-                        let tone = if *count > 0 { Tone::Warn } else { Tone::Ok };
-                        cell.child(tone_tag(tone).child(text))
-                    } else {
-                        cell.child(text)
-                    }
-                }
                 FlatRow::IssuesRow { index } => {
                     let entries = build_issues_entries(&self.all_pages);
                     let Some(entry) = entries.get(*index) else {
@@ -914,6 +583,8 @@ impl TableDelegate for ResultsDelegate {
                         "priority" => SharedString::from(entry.priority.label()),
                         "count" => SharedString::from(entry.count.to_string()),
                         "pct" => SharedString::from(format!("{:.1}%", entry.pct)),
+                        "description" => SharedString::from(entry.description.clone()),
+                        "hint" => SharedString::from(entry.hint.clone()),
                         _ => SharedString::default(),
                     };
                     match key.as_ref() {
@@ -998,8 +669,7 @@ impl TableDelegate for ResultsDelegate {
                         | FlatRow::A11yIssue { page, .. }
                         | FlatRow::Hreflang { page, .. }
                         | FlatRow::SdItem { page, .. } => *page,
-                        FlatRow::OverviewIssue { .. }
-                        | FlatRow::IssuesRow { .. }
+                        FlatRow::IssuesRow { .. }
                         | FlatRow::LinkRow { .. }
                         | FlatRow::DirectoryAggregate { .. } => unreachable!(),
                     };
@@ -1053,26 +723,6 @@ impl TableDelegate for ResultsDelegate {
 
         if tab_is_flattened(self.active_tab) {
             self.flat_rows.sort_by(|a, b| {
-                if let (
-                    FlatRow::OverviewIssue {
-                        label: a_label,
-                        count: a_count,
-                    },
-                    FlatRow::OverviewIssue {
-                        label: b_label,
-                        count: b_count,
-                    },
-                ) = (a, b)
-                {
-                    let ordering = match col_key.as_ref() {
-                        "count" => a_count.cmp(b_count),
-                        _ => a_label.cmp(b_label),
-                    };
-                    return match sort {
-                        ColumnSort::Descending => ordering.reverse(),
-                        _ => ordering,
-                    };
-                }
                 if let (FlatRow::IssuesRow { index: a_idx }, FlatRow::IssuesRow { index: b_idx }) =
                     (a, b)
                 {
@@ -1088,6 +738,8 @@ impl TableDelegate for ResultsDelegate {
                                 .unwrap_or(std::cmp::Ordering::Equal),
                             "priority" => ae.priority.cmp(&be.priority),
                             "issue_type" => ae.issue_type.cmp(&be.issue_type),
+                            "description" => ae.description.cmp(&be.description),
+                            "hint" => ae.hint.cmp(&be.hint),
                             _ => ae.name.cmp(&be.name),
                         },
                         _ => std::cmp::Ordering::Equal,
@@ -1135,8 +787,7 @@ impl TableDelegate for ResultsDelegate {
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. }
                     | FlatRow::LinkRow { page, .. } => *page,
-                    FlatRow::OverviewIssue { .. }
-                    | FlatRow::IssuesRow { .. }
+                    FlatRow::IssuesRow { .. }
                     | FlatRow::DirectoryAggregate { .. } => 0,
                 };
 
@@ -1147,8 +798,7 @@ impl TableDelegate for ResultsDelegate {
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. }
                     | FlatRow::LinkRow { page, .. } => *page,
-                    FlatRow::OverviewIssue { .. }
-                    | FlatRow::IssuesRow { .. }
+                    FlatRow::IssuesRow { .. }
                     | FlatRow::DirectoryAggregate { .. } => 0,
                 };
                 let a_record = &self.all_pages[a_page];

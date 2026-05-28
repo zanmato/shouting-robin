@@ -16,7 +16,7 @@ use gpui_component::{
 };
 use shoutingrobin_ui::{Tab, TabBar};
 
-use crate::crawl::{CrawlConfig, CrawlEngine, CrawlEvent, RenderMode};
+use crate::crawl::{CrawlEngine, CrawlEvent, RenderMode};
 use crate::settings::view::SettingsView;
 use crate::views::{
     CrawlBar, CrawlsSidebar, DetailsPanel, ResultTab, ResultsGrid, StatusBar,

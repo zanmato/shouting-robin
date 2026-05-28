@@ -23,10 +23,6 @@ pub(crate) enum FlatRow {
         page: usize,
         item: usize,
     },
-    OverviewIssue {
-        label: String,
-        count: usize,
-    },
     IssuesRow {
         index: usize,
     },
@@ -54,7 +50,6 @@ pub(crate) fn tab_is_flattened(tab: ResultTab) -> bool {
             | ResultTab::Hreflang
             | ResultTab::StructuredData
             | ResultTab::Overview
-            | ResultTab::Issues
             | ResultTab::Links
             | ResultTab::SiteStructure
     )
@@ -328,25 +323,25 @@ impl IssueFilter {
             | Self::SdTypeVideo
             | Self::SdTypeBreadcrumb
             | Self::SdTypeOrganization
-            | Self::DirectiveNone => Tone::Neutral,
+            | Self::DirectiveNone
+            | Self::IssueTypeWarning
+            | Self::PriorityLow
+            | Self::LinkExternal
+            | Self::DepthShallow
+            | Self::DepthMedium => Tone::Neutral,
 
             Self::Status4xx
             | Self::Status5xx
             | Self::SdErrors
             | Self::ParseErrors
             | Self::SitemapOrphans
-            | Self::A11yImageAlt
-            | Self::A11yLabel
-            | Self::A11yLinkName
-            | Self::A11yButtonName
-            | Self::A11yColorContrast
-            | Self::A11yHtmlHasLang
             | Self::RedirectLoop
             | Self::MissingHttps
             | Self::ExactDuplicates
-            | Self::UrlNonAscii
-            | Self::UrlSpaces
-            | Self::DirectiveNoindex => Tone::Err,
+            | Self::DirectiveNoindex
+            | Self::LinkBroken
+            | Self::IssueTypeError
+            | Self::PriorityHigh => Tone::Err,
 
             Self::NonIndexable
             | Self::Missing
@@ -358,8 +353,18 @@ impl IssueFilter {
             | Self::Canonicalised
             | Self::MissingCanonical
             | Self::MissingHreflang
+            | Self::HreflangMissingReturnTag
+            | Self::HreflangInvalidLang
+            | Self::HreflangMissingXDefault
+            | Self::HreflangNonCanonical
             | Self::MissingStructuredData
             | Self::SdWarnings
+            | Self::A11yImageAlt
+            | Self::A11yLabel
+            | Self::A11yLinkName
+            | Self::A11yButtonName
+            | Self::A11yColorContrast
+            | Self::A11yHtmlHasLang
             | Self::A11yHeadingOrder
             | Self::MissingAltText
             | Self::MissingAltAttribute
@@ -385,36 +390,23 @@ impl IssueFilter {
             | Self::MissingCsp
             | Self::MissingFrameGuard
             | Self::MissingContentTypeOptions
+            | Self::UrlNonAscii
             | Self::UrlUppercase
             | Self::UrlUnderscores
             | Self::UrlMultipleSlashes
             | Self::UrlParameters
             | Self::UrlOverLength
+            | Self::UrlSpaces
             | Self::DirectiveNofollow
             | Self::DirectiveNoarchive
             | Self::DirectiveNosnippet
             | Self::OverPixelWidth
             | Self::UnderPixelWidth
-            | Self::IssueTypeError
-            | Self::PriorityHigh
-            | Self::LinkBroken
-            | Self::HreflangMissingReturnTag
-            | Self::HreflangInvalidLang
-            | Self::HreflangNonCanonical
-            | Self::HreflangMissingXDefault => Tone::Err,
-
-            Self::IssueTypeOpportunity
+            | Self::IssueTypeOpportunity
             | Self::PriorityMedium
             | Self::LinkRedirected
-            | Self::LinkNofollow => Tone::Warn,
-
-            Self::IssueTypeWarning
-            | Self::PriorityLow
-            | Self::LinkExternal
-            | Self::DepthShallow
-            | Self::DepthMedium => Tone::Neutral,
-
-            Self::DepthDeep => Tone::Warn,
+            | Self::LinkNofollow
+            | Self::DepthDeep => Tone::Warn,
         }
     }
 }

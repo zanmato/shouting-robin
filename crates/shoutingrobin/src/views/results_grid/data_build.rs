@@ -80,10 +80,6 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
     }
 }
 
-pub(super) fn build_overview_rows(pages: &[PageRecord]) -> Vec<FlatRow> {
-    build_issues_rows(pages)
-}
-
 pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     let internal: Vec<&PageRecord> = pages.iter().filter(|p| p.is_internal).collect();
     let total = internal.len().max(1) as f32;

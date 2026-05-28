@@ -192,8 +192,9 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("priority", "Priority", 90., None),
             col("count", "URLs", 70., None),
             col("pct", "% of Total", 80., None),
+            col("description", "Description", 300., None),
+            col("hint", "Hint", 300., None),
         ],
-        ResultTab::Issues => vec![],
         ResultTab::Links => vec![
             col("source", "Source", 380., Some(ColumnFixed::Left)),
             col("destination", "Destination", 380., None),
