@@ -58,6 +58,9 @@ pub struct PageRecord {
     pub title_pixel_width: Option<u32>,
     pub meta_description_pixel_width: Option<u32>,
     pub hreflang_issues: Vec<HreflangIssue>,
+    pub ssr_word_count: Option<u32>,
+    pub ssr_h1: Option<String>,
+    pub ssr_content_missing: Option<bool>,
 }
 
 #[derive(Debug, Clone)]

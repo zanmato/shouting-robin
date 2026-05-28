@@ -397,7 +397,13 @@ impl ShoutingRobinApp {
                             cx.notify();
                         });
                         if let Some(this) = this.upgrade() {
-                            this.update(cx, |this, cx| this.load_crawl_history(cx));
+                            this.update(cx, |this, cx| {
+                                this.crawl_bar.update(cx, |bar, cx| {
+                                    bar.running = false;
+                                    cx.notify();
+                                });
+                                this.load_crawl_history(cx);
+                            });
                         }
                     }
                 });

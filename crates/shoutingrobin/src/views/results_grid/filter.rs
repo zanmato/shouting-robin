@@ -71,6 +71,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::ExactDuplicates,
             IssueFilter::NearDuplicates,
             IssueFilter::LowContent,
+            IssueFilter::SsrContentMissing,
         ],
         ResultTab::Images => &[
             IssueFilter::All,
@@ -540,6 +541,9 @@ pub(super) fn filter_for_tab(
             }
             IssueFilter::LowContent => {
                 indices.retain(|&idx| pages[idx].word_count.is_some_and(|w| w > 0 && w < 100))
+            }
+            IssueFilter::SsrContentMissing => {
+                indices.retain(|&idx| pages[idx].ssr_content_missing == Some(true))
             }
             IssueFilter::SlowLcp => {
                 indices.retain(|&idx| pages[idx].lcp_ms.is_some_and(|ms| ms > 4000))

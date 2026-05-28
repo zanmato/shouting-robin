@@ -132,6 +132,7 @@ pub enum IssueFilter {
     ExactDuplicates,
     NearDuplicates,
     LowContent,
+    SsrContentMissing,
     SlowLcp,
     SlowCls,
     SlowInp,
@@ -245,6 +246,7 @@ impl IssueFilter {
             IssueFilter::ExactDuplicates => "Exact Duplicates",
             IssueFilter::NearDuplicates => "Near Duplicates",
             IssueFilter::LowContent => "Low Content",
+            IssueFilter::SsrContentMissing => "SSR Content Missing",
             IssueFilter::SlowLcp => "Slow LCP",
             IssueFilter::SlowCls => "Slow CLS",
             IssueFilter::SlowInp => "Slow INP",
@@ -338,6 +340,7 @@ impl IssueFilter {
             | Self::RedirectLoop
             | Self::MissingHttps
             | Self::ExactDuplicates
+            | Self::SsrContentMissing
             | Self::DirectiveNoindex
             | Self::LinkBroken
             | Self::IssueTypeError

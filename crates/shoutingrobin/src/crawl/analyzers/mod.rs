@@ -52,6 +52,55 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     compute_ecommerce_audit(record);
 }
 
+/// Compares the raw server-rendered HTML against the already-analyzed rendered
+/// DOM (`record`) to detect pages whose content only appears after client-side
+/// JavaScript. Call after `analyze_html` so the rendered fields are populated.
+pub fn analyze_ssr(record: &mut PageRecord, raw_html: &str, content_selector: &str) {
+    // Pages with little rendered content can't meaningfully be "missing" content
+    // server-side, so we only flag pages whose rendered output is substantial.
+    const MIN_RENDERED_WORDS: u32 = 50;
+    // Flag when SSR exposes less than half of the rendered word count.
+    const SSR_RATIO_THRESHOLD: f32 = 0.5;
+
+    let doc = Html::parse_document(raw_html);
+
+    // A meta-refresh page is a redirect stub: reqwest doesn't follow it but
+    // chrome does, so the rendered DOM is the target page while the raw HTML is
+    // the stub. Diffing them yields a false positive, so skip the diff entirely.
+    if is_meta_refresh(&doc) {
+        return;
+    }
+
+    let ssr_h1 = select_text(&doc, "h1");
+    let content_text = if !content_selector.is_empty() {
+        extract_selector_text(&doc, content_selector).unwrap_or_else(|| extract_body_text(&doc))
+    } else {
+        extract_body_text(&doc)
+    };
+    let ssr_word_count = content_text.split_whitespace().count() as u32;
+
+    let rendered_words = record.word_count.unwrap_or(0);
+    let low_content = rendered_words >= MIN_RENDERED_WORDS
+        && (ssr_word_count as f32) < rendered_words as f32 * SSR_RATIO_THRESHOLD;
+    let h1_only_after_render = record.h1.as_deref().is_some_and(|h1| !h1.is_empty())
+        && ssr_h1.as_deref().unwrap_or("").is_empty();
+
+    record.ssr_word_count = Some(ssr_word_count);
+    record.ssr_h1 = ssr_h1;
+    record.ssr_content_missing = Some(low_content || h1_only_after_render);
+}
+
+fn is_meta_refresh(doc: &Html) -> bool {
+    let Ok(sel) = Selector::parse(r#"meta[http-equiv]"#) else {
+        return false;
+    };
+    doc.select(&sel).any(|el| {
+        el.value()
+            .attr("http-equiv")
+            .is_some_and(|v| v.eq_ignore_ascii_case("refresh"))
+    })
+}
+
 fn extract_perf_metrics(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse(r#"script#__sr_metrics"#) else {
         return;
@@ -1112,5 +1161,63 @@ mod tests {
             r#"<html><head><title>T</title></head><body><nav>Nav</nav><main><p>Content</p></main></body></html>"#,
         );
         assert_eq!(r.word_count, Some(2));
+    }
+
+    #[test]
+    fn ssr_flags_content_missing_when_server_html_near_empty() {
+        let mut r = PageRecord {
+            word_count: Some(200),
+            h1: Some("Rendered Heading".into()),
+            ..Default::default()
+        };
+        let raw = r#"<html><head><title>T</title></head><body><div id="app"></div></body></html>"#;
+        analyze_ssr(&mut r, raw, "");
+        assert_eq!(r.ssr_word_count, Some(0));
+        assert_eq!(r.ssr_h1.as_deref().unwrap_or(""), "");
+        assert_eq!(r.ssr_content_missing, Some(true));
+    }
+
+    #[test]
+    fn ssr_not_flagged_when_server_html_matches_render() {
+        let mut r = PageRecord {
+            word_count: Some(6),
+            h1: Some("Main Heading".into()),
+            ..Default::default()
+        };
+        let raw = r#"<html><head><title>T</title></head><body>
+            <h1>Main Heading</h1><p>one two three four</p></body></html>"#;
+        analyze_ssr(&mut r, raw, "");
+        assert_eq!(r.ssr_h1.as_deref(), Some("Main Heading"));
+        assert_eq!(r.ssr_content_missing, Some(false));
+    }
+
+    #[test]
+    fn ssr_flags_when_h1_only_after_render() {
+        let mut r = PageRecord {
+            word_count: Some(10),
+            h1: Some("Hydrated Heading".into()),
+            ..Default::default()
+        };
+        // SSR has plenty of words but no h1 at all.
+        let raw = r#"<html><head><title>T</title></head><body>
+            <p>one two three four five six seven eight nine ten</p></body></html>"#;
+        analyze_ssr(&mut r, raw, "");
+        assert_eq!(r.ssr_content_missing, Some(true));
+    }
+
+    #[test]
+    fn ssr_skips_meta_refresh_redirect_pages() {
+        // Chrome follows the meta-refresh to a content-rich target; the raw stub
+        // does not. The diff must be skipped, not flagged as content-missing.
+        let mut r = PageRecord {
+            word_count: Some(200),
+            h1: Some("Target Page Heading".into()),
+            ..Default::default()
+        };
+        let raw = r#"<html><head><meta http-equiv="refresh" content="0;url=/home">
+            <title>Redirect</title></head><body><p>Redirecting...</p></body></html>"#;
+        analyze_ssr(&mut r, raw, "");
+        assert_eq!(r.ssr_content_missing, None);
+        assert_eq!(r.ssr_word_count, None);
     }
 }

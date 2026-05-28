@@ -211,6 +211,26 @@ impl CrawlEngine {
             let chrome_mode = matches!(render_mode, RenderMode::Chrome);
             let content_selector_for_pump = config.content_selector.clone();
             let sitemap_for_pump = sitemap_lookup;
+            // In Chrome mode the analyzed HTML is the post-JS rendered DOM. We
+            // fetch the raw server HTML separately so we can diff SSR vs CSR.
+            let ssr_client = if chrome_mode {
+                match build_ssr_client(&config) {
+                    Ok(client) => Some(client),
+                    Err(e) => {
+                        tracing::warn!(error=%e, "failed to build SSR client; skipping SSR diff");
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+            // axe.min.js is a static asset identical for every page, so fetch it
+            // once per crawl and reuse it for all a11y scans.
+            let axe_js = if chrome_mode {
+                fetch_axe_js().await
+            } else {
+                None
+            };
             let pump = tokio::spawn(async move {
                 let mut subscribe_guard = subscribe_guard;
                 let mut total: u64 = 0;
@@ -293,7 +313,9 @@ impl CrawlEngine {
                     if chrome_mode {
                         if page.get_chrome_page().is_some() {
                             collect_performance_metrics(&page, &mut record).await;
-                            collect_a11y_violations(&page, &mut record).await;
+                            if let Some(axe_js) = axe_js.as_deref() {
+                                collect_a11y_violations(&page, &mut record, axe_js).await;
+                            }
                         } else {
                             tracing::warn!(
                                 url = %record.url,
@@ -306,6 +328,23 @@ impl CrawlEngine {
 
                     if let Some(guard) = subscribe_guard.as_mut() {
                         guard.inc();
+                    }
+
+                    // The SSR diff needs the raw server HTML, not chrome. Run it
+                    // after releasing the chrome tab and advancing the guard so
+                    // it never holds spider back or keeps a tab open.
+                    if let Some(client) = ssr_client.as_ref() {
+                        let ssr_url = record
+                            .redirect_url
+                            .clone()
+                            .unwrap_or_else(|| record.url.clone());
+                        fetch_and_analyze_ssr(
+                            client,
+                            &ssr_url,
+                            &content_selector_for_pump,
+                            &mut record,
+                        )
+                        .await;
                     }
 
                     record.compute_indexability();
@@ -700,6 +739,49 @@ pub fn is_same_domain(root: &str, url: &str) -> bool {
     root_parsed.host_str() == url_parsed.host_str()
 }
 
+fn build_ssr_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Error> {
+    let mut builder = reqwest::Client::builder()
+        .timeout(Duration::from_secs(config.timeout_seconds.max(1) as u64));
+    if let Some(ua) = config.user_agent.as_deref().filter(|ua| !ua.is_empty()) {
+        builder = builder.user_agent(ua);
+    }
+    if !config.extra_headers.is_empty() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        for (key, value) in &config.extra_headers {
+            if let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_bytes())
+                && let Ok(val) = reqwest::header::HeaderValue::from_str(value)
+            {
+                headers.insert(name, val);
+            }
+        }
+        builder = builder.default_headers(headers);
+    }
+    builder.build()
+}
+
+async fn fetch_and_analyze_ssr(
+    client: &reqwest::Client,
+    url: &str,
+    content_selector: &str,
+    record: &mut PageRecord,
+) {
+    let response = match client.get(url).send().await {
+        Ok(response) => response,
+        Err(e) => {
+            tracing::warn!(url = %url, error=%e, "SSR fetch failed; skipping SSR diff");
+            return;
+        }
+    };
+    match response.text().await {
+        Ok(raw_html) => {
+            crate::crawl::analyzers::analyze_ssr(record, &raw_html, content_selector);
+        }
+        Err(e) => {
+            tracing::warn!(url = %url, error=%e, "reading SSR response body failed");
+        }
+    }
+}
+
 async fn collect_performance_metrics(page: &spider::page::Page, record: &mut PageRecord) {
     let Some(chrome_page) = page.get_chrome_page() else {
         return;
@@ -774,7 +856,34 @@ async fn collect_performance_metrics(page: &spider::page::Page, record: &mut Pag
     }
 }
 
-async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRecord) {
+async fn fetch_axe_js() -> Option<String> {
+    let axe_url = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js";
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+    {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to build axe client; a11y scans disabled");
+            return None;
+        }
+    };
+    match client.get(axe_url).send().await {
+        Ok(resp) => match resp.text().await {
+            Ok(text) => Some(text),
+            Err(e) => {
+                tracing::warn!(error=%e, "reading axe.js body failed; a11y scans disabled");
+                None
+            }
+        },
+        Err(e) => {
+            tracing::warn!(error=%e, "axe.js fetch failed; a11y scans disabled");
+            None
+        }
+    }
+}
+
+async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRecord, axe_js: &str) {
     let Some(chrome_page) = page.get_chrome_page() else {
         return;
     };
@@ -791,16 +900,7 @@ async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRec
         tracing::debug!(error=%e, "rAF flush failed before a11y scan");
     }
 
-    let axe_url = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js";
-    let axe_js = match reqwest::get(axe_url).await {
-        Ok(resp) => match resp.text().await {
-            Ok(text) => text,
-            Err(_) => return,
-        },
-        Err(_) => return,
-    };
-
-    if chrome_page.evaluate(axe_js.as_str()).await.is_err() {
+    if chrome_page.evaluate(axe_js).await.is_err() {
         return;
     }
 

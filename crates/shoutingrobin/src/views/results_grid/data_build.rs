@@ -53,6 +53,9 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "HTTP Errors (4xx/5xx)" => Some((ResultTab::ResponseCodes, IssueFilter::Status4xx)),
         "Near Duplicate Content" => Some((ResultTab::Content, IssueFilter::NearDuplicates)),
         "Low Content Pages" => Some((ResultTab::Content, IssueFilter::LowContent)),
+        "Content Requires JavaScript (SSR)" => {
+            Some((ResultTab::Content, IssueFilter::SsrContentMissing))
+        }
         "Redirects" => Some((ResultTab::ResponseCodes, IssueFilter::Redirects)),
         "Missing HSTS" => Some((ResultTab::Security, IssueFilter::MissingHsts)),
         "Missing CSP" => Some((ResultTab::Security, IssueFilter::MissingCsp)),
@@ -88,7 +91,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
 
     let missing_title = internal
         .iter()
-        .filter(|p| p.title.as_deref() == Some(""))
+        .filter(|p| p.title.as_deref().unwrap_or("").is_empty())
         .count();
     if missing_title > 0 {
         entries.push(IssueEntry {
@@ -105,7 +108,11 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     let duplicate_title = {
         let mut counts: HashMap<&str, usize> = HashMap::new();
         for p in &internal {
-            *counts.entry(p.title.as_deref().unwrap_or("")).or_insert(0) += 1;
+            let val = p.title.as_deref().unwrap_or("");
+            if val.is_empty() {
+                continue;
+            }
+            *counts.entry(val).or_insert(0) += 1;
         }
         internal
             .iter()
@@ -147,7 +154,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
 
     let missing_desc = internal
         .iter()
-        .filter(|p| p.meta_description.as_deref() == Some(""))
+        .filter(|p| p.meta_description.as_deref().unwrap_or("").is_empty())
         .count();
     if missing_desc > 0 {
         entries.push(IssueEntry {
@@ -164,9 +171,11 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     let duplicate_desc = {
         let mut counts: HashMap<&str, usize> = HashMap::new();
         for p in &internal {
-            *counts
-                .entry(p.meta_description.as_deref().unwrap_or(""))
-                .or_insert(0) += 1;
+            let val = p.meta_description.as_deref().unwrap_or("");
+            if val.is_empty() {
+                continue;
+            }
+            *counts.entry(val).or_insert(0) += 1;
         }
         internal
             .iter()
@@ -192,7 +201,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
 
     let missing_h1 = internal
         .iter()
-        .filter(|p| p.h1.as_deref() == Some(""))
+        .filter(|p| p.h1.as_deref().unwrap_or("").is_empty())
         .count();
     if missing_h1 > 0 {
         entries.push(IssueEntry {
@@ -209,7 +218,11 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     let duplicate_h1 = {
         let mut counts: HashMap<&str, usize> = HashMap::new();
         for p in &internal {
-            *counts.entry(p.h1.as_deref().unwrap_or("")).or_insert(0) += 1;
+            let val = p.h1.as_deref().unwrap_or("");
+            if val.is_empty() {
+                continue;
+            }
+            *counts.entry(val).or_insert(0) += 1;
         }
         internal
             .iter()
@@ -356,6 +369,26 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             pct: low_content as f32 / total * 100.0,
             description: "Pages with fewer than 100 words of body text.".into(),
             hint: "Add substantive content or consolidate thin pages.".into(),
+        });
+    }
+
+    let ssr_content_missing = internal
+        .iter()
+        .filter(|p| p.ssr_content_missing == Some(true))
+        .count();
+    if ssr_content_missing > 0 {
+        entries.push(IssueEntry {
+            name: "Content Requires JavaScript (SSR)".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: ssr_content_missing,
+            pct: ssr_content_missing as f32 / total * 100.0,
+            description: "The server-rendered HTML is missing content that only appears after \
+                          client-side JavaScript runs."
+                .into(),
+            hint: "Ensure critical content (headings, copy) is present in the initial HTML so \
+                   search engines relying on the server response can index it."
+                .into(),
         });
     }
 
@@ -635,4 +668,51 @@ struct DirAccumulator {
     total_size: u64,
     non_indexable: usize,
     indexable: usize,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crawl::event::PageRecord;
+
+    fn page(url: &str, h1: Option<&str>) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            h1: h1.map(|s| s.to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn count_for(entries: &[IssueEntry], name: &str) -> usize {
+        entries
+            .iter()
+            .find(|e| e.name == name)
+            .map(|e| e.count)
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn missing_h1_is_not_counted_as_duplicate() {
+        let pages = vec![
+            page("https://a.test/1", None),
+            page("https://a.test/2", Some("")),
+            page("https://a.test/3", None),
+        ];
+        let entries = build_issues_entries(&pages);
+        assert_eq!(count_for(&entries, "Missing H1"), 3);
+        assert_eq!(count_for(&entries, "Duplicate H1"), 0);
+    }
+
+    #[test]
+    fn shared_non_empty_h1_is_counted_as_duplicate() {
+        let pages = vec![
+            page("https://a.test/1", Some("Same Heading")),
+            page("https://a.test/2", Some("Same Heading")),
+            page("https://a.test/3", Some("Unique Heading")),
+        ];
+        let entries = build_issues_entries(&pages);
+        assert_eq!(count_for(&entries, "Duplicate H1"), 2);
+        assert_eq!(count_for(&entries, "Missing H1"), 0);
+    }
 }

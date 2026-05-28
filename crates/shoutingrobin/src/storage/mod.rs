@@ -59,6 +59,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0014_hreflang_issues",
         include_str!("../../migrations/0014_hreflang_issues.sql"),
     ),
+    (
+        "0015_ssr_content",
+        include_str!("../../migrations/0015_ssr_content.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -159,8 +163,9 @@ pub async fn insert_page(
             simhash, og_type, a11y_errors, a11y_warnings, headers_json,
             redirect_url, redirect_status,
             title_2, meta_description_2, h1_2, h2_2,
-            title_pixel_width, meta_description_pixel_width
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            title_pixel_width, meta_description_pixel_width,
+            ssr_word_count, ssr_h1, ssr_content_missing
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
@@ -197,6 +202,9 @@ pub async fn insert_page(
     .bind(record.h2_2.as_deref())
     .bind(record.title_pixel_width.map(|w| w as i64))
     .bind(record.meta_description_pixel_width.map(|w| w as i64))
+    .bind(record.ssr_word_count.map(|w| w as i64))
+    .bind(record.ssr_h1.as_deref())
+    .bind(record.ssr_content_missing.map(|b| b as i64))
     .execute(pool)
     .await?;
 
@@ -646,11 +654,15 @@ pub async fn load_pages_for_crawl(
             Option<String>,
             Option<i64>,
             Option<i64>,
+            Option<i64>,
+            Option<String>,
+            Option<i64>,
         ),
     >(
         r#"
         SELECT url, title_2, meta_description_2, h1_2, h2_2,
-               title_pixel_width, meta_description_pixel_width
+               title_pixel_width, meta_description_pixel_width,
+               ssr_word_count, ssr_h1, ssr_content_missing
         FROM pages WHERE crawl_id = ?
         ORDER BY id
         "#,
@@ -953,11 +965,25 @@ pub async fn load_pages_for_crawl(
         h2_2: Option<String>,
         title_pixel_width: Option<u32>,
         meta_description_pixel_width: Option<u32>,
+        ssr_word_count: Option<u32>,
+        ssr_h1: Option<String>,
+        ssr_content_missing: Option<bool>,
     }
     let secondary_by_url: std::collections::HashMap<String, SecondaryData> = secondary_rows
         .into_iter()
         .map(
-            |(url, title_2, meta_description_2, h1_2, h2_2, title_pw, meta_pw)| {
+            |(
+                url,
+                title_2,
+                meta_description_2,
+                h1_2,
+                h2_2,
+                title_pw,
+                meta_pw,
+                ssr_word_count,
+                ssr_h1,
+                ssr_content_missing,
+            )| {
                 (
                     url,
                     SecondaryData {
@@ -967,6 +993,9 @@ pub async fn load_pages_for_crawl(
                         h2_2,
                         title_pixel_width: title_pw.map(|w| w as u32),
                         meta_description_pixel_width: meta_pw.map(|w| w as u32),
+                        ssr_word_count: ssr_word_count.map(|w| w as u32),
+                        ssr_h1,
+                        ssr_content_missing: ssr_content_missing.map(|b| b != 0),
                     },
                 )
             },
@@ -1106,6 +1135,9 @@ pub async fn load_pages_for_crawl(
                     title_pixel_width: page_secondary.and_then(|s| s.title_pixel_width),
                     meta_description_pixel_width: page_secondary
                         .and_then(|s| s.meta_description_pixel_width),
+                    ssr_word_count: page_secondary.and_then(|s| s.ssr_word_count),
+                    ssr_h1: page_secondary.and_then(|s| s.ssr_h1.clone()),
+                    ssr_content_missing: page_secondary.and_then(|s| s.ssr_content_missing),
                     link_score: page_link_score,
                     backlinks: page_backlinks,
                     hreflang_issues,

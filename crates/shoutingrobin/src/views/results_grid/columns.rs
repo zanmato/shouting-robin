@@ -273,8 +273,11 @@ pub(super) fn build_occurrence_counts(
     };
     let mut counts: HashMap<String, usize> = HashMap::new();
     for page in pages {
-        let val = field_value(page, key).unwrap_or("").to_string();
-        *counts.entry(val).or_insert(0) += 1;
+        let val = field_value(page, key).unwrap_or("");
+        if val.is_empty() {
+            continue;
+        }
+        *counts.entry(val.to_string()).or_insert(0) += 1;
     }
     counts
 }
