@@ -958,9 +958,9 @@ dependencies = [
 
 [[package]]
 name = "chromey"
-version = "2.47.0"
+version = "2.49.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "285e60c88e686e37ee5c5419ba7495eb96cc3a0520f39dd872e55b1f0545d29c"
+checksum = "9aa5dfd55c002af6059875eff143c033dd2cf444436e502bd65bcf38b3f6e209"
 dependencies = [
  "aho-corasick",
  "base64",
@@ -6826,11 +6826,14 @@ dependencies = [
 
 [[package]]
 name = "spider"
-version = "2.51.155"
-source = "git+https://github.com/zanmato/spider?branch=fix-chrome-page#b693a16c91e8e48f5efdb68ad025c685c98a0cde"
+version = "2.51.203"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "384646234fd98a8d846f600a5b3869091c5ccf6b1400674bd65760be3d51b180"
 dependencies = [
  "ahash",
  "aho-corasick",
+ "arc-swap",
+ "async-trait",
  "auto_encoder",
  "base64",
  "bytes",
@@ -6875,8 +6878,9 @@ dependencies = [
 
 [[package]]
 name = "spider_agent_types"
-version = "2.51.155"
-source = "git+https://github.com/zanmato/spider?branch=fix-chrome-page#b693a16c91e8e48f5efdb68ad025c685c98a0cde"
+version = "2.51.203"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67b5a3cd10fd58f2e22ddac6348f6a5251c6cd212ec058ce4798b44be0dc278a"
 dependencies = [
  "aho-corasick",
  "llm_models_spider",
@@ -9307,7 +9311,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

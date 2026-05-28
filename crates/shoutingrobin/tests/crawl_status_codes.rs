@@ -63,10 +63,13 @@ fn crawl_test_site(root_url: &str) -> Vec<shoutingrobin::crawl::event::PageRecor
     )
 }
 
-/// Chrome uses a single fixed user-data-dir (`/tmp/chromiumoxide-runner`), so
-/// concurrent chrome crawls collide on its singleton lock and silently fall
-/// back to the HTTP path. Serialize chrome tests behind one mutex and clear any
-/// stale lock left by a previously killed chrome before launching.
+/// Chrome (via chromey) defaults every instance to a single fixed profile dir,
+/// `/tmp/chromiumoxide-runner`. Concurrent launches collide on its singleton
+/// lock, and a leaked chrome from an earlier run keeps holding the profile. We
+/// serialize chrome tests behind one mutex and remove any stale lock files
+/// before launching. Killing leaked chrome processes is left to
+/// `scripts/chrome-test-cleanup.sh` (run it before the suite if needed) so this
+/// stays portable across platforms.
 fn chrome_test_guard() -> std::sync::MutexGuard<'static, ()> {
     static CHROME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let guard = CHROME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -570,12 +573,6 @@ fn test_chrome_404_with_large_spa_body() {
 /// renders the hydrated DOM (substantial content + h1) while the raw server
 /// HTML fetched separately is near-empty, so the page must be flagged as
 /// content-requires-JavaScript.
-// Ignored: spider's `wait_for_idle_network` intermittently 504s the SPA page
-// (the idle wait never resolves), so chrome captures an empty pre-hydration DOM
-// and the rendered h1 is missing. That's a spider/chrome reliability issue, not
-// the SSR diff, which is covered by the analyze_ssr unit tests. The crawl helper
-// now waits for the Finished event so the page is at least reached.
-#[ignore]
 #[test]
 fn test_chrome_ssr_content_missing() {
     if !chrome_available() {

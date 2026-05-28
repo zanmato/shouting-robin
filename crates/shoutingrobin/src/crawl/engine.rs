@@ -6,8 +6,9 @@ use std::time::Duration;
 
 use flume::{Receiver, Sender};
 use gpui::{App, Global};
-use spider::configuration::WaitForIdleNetwork;
-use spider::features::chrome_common::{RequestInterceptConfiguration, WebAutomation};
+use spider::features::chrome_common::{
+    RequestInterceptConfiguration, WaitForSelector, WebAutomation,
+};
 use spider::website::Website;
 use sqlx::SqlitePool;
 
@@ -176,12 +177,23 @@ impl CrawlEngine {
                         "/".to_string(),
                         vec![WebAutomation::Evaluate(METRICS_AUTOMATION_JS.to_string())],
                     );
+                    // Wait for the DOM to stop mutating rather than for network
+                    // idle. Network idle never settles on pages with background
+                    // requests (favicon, analytics, 404 subresources), burning the
+                    // full timeout on every page; DOM idle settles sub-second once
+                    // rendering/hydration finishes. The cap is the upper bound and
+                    // must stay below `request_timeout` so a slow page returns
+                    // content instead of a synthetic 504.
+                    let wait_cap = (config.timeout_seconds as u64)
+                        .saturating_sub(5)
+                        .clamp(3, 15);
                     website
                         .with_chrome_intercept(RequestInterceptConfiguration::new(true))
                         .with_stealth(true)
-                        .with_wait_for_idle_network(Some(WaitForIdleNetwork::new(Some(
-                            Duration::from_secs(30),
-                        ))))
+                        .with_wait_for_idle_dom(Some(WaitForSelector::new(
+                            Some(Duration::from_secs(wait_cap)),
+                            "body".into(),
+                        )))
                         .with_automation_scripts(Some(automation_map));
                 }
             }
@@ -260,9 +272,7 @@ impl CrawlEngine {
                         url: page.get_url().to_string(),
                         status: Some(page.status_code.as_u16()),
                         size_bytes: html_bytes.len() as u64,
-                        response_time: page
-                            .get_response_duration()
-                            .unwrap_or_else(|| page.get_duration_elapsed()),
+                        response_time: page.get_duration_elapsed(),
                         ..Default::default()
                     };
                     if let Some(ref headers) = page.headers
