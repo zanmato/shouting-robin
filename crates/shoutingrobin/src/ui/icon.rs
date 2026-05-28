@@ -128,6 +128,6 @@ impl Icon {
 
 impl IconNamed for Icon {
     fn path(self) -> SharedString {
-        SharedString::from(format!("icons/lucide/{}.svg", self.slug()))
+        SharedString::from(format!("icons/{}.svg", self.slug()))
     }
 }
