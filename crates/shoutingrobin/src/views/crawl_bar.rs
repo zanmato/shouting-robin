@@ -19,7 +19,6 @@ pub enum CrawlBarEvent {
         config: CrawlConfig,
     },
     Stop,
-    ExportCsv,
 }
 
 pub struct CrawlBar {
@@ -169,7 +168,6 @@ impl Focusable for CrawlBar {
 impl Render for CrawlBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let running = self.running;
-        let has_results = self.has_results;
         let default_mode = self.default_mode;
         let advanced_open = self.advanced_open;
         let list_mode = self.list_mode;
@@ -262,17 +260,6 @@ impl Render for CrawlBar {
                         .small()
                         .label("Stop")
                         .on_click(cx.listener(Self::on_stop)),
-                )
-            })
-            .when(has_results && !running, |el| {
-                el.child(
-                    Button::new("export-csv")
-                        .small()
-                        .ghost()
-                        .label("Export CSV")
-                        .on_click(cx.listener(|_, _, _, cx| {
-                            cx.emit(CrawlBarEvent::ExportCsv);
-                        })),
                 )
             });
 

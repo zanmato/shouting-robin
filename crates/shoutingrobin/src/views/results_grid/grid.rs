@@ -112,6 +112,14 @@ impl ResultsGrid {
         self.state.read(cx).delegate().export_csv()
     }
 
+    pub fn root_url(&self, cx: &App) -> Option<String> {
+        self.state
+            .read(cx)
+            .delegate()
+            .root_url()
+            .map(|s| s.to_owned())
+    }
+
     pub fn has_results(&self, cx: &App) -> bool {
         self.state.read(cx).delegate().filtered_count() > 0
     }

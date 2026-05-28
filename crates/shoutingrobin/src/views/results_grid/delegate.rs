@@ -31,6 +31,7 @@ pub struct ResultsDelegate {
     pub(super) active_tab: ResultTab,
     issue_filter: IssueFilter,
     pub(super) root_origin: Option<String>,
+    root_url: Option<String>,
 }
 
 impl ResultsDelegate {
@@ -45,6 +46,7 @@ impl ResultsDelegate {
             active_tab: tab,
             issue_filter: IssueFilter::All,
             root_origin: None,
+            root_url: None,
         }
     }
 
@@ -61,9 +63,14 @@ impl ResultsDelegate {
     }
 
     pub fn set_root_url(&mut self, root_url: &str) {
+        self.root_url = Some(root_url.to_owned());
         self.root_origin = url::Url::parse(root_url)
             .ok()
             .map(|u| u.origin().ascii_serialization());
+    }
+
+    pub fn root_url(&self) -> Option<&str> {
+        self.root_url.as_deref()
     }
 
     pub fn push(&mut self, record: PageRecord) {
@@ -77,6 +84,7 @@ impl ResultsDelegate {
         self.flat_rows.clear();
         self.occurrence_counts.clear();
         self.root_origin = None;
+        self.root_url = None;
     }
 
     pub fn record_at(&self, index: usize) -> Option<&PageRecord> {

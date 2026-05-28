@@ -108,9 +108,6 @@ impl ShoutingRobinApp {
                         cx.notify();
                     });
                 }
-                CrawlBarEvent::ExportCsv => {
-                    this.export_csv(cx);
-                }
             },
         );
         subscriptions.push(sub);
@@ -289,9 +286,20 @@ impl ShoutingRobinApp {
         };
 
         let tab_name = self.active_tab.label();
+        let hostname_part = self
+            .results_grid
+            .read(cx)
+            .root_url(cx)
+            .and_then(|url| url::Url::parse(&url).ok())
+            .and_then(|parsed| parsed.host_str().map(|h| h.to_owned()))
+            .unwrap_or_else(|| "unknown".to_owned())
+            .replace('.', "-");
+        let date_part = chrono::Local::now().format("%Y-%m-%d").to_string();
         let filename = format!(
-            "shoutingrobin-{}.csv",
-            tab_name.to_lowercase().replace(' ', "-")
+            "{}-{}-{}.csv",
+            hostname_part,
+            tab_name.to_lowercase().replace(' ', "-"),
+            date_part
         );
         let dir = dirs::download_dir()
             .or_else(dirs::home_dir)
@@ -485,16 +493,19 @@ impl Render for ShoutingRobinApp {
         let show_issue_filter = tab_filters.len() > 1;
 
         let current_filter = self.issue_filter;
+        let has_results = self.results_grid.read(cx).has_results(cx);
         let mut filter_bar = div()
             .id("issue-filter-bar")
             .flex()
             .items_center()
-            .gap_1()
+            .justify_between()
             .px_2()
             .py_1()
             .border_b_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().background);
+
+        let mut filter_left = div().flex().items_center().gap_1();
 
         if show_issue_filter {
             for &filter in tab_filters {
@@ -518,10 +529,10 @@ impl Render for ShoutingRobinApp {
                             .child(SharedString::from(count.to_string())),
                     );
                 }
-                filter_bar = filter_bar.child(btn);
+                filter_left = filter_left.child(btn);
             }
         } else {
-            filter_bar = filter_bar.child(
+            filter_left = filter_left.child(
                 div()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
@@ -529,6 +540,20 @@ impl Render for ShoutingRobinApp {
                         "{} results",
                         self.results_grid.read(cx).row_count(cx)
                     )),
+            );
+        }
+
+        filter_bar = filter_bar.child(filter_left);
+
+        if has_results {
+            filter_bar = filter_bar.child(
+                Button::new("export-csv")
+                    .small()
+                    .ghost()
+                    .label("Export CSV")
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.export_csv(cx);
+                    })),
             );
         }
 
