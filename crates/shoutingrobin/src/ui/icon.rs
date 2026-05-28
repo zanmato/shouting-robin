@@ -59,6 +59,7 @@ pub enum Icon {
     Tag,
     Tags,
     Percent,
+    Stop,
 }
 
 impl Icon {
@@ -120,6 +121,7 @@ impl Icon {
             Tag => "tag",
             Tags => "tags",
             Percent => "percent",
+            Stop => "square-stop",
         }
     }
 }

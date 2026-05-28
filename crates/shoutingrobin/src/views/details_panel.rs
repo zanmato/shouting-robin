@@ -119,7 +119,7 @@ fn a11y_impact_tone(impact: &str) -> Tone {
     }
 }
 
-fn serp_preview(rec: &PageRecord, _fg: Hsla, muted: Hsla) -> AnyElement {
+fn serp_preview(rec: &PageRecord, cx: &App) -> AnyElement {
     let title = rec
         .title
         .as_deref()
@@ -141,19 +141,19 @@ fn serp_preview(rec: &PageRecord, _fg: Hsla, muted: Hsla) -> AnyElement {
         .child(
             div()
                 .text_sm()
-                .text_color(gpui::rgb(0x1a0dab))
+                .text_color(cx.theme().blue)
                 .child(SharedString::from(title.to_string())),
         )
         .child(
             div()
                 .text_xs()
-                .text_color(gpui::rgb(0x006621))
+                .text_color(cx.theme().green)
                 .child(SharedString::from(url_display)),
         )
         .child(
             div()
                 .text_xs()
-                .text_color(muted)
+                .text_color(cx.theme().muted_foreground)
                 .child(SharedString::from(desc.to_string())),
         )
         .into_any_element()
@@ -961,7 +961,7 @@ impl Render for DetailsPanel {
                         None,
                         muted,
                         border,
-                        serp_preview(rec, fg, muted),
+                        serp_preview(rec, cx),
                     ))
                     .when(!rec.hreflang_issues.is_empty(), |el| {
                         let mut body = div().flex().flex_col().gap_0p5();
@@ -1040,14 +1040,12 @@ impl Render for DetailsPanel {
                                         ),
                                     )
                                     .when(bl.rel.as_deref().is_some(), |el| {
-                                        el.child(
-                                            div().text_xs().text_color(muted).child(
-                                                SharedString::from(format!(
-                                                    "Rel: {}",
-                                                    bl.rel.as_deref().unwrap()
-                                                )),
-                                            ),
-                                        )
+                                        el.child(div().text_xs().text_color(muted).child(
+                                            SharedString::from(format!(
+                                                "Rel: {}",
+                                                bl.rel.as_deref().unwrap()
+                                            )),
+                                        ))
                                     }),
                             );
                         }

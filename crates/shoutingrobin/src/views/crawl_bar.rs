@@ -233,6 +233,7 @@ impl Render for CrawlBar {
                         .child(
                             div()
                                 .text_xs()
+                                .pl_1()
                                 .pr_2()
                                 .text_color(if matches!(default_mode, RenderMode::Chrome) {
                                     cx.theme().foreground
@@ -245,7 +246,8 @@ impl Render for CrawlBar {
                             Button::new("crawl-btn")
                                 .small()
                                 .primary()
-                                .label("Crawl")
+                                .icon(Icon::Play)
+                                .tooltip("Crawl")
                                 .on_click(cx.listener(move |this, _, _, cx| {
                                     this.start_crawl(default_mode, cx);
                                 })),
@@ -257,7 +259,8 @@ impl Render for CrawlBar {
                     Button::new("stop")
                         .danger()
                         .small()
-                        .label("Stop")
+                        .icon(Icon::Stop)
+                        .tooltip("Stop")
                         .on_click(cx.listener(Self::on_stop)),
                 )
             });
