@@ -1,14 +1,13 @@
 use gpui::{
-    Action, Anchor, AppContext, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, ParentElement, Render, SharedString, Styled, Window, div, prelude::FluentBuilder,
-    px,
+    AppContext, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    ParentElement, Render, Styled, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{
     ActiveTheme, Sizable as _,
-    button::{Button, ButtonVariants as _, DropdownButton},
+    button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState},
+    switch::Switch,
 };
-use serde::Deserialize;
 
 use crate::crawl::{CrawlConfig, RenderMode};
 
@@ -22,14 +21,6 @@ pub enum CrawlBarEvent {
     Stop,
     ExportCsv,
 }
-
-#[derive(Clone, Action, PartialEq, Eq, Deserialize)]
-#[action(namespace = crawl_bar, no_json)]
-struct CrawlHttp;
-
-#[derive(Clone, Action, PartialEq, Eq, Deserialize)]
-#[action(namespace = crawl_bar, no_json)]
-struct CrawlChrome;
 
 pub struct CrawlBar {
     focus_handle: gpui::FocusHandle,
@@ -165,18 +156,6 @@ impl CrawlBar {
         cx.emit(CrawlBarEvent::Stop);
         cx.notify();
     }
-
-    fn on_crawl_http(&mut self, _: &CrawlHttp, _: &mut Window, cx: &mut Context<Self>) {
-        self.start_crawl(RenderMode::Http, cx);
-    }
-
-    fn on_crawl_chrome(&mut self, _: &CrawlChrome, _: &mut Window, cx: &mut Context<Self>) {
-        self.start_crawl(RenderMode::Chrome, cx);
-    }
-
-    fn default_label(&self) -> SharedString {
-        SharedString::from(self.default_mode.label().to_string())
-    }
 }
 
 impl EventEmitter<CrawlBarEvent> for CrawlBar {}
@@ -191,7 +170,6 @@ impl Render for CrawlBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let running = self.running;
         let has_results = self.has_results;
-        let default_label = self.default_label();
         let default_mode = self.default_mode;
         let advanced_open = self.advanced_open;
         let list_mode = self.list_mode;
@@ -229,28 +207,51 @@ impl Render for CrawlBar {
             })
             .when(!running, |el| {
                 el.child(
-                    DropdownButton::new("crawl-dropdown")
-                        .small()
-                        .primary()
-                        .button(Button::new("crawl-btn").label(default_label).on_click(
-                            cx.listener(move |this, _, _, cx| {
-                                this.start_crawl(default_mode, cx);
-                            }),
-                        ))
-                        .dropdown_menu_with_anchor(
-                            Anchor::BottomRight,
-                            move |menu, _window, _cx| {
-                                menu.menu_with_check(
-                                    "Crawl (HTTP)",
-                                    default_mode == RenderMode::Http,
-                                    Box::new(CrawlHttp),
-                                )
-                                .menu_with_check(
-                                    "Crawl (Chrome)",
-                                    default_mode == RenderMode::Chrome,
-                                    Box::new(CrawlChrome),
-                                )
-                            },
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(if matches!(default_mode, RenderMode::Http) {
+                                    cx.theme().foreground
+                                } else {
+                                    cx.theme().muted_foreground
+                                })
+                                .child("HTTP"),
+                        )
+                        .child(
+                            Switch::new("mode-switch")
+                                .small()
+                                .checked(matches!(default_mode, RenderMode::Chrome))
+                                .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                    this.default_mode = if *checked {
+                                        RenderMode::Chrome
+                                    } else {
+                                        RenderMode::Http
+                                    };
+                                    cx.notify();
+                                })),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(if matches!(default_mode, RenderMode::Chrome) {
+                                    cx.theme().foreground
+                                } else {
+                                    cx.theme().muted_foreground
+                                })
+                                .child("Chrome"),
+                        )
+                        .child(
+                            Button::new("crawl-btn")
+                                .small()
+                                .primary()
+                                .label("Crawl")
+                                .on_click(cx.listener(move |this, _, _, cx| {
+                                    this.start_crawl(default_mode, cx);
+                                })),
                         ),
                 )
             })
@@ -269,7 +270,7 @@ impl Render for CrawlBar {
                         .small()
                         .ghost()
                         .label("Export CSV")
-                        .on_click(cx.listener(|this, _, _, cx| {
+                        .on_click(cx.listener(|_, _, _, cx| {
                             cx.emit(CrawlBarEvent::ExportCsv);
                         })),
                 )
@@ -385,8 +386,6 @@ impl Render for CrawlBar {
             .border_b_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().background)
-            .on_action(cx.listener(Self::on_crawl_http))
-            .on_action(cx.listener(Self::on_crawl_chrome))
             .child(main_row)
             .when(advanced_open && !running, |el| el.child(advanced_panel))
     }
