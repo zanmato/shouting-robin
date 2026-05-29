@@ -308,6 +308,13 @@ pub(super) fn cell_text(
                 .map(|w| w.to_string())
                 .unwrap_or_else(|| "-".into()),
         ),
+        "ssr_words" => SharedString::from(
+            record
+                .ssr_word_count
+                .map(|w| w.to_string())
+                .unwrap_or_else(|| "-".into()),
+        ),
+        "ssr_diff" => SharedString::from(ssr_diff_label(record)),
         "depth" => SharedString::from(record.depth.to_string()),
         "response_time" => SharedString::from(format!("{}ms", record.response_time.as_millis())),
         "closest_similarity" => SharedString::from(
@@ -591,6 +598,20 @@ pub(super) fn render_cell_tag(
             Some(_) => Tone::Ok,
             None => return None,
         },
+        "ssr_diff" => {
+            let pct = ssr_diff_label(record);
+            if pct == "-" {
+                return None;
+            }
+            let val: u32 = pct.trim_end_matches('%').parse().unwrap_or(0);
+            if val >= 80 {
+                Tone::Err
+            } else if val >= 50 {
+                Tone::Warn
+            } else {
+                Tone::Ok
+            }
+        }
         "indexability_status" => {
             if text.starts_with("Non-Indexable") || text.starts_with("Noindex") {
                 Tone::Err
@@ -610,4 +631,70 @@ pub(super) fn render_cell_tag(
         _ => return None,
     };
     Some(tone_tag(tone).child(text.clone()))
+}
+
+pub fn ssr_diff_label(record: &PageRecord) -> String {
+    match (record.word_count, record.ssr_word_count) {
+        (Some(csr), Some(ssr)) if csr > 0 => {
+            let diff_pct = ((csr - ssr) as f64 / csr as f64 * 100.0).round() as u32;
+            format!("{diff_pct}%")
+        }
+        _ => "-".into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crawl::event::PageRecord;
+
+    fn make_record(word_count: Option<u32>, ssr_word_count: Option<u32>) -> PageRecord {
+        PageRecord {
+            word_count,
+            ssr_word_count,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn ssr_diff_shows_100_percent_when_ssr_is_zero() {
+        let record = make_record(Some(200), Some(0));
+        assert_eq!(ssr_diff_label(&record), "100%");
+    }
+
+    #[test]
+    fn ssr_diff_shows_dash_when_word_count_is_none() {
+        let record = make_record(None, Some(50));
+        assert_eq!(ssr_diff_label(&record), "-");
+    }
+
+    #[test]
+    fn ssr_diff_shows_dash_when_ssr_word_count_is_none() {
+        let record = make_record(Some(200), None);
+        assert_eq!(ssr_diff_label(&record), "-");
+    }
+
+    #[test]
+    fn ssr_diff_shows_dash_when_word_count_is_zero() {
+        let record = make_record(Some(0), Some(0));
+        assert_eq!(ssr_diff_label(&record), "-");
+    }
+
+    #[test]
+    fn ssr_diff_shows_zero_when_counts_match() {
+        let record = make_record(Some(200), Some(200));
+        assert_eq!(ssr_diff_label(&record), "0%");
+    }
+
+    #[test]
+    fn ssr_diff_rounds_partial_percentages() {
+        let record = make_record(Some(100), Some(33));
+        assert_eq!(ssr_diff_label(&record), "67%");
+    }
+
+    #[test]
+    fn ssr_diff_computes_large_difference() {
+        let record = make_record(Some(500), Some(10));
+        assert_eq!(ssr_diff_label(&record), "98%");
+    }
 }

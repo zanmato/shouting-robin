@@ -94,8 +94,9 @@ impl Render for CrawlsSidebar {
                                 .child(SharedString::from("Chrome"))
                                 .into_any_element()
                         } else {
-                            tone_tag(Tone::Neutral)
-                                .rounded_full()
+                            div()
+                                .text_xs()
+                                .text_color(theme.muted_foreground)
                                 .child(SharedString::from("HTTP"))
                                 .into_any_element()
                         };
@@ -166,6 +167,7 @@ impl Render for CrawlsSidebar {
                                 div()
                                     .flex()
                                     .flex_col()
+                                    .items_end()
                                     .gap_1()
                                     .child(count_tag)
                                     .child(mode_tag),

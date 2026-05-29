@@ -7,6 +7,7 @@ use gpui_component::{ActiveTheme, Icon as UiIcon, Sizable as _, scroll::Scrollab
 use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdSeverity};
 use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
+use crate::views::results_grid::ssr_diff_label;
 
 pub struct DetailsPanel {
     pub selected: Option<PageRecord>,
@@ -454,6 +455,22 @@ impl Render for DetailsPanel {
                         ),
                         muted,
                     ))
+                    .when(rec.ssr_word_count.is_some(), |el| {
+                        el.child(row(
+                            "SSR Words",
+                            SharedString::from(
+                                rec.ssr_word_count
+                                    .map(|w| w.to_string())
+                                    .unwrap_or_else(|| "-".into()),
+                            ),
+                            muted,
+                        ))
+                        .child(row(
+                            "SSR/CSR Diff",
+                            SharedString::from(ssr_diff_label(rec)),
+                            muted,
+                        ))
+                    })
                     .child(row("Meta Robots", or_dash(&rec.robots), muted))
                     .into_any_element();
 
@@ -1143,7 +1160,12 @@ impl Render for DetailsPanel {
                             "Outlinks (To)",
                             None,
                             Some(
-                                SharedString::from(format!("{} links", rec.outlinks.len()))
+                                div()
+                                    .text_xs()
+                                    .child(SharedString::from(format!(
+                                        "{} links",
+                                        rec.outlinks.len()
+                                    )))
                                     .into_any_element(),
                             ),
                             muted,

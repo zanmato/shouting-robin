@@ -89,6 +89,8 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("status_code", "Code", 70., None),
             col("content_hash", "Hash", 100., None),
             col("words", "Words", 80., None),
+            col("ssr_words", "SSR Words", 90., None),
+            col("ssr_diff", "SSR/CSR Diff", 100., None),
             col("closest_similarity", "Closest Sim.", 90., None),
             col("near_duplicate_count", "Near Dups", 80., None),
             col("indexability", "Indexability", 110., None),
@@ -304,6 +306,8 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "h2_length"
             | "size"
             | "words"
+            | "ssr_words"
+            | "ssr_diff"
             | "depth"
             | "folder_depth"
             | "inlinks"
