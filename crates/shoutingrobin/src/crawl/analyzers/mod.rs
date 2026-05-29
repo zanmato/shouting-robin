@@ -27,10 +27,10 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
         .content_type
         .clone()
         .or_else(|| Some("text/html".into()));
-    let content_text = if !content_selector.is_empty() {
-        extract_selector_text(&doc, content_selector).unwrap_or_else(|| extract_body_text(&doc))
-    } else {
+    let content_text = if content_selector.is_empty() {
         extract_body_text(&doc)
+    } else {
+        extract_selector_text(&doc, content_selector).unwrap_or_else(|| extract_body_text(&doc))
     };
     record.word_count = Some(content_text.split_whitespace().count() as u32);
     compute_readability(record, &content_text);
@@ -161,10 +161,10 @@ pub fn analyze_ssr(record: &mut PageRecord, raw_html: &str, content_selector: &s
     }
 
     let ssr_h1 = select_text(&doc, "h1");
-    let content_text = if !content_selector.is_empty() {
-        extract_selector_text(&doc, content_selector).unwrap_or_else(|| extract_body_text(&doc))
-    } else {
+    let content_text = if content_selector.is_empty() {
         extract_body_text(&doc)
+    } else {
+        extract_selector_text(&doc, content_selector).unwrap_or_else(|| extract_body_text(&doc))
     };
     let ssr_word_count = content_text.split_whitespace().count() as u32;
 
