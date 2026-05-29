@@ -33,6 +33,7 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
         extract_body_text(&doc)
     };
     record.word_count = Some(content_text.split_whitespace().count() as u32);
+    compute_readability(record, &content_text);
     record.content_hash = Some(compute_content_hash(&content_text));
     record.simhash = Some(compute_simhash(&content_text));
     record.title_count = count_elements(&doc, "title");
@@ -52,21 +53,109 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     compute_ecommerce_audit(record);
 }
 
+fn compute_readability(record: &mut PageRecord, text: &str) {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let word_count = words.len() as u32;
+    if word_count == 0 {
+        return;
+    }
+
+    let sentence_count = count_sentences(text);
+    if sentence_count == 0 {
+        return;
+    }
+
+    let syllable_count: u32 = words.iter().map(|w| count_syllables_in_word(w)).sum();
+    let avg_words_per_sentence = word_count as f64 / sentence_count as f64;
+    let avg_syllables_per_word = syllable_count as f64 / word_count as f64;
+
+    let score = 206.835 - 1.015 * avg_words_per_sentence - 84.6 * avg_syllables_per_word;
+
+    record.sentence_count = Some(sentence_count);
+    record.syllable_count = Some(syllable_count);
+    record.flesch_reading_ease = Some(score as f32);
+    record.readability = Some(readability_group(score));
+}
+
+fn count_sentences(text: &str) -> u32 {
+    let mut count: u32 = 0;
+    let mut in_delimiter = false;
+    for ch in text.chars() {
+        if ch == '.' || ch == '!' || ch == '?' {
+            if !in_delimiter {
+                count += 1;
+                in_delimiter = true;
+            }
+        } else if !ch.is_whitespace() {
+            in_delimiter = false;
+        }
+    }
+    if count == 0 && !text.trim().is_empty() {
+        count = 1;
+    }
+    count
+}
+
+fn count_syllables_in_word(word: &str) -> u32 {
+    let word = word.trim_matches(|c: char| !c.is_alphabetic());
+    if word.is_empty() {
+        return 0;
+    }
+    let lower = word.to_ascii_lowercase();
+    let chars: Vec<char> = lower.chars().collect();
+    if chars.is_empty() {
+        return 0;
+    }
+
+    let vowels = ['a', 'e', 'i', 'o', 'u', 'y'];
+    let mut count: u32 = 0;
+    let mut prev_vowel = false;
+
+    for &ch in &chars {
+        let is_vowel = vowels.contains(&ch);
+        if is_vowel && !prev_vowel {
+            count += 1;
+        }
+        prev_vowel = is_vowel;
+    }
+
+    if chars.len() > 2 && chars[chars.len() - 1] == 'e' {
+        let ending = &lower[lower.len().saturating_sub(2)..];
+        if ending != "le" || chars.len() <= 2 {
+            count = count.saturating_sub(1);
+        }
+    }
+
+    count.max(1)
+}
+
+fn readability_group(score: f64) -> String {
+    if score >= 90.0 {
+        "Very Easy".to_string()
+    } else if score >= 80.0 {
+        "Easy".to_string()
+    } else if score >= 70.0 {
+        "Fairly Easy".to_string()
+    } else if score >= 60.0 {
+        "Standard".to_string()
+    } else if score >= 50.0 {
+        "Fairly Difficult".to_string()
+    } else if score >= 30.0 {
+        "Difficult".to_string()
+    } else {
+        "Very Difficult".to_string()
+    }
+}
+
 /// Compares the raw server-rendered HTML against the already-analyzed rendered
 /// DOM (`record`) to detect pages whose content only appears after client-side
 /// JavaScript. Call after `analyze_html` so the rendered fields are populated.
 pub fn analyze_ssr(record: &mut PageRecord, raw_html: &str, content_selector: &str) {
-    // Pages with little rendered content can't meaningfully be "missing" content
-    // server-side, so we only flag pages whose rendered output is substantial.
     const MIN_RENDERED_WORDS: u32 = 50;
-    // Flag when SSR exposes less than half of the rendered word count.
     const SSR_RATIO_THRESHOLD: f32 = 0.5;
 
     let doc = Html::parse_document(raw_html);
 
-    // A meta-refresh page is a redirect stub: reqwest doesn't follow it but
-    // chrome does, so the rendered DOM is the target page while the raw HTML is
-    // the stub. Diffing them yields a false positive, so skip the diff entirely.
     if is_meta_refresh(&doc) {
         return;
     }

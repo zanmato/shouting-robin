@@ -62,6 +62,10 @@ pub struct PageRecord {
     pub ssr_word_count: Option<u32>,
     pub ssr_h1: Option<String>,
     pub ssr_content_missing: Option<bool>,
+    pub sentence_count: Option<u32>,
+    pub syllable_count: Option<u32>,
+    pub flesch_reading_ease: Option<f32>,
+    pub readability: Option<String>,
 }
 
 #[derive(Debug, Clone)]

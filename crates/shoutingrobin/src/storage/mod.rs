@@ -69,6 +69,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0016_render_mode_and_near_dup_urls",
         include_str!("../../migrations/0016_render_mode_and_near_dup_urls.sql"),
     ),
+    (
+        "0017_readability",
+        include_str!("../../migrations/0017_readability.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -176,8 +180,9 @@ pub async fn insert_page(
             redirect_url, redirect_status,
             title_2, meta_description_2, h1_2, h2_2,
             title_pixel_width, meta_description_pixel_width,
-            ssr_word_count, ssr_h1, ssr_content_missing
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ssr_word_count, ssr_h1, ssr_content_missing,
+            sentence_count, syllable_count, flesch_reading_ease, readability
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
@@ -217,6 +222,10 @@ pub async fn insert_page(
     .bind(record.ssr_word_count.map(|w| w as i64))
     .bind(record.ssr_h1.as_deref())
     .bind(record.ssr_content_missing.map(|b| b as i64))
+    .bind(record.sentence_count.map(|s| s as i64))
+    .bind(record.syllable_count.map(|s| s as i64))
+    .bind(record.flesch_reading_ease.map(|f| f as f64))
+    .bind(record.readability.as_deref())
     .execute(pool)
     .await?;
 
@@ -693,12 +702,17 @@ pub async fn load_pages_for_crawl(
             Option<i64>,
             Option<String>,
             Option<i64>,
+            Option<i64>,
+            Option<i64>,
+            Option<f64>,
+            Option<String>,
         ),
     >(
         r#"
         SELECT url, title_2, meta_description_2, h1_2, h2_2,
                title_pixel_width, meta_description_pixel_width,
-               ssr_word_count, ssr_h1, ssr_content_missing
+               ssr_word_count, ssr_h1, ssr_content_missing,
+               sentence_count, syllable_count, flesch_reading_ease, readability
         FROM pages WHERE crawl_id = ?
         ORDER BY id
         "#,
@@ -1020,6 +1034,10 @@ pub async fn load_pages_for_crawl(
         ssr_word_count: Option<u32>,
         ssr_h1: Option<String>,
         ssr_content_missing: Option<bool>,
+        sentence_count: Option<u32>,
+        syllable_count: Option<u32>,
+        flesch_reading_ease: Option<f32>,
+        readability: Option<String>,
     }
     let secondary_by_url: std::collections::HashMap<String, SecondaryData> = secondary_rows
         .into_iter()
@@ -1035,6 +1053,10 @@ pub async fn load_pages_for_crawl(
                 ssr_word_count,
                 ssr_h1,
                 ssr_content_missing,
+                sentence_count,
+                syllable_count,
+                flesch_reading_ease,
+                readability,
             )| {
                 (
                     url,
@@ -1048,6 +1070,10 @@ pub async fn load_pages_for_crawl(
                         ssr_word_count: ssr_word_count.map(|w| w as u32),
                         ssr_h1,
                         ssr_content_missing: ssr_content_missing.map(|b| b != 0),
+                        sentence_count: sentence_count.map(|s| s as u32),
+                        syllable_count: syllable_count.map(|s| s as u32),
+                        flesch_reading_ease: flesch_reading_ease.map(|f| f as f32),
+                        readability,
                     },
                 )
             },
@@ -1205,6 +1231,10 @@ pub async fn load_pages_for_crawl(
                     ssr_word_count: page_secondary.and_then(|s| s.ssr_word_count),
                     ssr_h1: page_secondary.and_then(|s| s.ssr_h1.clone()),
                     ssr_content_missing: page_secondary.and_then(|s| s.ssr_content_missing),
+                    sentence_count: page_secondary.and_then(|s| s.sentence_count),
+                    syllable_count: page_secondary.and_then(|s| s.syllable_count),
+                    flesch_reading_ease: page_secondary.and_then(|s| s.flesch_reading_ease),
+                    readability: page_secondary.and_then(|s| s.readability.clone()),
                     link_score: page_link_score,
                     backlinks: page_backlinks,
                     hreflang_issues,

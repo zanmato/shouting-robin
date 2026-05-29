@@ -455,6 +455,30 @@ impl Render for DetailsPanel {
                         ),
                         muted,
                     ))
+                    .child(row(
+                        "Avg Words/Sentence",
+                        SharedString::from(match (rec.word_count, rec.sentence_count) {
+                            (Some(words), Some(sentences)) if sentences > 0 => {
+                                format!("{:.1}", words as f32 / sentences as f32)
+                            }
+                            _ => "-".to_string(),
+                        }),
+                        muted,
+                    ))
+                    .child(row(
+                        "Reading Ease",
+                        SharedString::from(
+                            rec.flesch_reading_ease
+                                .map(|s| format!("{s:.1}"))
+                                .unwrap_or_else(|| "-".into()),
+                        ),
+                        muted,
+                    ))
+                    .child(row(
+                        "Readability",
+                        SharedString::from(rec.readability.as_deref().unwrap_or("-").to_string()),
+                        muted,
+                    ))
                     .when(rec.ssr_word_count.is_some(), |el| {
                         el.child(row(
                             "SSR Words",

@@ -72,6 +72,8 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::NearDuplicates,
             IssueFilter::LowContent,
             IssueFilter::SsrContentMissing,
+            IssueFilter::ReadabilityDifficult,
+            IssueFilter::ReadabilityVeryDifficult,
         ],
         ResultTab::Images => &[
             IssueFilter::All,
@@ -555,6 +557,14 @@ pub(super) fn filter_for_tab(
             }
             IssueFilter::SsrContentMissing => {
                 indices.retain(|&idx| pages[idx].ssr_content_missing == Some(true))
+            }
+            IssueFilter::ReadabilityDifficult => indices.retain(|&idx| {
+                pages[idx]
+                    .flesch_reading_ease
+                    .is_some_and(|s| (30.0..50.0).contains(&s))
+            }),
+            IssueFilter::ReadabilityVeryDifficult => {
+                indices.retain(|&idx| pages[idx].flesch_reading_ease.is_some_and(|s| s < 30.0))
             }
             IssueFilter::SlowLcp => {
                 indices.retain(|&idx| pages[idx].lcp_ms.is_some_and(|ms| ms > 4000))

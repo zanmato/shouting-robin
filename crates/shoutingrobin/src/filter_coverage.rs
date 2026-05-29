@@ -1118,6 +1118,45 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         | F::DepthShallow
         | F::DepthMedium
         | F::DepthDeep => same_as_all(),
+
+        F::ReadabilityDifficult => both(
+            &[
+                "/dup-a",
+                "/dup-b",
+                "/multiple-all",
+                "/robots-meta",
+                "/directive-none",
+                "/a11y",
+                "/sd-breadcrumb",
+                "/sd-video",
+                "/sd-howto",
+                "/sd-recipe",
+                "/y",
+            ],
+            &[],
+        ),
+        F::ReadabilityVeryDifficult => both(
+            &[
+                "/",
+                "/long-all",
+                "/exact-dup-a",
+                "/exact-dup-b",
+                "/near-dup-a",
+                "/near-dup-b",
+                "/large",
+                "/images",
+                "/links",
+                "/canonical-self",
+                "/canonical-other",
+                "/sd-article",
+                "/sd-organization",
+                "/sd-microdata",
+                "/redirect-301",
+                "/spa",
+                "/withparam?x=1",
+            ],
+            &[],
+        ),
     }
 }
 

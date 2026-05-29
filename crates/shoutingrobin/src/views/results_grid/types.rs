@@ -133,6 +133,8 @@ pub enum IssueFilter {
     NearDuplicates,
     LowContent,
     SsrContentMissing,
+    ReadabilityDifficult,
+    ReadabilityVeryDifficult,
     SlowLcp,
     SlowCls,
     SlowInp,
@@ -246,6 +248,8 @@ impl IssueFilter {
             IssueFilter::NearDuplicates => "Near Duplicates",
             IssueFilter::LowContent => "Low Content",
             IssueFilter::SsrContentMissing => "SSR Content Missing",
+            IssueFilter::ReadabilityDifficult => "Readability Difficult",
+            IssueFilter::ReadabilityVeryDifficult => "Readability Very Difficult",
             IssueFilter::SlowLcp => "Slow LCP",
             IssueFilter::SlowCls => "Slow CLS",
             IssueFilter::SlowInp => "Slow INP",
@@ -338,6 +342,7 @@ impl IssueFilter {
             | Self::MissingHttps
             | Self::ExactDuplicates
             | Self::SsrContentMissing
+            | Self::ReadabilityVeryDifficult
             | Self::DirectiveNoindex
             | Self::LinkBroken
             | Self::IssueTypeError
@@ -381,6 +386,7 @@ impl IssueFilter {
             | Self::MissingProductImage
             | Self::NearDuplicates
             | Self::LowContent
+            | Self::ReadabilityDifficult
             | Self::SlowLcp
             | Self::SlowCls
             | Self::SlowInp
