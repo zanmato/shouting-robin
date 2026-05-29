@@ -130,7 +130,6 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::SlowCls,
             IssueFilter::SlowInp,
             IssueFilter::SlowTtfb,
-            IssueFilter::AllGoodPerformance,
         ],
         ResultTab::Ecommerce => &[
             IssueFilter::All,
@@ -199,6 +198,18 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::DepthDeep,
         ],
     }
+}
+
+/// Test-facing wrapper: returns the URLs of the pages a given tab+filter
+/// selects. Mirrors exactly what the grid does (builds the same occurrence
+/// counts), so the filter-coverage test can assert filter behavior end-to-end.
+#[cfg(test)]
+pub fn matching_urls(tab: ResultTab, filter: IssueFilter, pages: &[PageRecord]) -> Vec<String> {
+    let occurrence_counts = super::columns::build_occurrence_counts(tab, pages);
+    filter_for_tab(tab, filter, pages, &occurrence_counts)
+        .into_iter()
+        .map(|idx| pages[idx].url.clone())
+        .collect()
 }
 
 pub(super) fn filter_for_tab(
@@ -555,13 +566,6 @@ pub(super) fn filter_for_tab(
             IssueFilter::SlowTtfb => {
                 indices.retain(|&idx| pages[idx].ttfb_ms.is_some_and(|ms| ms > 1800))
             }
-            IssueFilter::AllGoodPerformance => indices.retain(|&idx| {
-                let page = &pages[idx];
-                page.lcp_ms.is_some_and(|ms| ms <= 2500)
-                    && page.cls.is_some_and(|v| v <= 0.1)
-                    && page.inp_ms.is_some_and(|ms| ms <= 200)
-                    && page.ttfb_ms.is_some_and(|ms| ms <= 800)
-            }),
             IssueFilter::SdTypeArticle => indices.retain(|&idx| {
                 pages[idx]
                     .sd_types

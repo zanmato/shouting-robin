@@ -137,7 +137,6 @@ pub enum IssueFilter {
     SlowCls,
     SlowInp,
     SlowTtfb,
-    AllGoodPerformance,
     SdTypeArticle,
     SdTypeProduct,
     SdTypeFaq,
@@ -251,7 +250,6 @@ impl IssueFilter {
             IssueFilter::SlowCls => "Slow CLS",
             IssueFilter::SlowInp => "Slow INP",
             IssueFilter::SlowTtfb => "Slow TTFB",
-            IssueFilter::AllGoodPerformance => "All Good",
             IssueFilter::SdTypeArticle => "Article",
             IssueFilter::SdTypeProduct => "Product",
             IssueFilter::SdTypeFaq => "FAQ",
@@ -316,7 +314,6 @@ impl IssueFilter {
             | Self::MicrodataUrls
             | Self::UrlsInSitemap
             | Self::IsProductPage
-            | Self::AllGoodPerformance
             | Self::SdTypeArticle
             | Self::SdTypeProduct
             | Self::SdTypeFaq
