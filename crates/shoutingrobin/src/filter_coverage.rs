@@ -1113,17 +1113,13 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
 
         F::ReadabilityDifficult => both(
             &[
-                "/dup-a",
-                "/dup-b",
                 "/multiple-all",
                 "/robots-meta",
                 "/directive-none",
-                "/a11y",
-                "/sd-breadcrumb",
-                "/sd-video",
-                "/sd-howto",
-                "/sd-recipe",
+                "/exact-dup-a",
+                "/exact-dup-b",
                 "/y",
+                "/under_score",
             ],
             &[],
         ),
@@ -1131,8 +1127,6 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
             &[
                 "/",
                 "/long-all",
-                "/exact-dup-a",
-                "/exact-dup-b",
                 "/near-dup-a",
                 "/near-dup-b",
                 "/large",
@@ -1143,7 +1137,6 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
                 "/sd-article",
                 "/sd-organization",
                 "/sd-microdata",
-                "/withparam?x=1",
             ],
             &[],
         ),

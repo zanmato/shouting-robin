@@ -32,7 +32,12 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     } else {
         extract_selector_text(&doc, content_selector).unwrap_or_else(|| extract_body_text(&doc))
     };
-    record.word_count = Some(content_text.split_whitespace().count() as u32);
+    record.word_count = Some(
+        content_text
+            .split_whitespace()
+            .filter(|w| w.chars().any(|c| c.is_alphabetic()))
+            .count() as u32,
+    );
     compute_readability(record, &content_text);
     record.content_hash = Some(compute_content_hash(&content_text));
     record.simhash = Some(compute_simhash(&content_text));
@@ -54,7 +59,10 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
 }
 
 fn compute_readability(record: &mut PageRecord, text: &str) {
-    let words: Vec<&str> = text.split_whitespace().collect();
+    let words: Vec<&str> = text
+        .split_whitespace()
+        .filter(|w| w.chars().any(|c| c.is_alphabetic()))
+        .collect();
     let word_count = words.len() as u32;
     if word_count == 0 {
         return;
@@ -102,31 +110,69 @@ fn count_syllables_in_word(word: &str) -> u32 {
         return 0;
     }
     let lower = word.to_ascii_lowercase();
-    let chars: Vec<char> = lower.chars().collect();
-    if chars.is_empty() {
-        return 0;
+
+    // Strip silent suffixes before counting vowel groups.
+    //   [^laeiouy]es  e.g. "makes" → "mak"
+    //   ed (not after t/d)  e.g. "rendered" → "render"
+    //   [^laeiouy]e   e.g. "home" → "hom"
+    let stripped = strip_silent_suffix(&lower);
+
+    // Strip leading y (sometimes silent before a vowel)
+    let stripped = stripped.strip_prefix('y').unwrap_or(stripped);
+
+    if stripped.is_empty() {
+        return 1;
     }
 
-    let vowels = ['a', 'e', 'i', 'o', 'u', 'y'];
+    // Count vowel groups (consecutive vowels = one group)
     let mut count: u32 = 0;
     let mut prev_vowel = false;
-
-    for &ch in &chars {
-        let is_vowel = vowels.contains(&ch);
+    for ch in stripped.chars() {
+        let is_vowel = matches!(ch, 'a' | 'e' | 'i' | 'o' | 'u' | 'y');
         if is_vowel && !prev_vowel {
             count += 1;
         }
         prev_vowel = is_vowel;
     }
 
-    if chars.len() > 2 && chars[chars.len() - 1] == 'e' {
-        let ending = &lower[lower.len().saturating_sub(2)..];
-        if ending != "le" || chars.len() <= 2 {
-            count = count.saturating_sub(1);
+    count.max(1)
+}
+
+/// Strip a silent suffix from a lowered English word.
+/// Order matters: try `[consonant]es` first, then `ed`, then `[consonant]e`.
+fn strip_silent_suffix(word: &str) -> &str {
+    let bytes = word.as_bytes();
+    let len = bytes.len();
+    if len < 3 {
+        return word;
+    }
+
+    // [^laeiouy]es
+    if bytes[len - 1] == b's' && bytes[len - 2] == b'e' {
+        let before = bytes[len - 3];
+        if !matches!(before, b'l' | b'a' | b'e' | b'i' | b'o' | b'u' | b'y') {
+            return &word[..len - 2];
         }
     }
 
-    count.max(1)
+    // ed — but not after 't' or 'd' where -ed adds a syllable
+    // (e.g. "expanded" = 3, "waited" = 2 vs "rendered" = 2, "covered" = 2)
+    if bytes[len - 1] == b'd' && bytes[len - 2] == b'e' && len > 2 {
+        let before = bytes[len - 3];
+        if before != b't' && before != b'd' {
+            return &word[..len - 2];
+        }
+    }
+
+    // [^laeiouy]e
+    if bytes[len - 1] == b'e' {
+        let before = bytes[len - 2];
+        if !matches!(before, b'l' | b'a' | b'e' | b'i' | b'o' | b'u' | b'y') {
+            return &word[..len - 1];
+        }
+    }
+
+    word
 }
 
 fn readability_group(score: f64) -> String {
@@ -166,7 +212,10 @@ pub fn analyze_ssr(record: &mut PageRecord, raw_html: &str, content_selector: &s
     } else {
         extract_selector_text(&doc, content_selector).unwrap_or_else(|| extract_body_text(&doc))
     };
-    let ssr_word_count = content_text.split_whitespace().count() as u32;
+    let ssr_word_count = content_text
+        .split_whitespace()
+        .filter(|w| w.chars().any(|c| c.is_alphabetic()))
+        .count() as u32;
 
     let rendered_words = record.word_count.unwrap_or(0);
     let low_content = rendered_words >= MIN_RENDERED_WORDS
@@ -628,7 +677,7 @@ fn extract_body_text(doc: &Html) -> String {
     let Some(body) = doc.select(&body_sel).next() else {
         return String::new();
     };
-    let mut texts = Vec::new();
+    let mut out = String::new();
     let mut skip_depth: usize = 0;
     for edge in body.traverse() {
         match edge {
@@ -645,21 +694,78 @@ fn extract_body_text(doc: &Html) -> String {
                     }
                 }
                 if skip_depth == 0
-                    && let scraper::node::Node::Text(text) = node.value()
+                    && let scraper::node::Node::Text(t) = node.value()
+                    && !t.trim().is_empty()
                 {
-                    texts.push(&**text);
+                    if !out.is_empty() {
+                        out.push(' ');
+                    }
+                    out.push_str(t.trim());
                 }
             }
             ego_tree::iter::Edge::Close(node) => {
-                if skip_depth > 0
-                    && let scraper::node::Node::Element(_) = node.value()
+                if skip_depth > 0 {
+                    if let scraper::node::Node::Element(_) = node.value() {
+                        skip_depth -= 1;
+                    }
+                } else if let scraper::node::Node::Element(el) = node.value()
+                    && is_block_element(el.name())
+                    && !out.is_empty()
+                    && !out.trim_end().ends_with('.')
+                    && !out.trim_end().ends_with('!')
+                    && !out.trim_end().ends_with('?')
                 {
-                    skip_depth -= 1;
+                    out.push('.');
+                    out.push(' ');
                 }
             }
         }
     }
-    texts.join(" ")
+    out
+}
+
+fn is_block_element(tag: &str) -> bool {
+    matches!(
+        tag,
+        "address"
+            | "article"
+            | "aside"
+            | "blockquote"
+            | "dd"
+            | "details"
+            | "dialog"
+            | "div"
+            | "dl"
+            | "dt"
+            | "figcaption"
+            | "figure"
+            | "footer"
+            | "form"
+            | "h1"
+            | "h2"
+            | "h3"
+            | "h4"
+            | "h5"
+            | "h6"
+            | "header"
+            | "hr"
+            | "li"
+            | "main"
+            | "nav"
+            | "ol"
+            | "p"
+            | "pre"
+            | "section"
+            | "summary"
+            | "table"
+            | "tbody"
+            | "td"
+            | "tfoot"
+            | "th"
+            | "thead"
+            | "tr"
+            | "ul"
+    )
 }
 
 fn extract_selector_text(doc: &Html, selector_str: &str) -> Option<String> {
@@ -1497,5 +1603,49 @@ mod tests {
         assert_eq!(r.outlinks.len(), 2);
         assert!(!r.outlinks[0].csr_only);
         assert!(!r.outlinks[1].csr_only);
+    }
+
+    #[test]
+    fn flesch_simple_sentence() {
+        let r = analyze(r#"<html><body><p>The cat sat on the mat.</p></body></html>"#);
+        assert_eq!(r.word_count, Some(6));
+        assert_eq!(r.sentence_count, Some(1));
+        assert_eq!(r.syllable_count, Some(6));
+        assert!((r.flesch_reading_ease.unwrap() - 116.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn flesch_conversational_text() {
+        let r = analyze(
+            r#"<html><body><p>This is an easy text. It is conversational. People can read it without any trouble.</p></body></html>"#,
+        );
+        assert_eq!(r.word_count, Some(15));
+        assert_eq!(r.sentence_count, Some(3));
+        assert_eq!(r.syllable_count, Some(24));
+        // score = 206.835 - 1.015 * 5 - 84.6 * (24/15) = 66.4
+        assert!((r.flesch_reading_ease.unwrap() - 66.4).abs() < 0.5);
+    }
+
+    #[test]
+    fn flesch_academic_text() {
+        let r = analyze(
+            r#"<html><body><p>The algorithmic evaluation of textual comprehensibility demonstrates a statistically significant inverse correlation with polysyllabic lexical utilization and expanded syntactic articulation.</p></body></html>"#,
+        );
+        assert_eq!(r.word_count, Some(20));
+        assert_eq!(r.sentence_count, Some(1));
+        // "expanded" keeps 3 syllables (ed after d not stripped), "demonstrates" drops to 3 (es stripped)
+        assert_eq!(r.syllable_count, Some(64));
+    }
+
+    #[test]
+    fn flesch_redirect_page() {
+        let r = analyze(
+            r#"<html><head><title>Redirect</title></head><body><p>Redirecting to <a href="/index.html">home</a>...</p></body></html>"#,
+        );
+        assert_eq!(r.word_count, Some(3));
+        assert_eq!(r.sentence_count, Some(1));
+        assert_eq!(r.syllable_count, Some(6));
+        // score = 206.835 - 1.015 * 3 - 84.6 * 2 = 34.6
+        assert!((r.flesch_reading_ease.unwrap() - 34.6).abs() < 0.5);
     }
 }

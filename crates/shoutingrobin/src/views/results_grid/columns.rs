@@ -382,16 +382,33 @@ pub(super) fn is_mono_column(key: &str) -> bool {
 }
 
 pub(super) fn compare_numeric(a: &str, b: &str) -> std::cmp::Ordering {
-    let a_parsed = a.parse::<f64>();
-    let b_parsed = b.parse::<f64>();
+    let a_parsed = parse_numeric(a);
+    let b_parsed = parse_numeric(b);
     match (a_parsed, b_parsed) {
-        (Ok(a_num), Ok(b_num)) => a_num
+        (Some(a_num), Some(b_num)) => a_num
             .partial_cmp(&b_num)
             .unwrap_or(std::cmp::Ordering::Equal),
-        (Ok(_), Err(_)) => std::cmp::Ordering::Less,
-        (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
-        (Err(_), Err(_)) => a.cmp(b),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.cmp(b),
     }
+}
+
+fn parse_numeric(s: &str) -> Option<f64> {
+    if let Ok(v) = s.parse::<f64>() {
+        return Some(v);
+    }
+    let trimmed = s.trim();
+    let end = trimmed
+        .char_indices()
+        .rev()
+        .find(|(_, c)| c.is_ascii_digit())
+        .map(|(i, _)| i + 1)
+        .unwrap_or(0);
+    if end == 0 {
+        return None;
+    }
+    trimmed[..end].parse::<f64>().ok()
 }
 
 fn col(key: &str, name: &str, width: f32, fixed: Option<ColumnFixed>) -> Column {

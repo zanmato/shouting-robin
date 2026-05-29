@@ -3,128 +3,19 @@ use crate::app_settings::AppSettings;
 use crate::settings::Settings;
 use gpui::{
     App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, Render, SharedString,
-    Styled, Subscription, Window, px, rems,
+    Styled, Window, px, rems,
 };
 use gpui_component::ThemeRegistry;
 use gpui_component::{
     ActiveTheme, Sizable, Theme,
-    input::{InputEvent, InputState, NumberInput, NumberInputEvent, StepAction},
     select::{SearchableVec, Select, SelectEvent, SelectItem, SelectState},
     setting::{
-        NumberFieldOptions, RenderOptions, SettingField, SettingGroup, SettingItem, SettingPage,
+        NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings as GpuiSettings,
     },
 };
-use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-
-struct NumberFieldState {
-    input: Entity<InputState>,
-    last_value: f64,
-    _subscriptions: Vec<Subscription>,
-}
-
-/// Build a number setting field that persists on BOTH typing and +/- stepper clicks.
-///
-/// gpui-component's built-in `SettingField::number_input` only persists on typed
-/// changes: its stepper handler updates the input text via `InputState::set_value`,
-/// which suppresses the `Change` event the persistence path listens for. This
-/// reimplementation wires the `Step` event straight to the setter so the stepper
-/// persists too.
-fn number_field<V, S>(
-    options: NumberFieldOptions,
-    value: V,
-    set_value: S,
-) -> SettingField<SharedString>
-where
-    V: Fn(&App) -> f64 + 'static,
-    S: Fn(f64, &mut App) + 'static,
-{
-    let value = Rc::new(value);
-    let set_value: Rc<dyn Fn(f64, &mut App)> = Rc::new(set_value);
-
-    SettingField::render(
-        move |render_options: &RenderOptions, window: &mut Window, cx: &mut App| {
-            let current = value(cx);
-            let key = SharedString::from(format!(
-                "sr-number-{}-{}-{}",
-                render_options.page_ix, render_options.group_ix, render_options.item_ix
-            ));
-            let options = options.clone();
-            let set_value = set_value.clone();
-
-            let state = window.use_keyed_state(key, cx, move |window, cx| {
-                let input = cx.new(|cx| {
-                    let mut state = InputState::new(window, cx);
-                    state.set_value(SharedString::from(current.to_string()), window, cx);
-                    state
-                });
-
-                let step_sub = cx.subscribe_in(&input, window, {
-                    let options = options.clone();
-                    let set_value = set_value.clone();
-                    move |_state: &mut NumberFieldState,
-                          input,
-                          event: &NumberInputEvent,
-                          window,
-                          cx| {
-                        let NumberInputEvent::Step(action) = event;
-                        input.update(cx, |input, cx| {
-                            let Ok(current) = input.value().parse::<f64>() else {
-                                return;
-                            };
-                            let stepped = if *action == StepAction::Increment {
-                                current + options.step
-                            } else {
-                                current - options.step
-                            };
-                            let clamped = stepped.clamp(options.min, options.max);
-                            set_value(clamped, cx);
-                            input.set_value(SharedString::from(clamped.to_string()), window, cx);
-                        });
-                    }
-                });
-
-                let change_sub = cx.subscribe_in(&input, window, {
-                    let options = options.clone();
-                    let set_value = set_value.clone();
-                    move |state: &mut NumberFieldState, input, event: &InputEvent, window, cx| {
-                        if !matches!(event, InputEvent::Change) {
-                            return;
-                        }
-                        input.update(cx, |input, cx| {
-                            let Ok(parsed) = input.value().parse::<f64>() else {
-                                return;
-                            };
-                            let clamped = parsed.clamp(options.min, options.max);
-                            if (clamped - state.last_value).abs() < f64::EPSILON {
-                                return;
-                            }
-                            set_value(clamped, cx);
-                            state.last_value = clamped;
-                            if (clamped - parsed).abs() > f64::EPSILON {
-                                input.set_value(
-                                    SharedString::from(clamped.to_string()),
-                                    window,
-                                    cx,
-                                );
-                            }
-                        });
-                    }
-                });
-
-                NumberFieldState {
-                    input,
-                    last_value: current,
-                    _subscriptions: vec![step_sub, change_sub],
-                }
-            });
-
-            NumberInput::new(&state.read(cx).input).with_size(render_options.size)
-        },
-    )
-}
 
 #[derive(Debug, Clone)]
 struct FontOption {
@@ -336,7 +227,7 @@ impl SettingsView {
                 SettingGroup::new().title("Limits").items(vec![
                     SettingItem::new(
                         "Max Pages",
-                        number_field(
+                        SettingField::number_input(
                             NumberFieldOptions {
                                 min: 0.0,
                                 max: 1000000.0,
@@ -363,7 +254,7 @@ impl SettingsView {
                     .description("Maximum pages to crawl (0 = unlimited)."),
                     SettingItem::new(
                         "Max Concurrent Requests",
-                        number_field(
+                        SettingField::number_input(
                             NumberFieldOptions {
                                 min: 1.0,
                                 max: 100.0,
@@ -394,7 +285,7 @@ impl SettingsView {
                     ),
                     SettingItem::new(
                         "Request Timeout (seconds)",
-                        number_field(
+                        SettingField::number_input(
                             NumberFieldOptions {
                                 min: 5.0,
                                 max: 300.0,
@@ -425,7 +316,7 @@ impl SettingsView {
                 SettingGroup::new().title("Rate Limiting").items(vec![
                     SettingItem::new(
                         "Delay Between Requests (ms)",
-                        number_field(
+                        SettingField::number_input(
                             NumberFieldOptions {
                                 min: 0.0,
                                 max: 60000.0,
@@ -504,7 +395,7 @@ impl SettingsView {
                     .description("Discover URLs from XML sitemaps."),
                     SettingItem::new(
                         "Near Duplicate Threshold (%)",
-                        number_field(
+                        SettingField::number_input(
                             NumberFieldOptions {
                                 min: 50.0,
                                 max: 100.0,
