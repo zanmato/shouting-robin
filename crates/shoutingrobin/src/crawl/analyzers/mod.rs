@@ -618,6 +618,60 @@ mod tests {
     }
 
     #[test]
+    fn extracts_title_with_pipe_from_realistic_html() {
+        let r = analyze(
+            r#"<!doctype html><html lang="sv"><head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>Diva Gummi Fasta Ringar 145mm | ByLynga</title>
+            <link rel="preconnect" href="https://assets.example.com" crossorigin>
+            <link rel="stylesheet" crossorigin href="/assets/index.css">
+            <meta name="description" content="Diva Gummi Fasta Ringar 145mm från ByLynga. Alltid snabba leveranser!">
+            <link rel="canonical" href="https://www.example.com/se/produkt/diva-145mm">
+            </head><body>
+            <div id="app"></div>
+            <script type="module" src="/assets/index.js"></script>
+            </body></html>"#,
+        );
+        assert_eq!(
+            r.title.as_deref(),
+            Some("Diva Gummi Fasta Ringar 145mm | ByLynga"),
+            "title should contain the full text including the pipe character"
+        );
+        assert_eq!(
+            r.meta_description.as_deref(),
+            Some("Diva Gummi Fasta Ringar 145mm från ByLynga. Alltid snabba leveranser!")
+        );
+        assert_eq!(
+            r.canonical.as_deref(),
+            Some("https://www.example.com/se/produkt/diva-145mm")
+        );
+        assert_eq!(r.title_count, 1);
+    }
+
+    #[test]
+    fn title_with_multiple_pipes_and_special_chars() {
+        let r = analyze(
+            r#"<html><head><title>Product: "Special" | Category | Site Name</title></head><body></body></html>"#,
+        );
+        assert_eq!(
+            r.title.as_deref(),
+            Some("Product: \"Special\" | Category | Site Name")
+        );
+    }
+
+    #[test]
+    fn title_from_html_with_svg_title_in_body() {
+        let r = analyze(
+            r#"<html><head><title>Page Title</title></head><body>
+            <svg><title>SVG Icon Title</title><circle/></svg>
+            </body></html>"#,
+        );
+        assert_eq!(r.title.as_deref(), Some("Page Title"));
+        assert_eq!(r.title_count, 2);
+    }
+
+    #[test]
     fn counts_multiple_headings() {
         let r = analyze(
             r#"<html><head><title>T</title></head><body>

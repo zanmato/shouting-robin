@@ -88,9 +88,7 @@ pub(super) fn flat_cell_text(
                 }
             }
         }
-        FlatRow::IssuesRow { .. } | FlatRow::LinkRow { .. } => {
-            SharedString::default()
-        }
+        FlatRow::IssuesRow { .. } | FlatRow::LinkRow { .. } => SharedString::default(),
         FlatRow::DirectoryAggregate {
             path,
             depth,

@@ -16,6 +16,9 @@ mod themes_manager;
 mod ui;
 mod views;
 
+#[cfg(test)]
+mod filter_coverage;
+
 use assets::Assets;
 use gpui::{AppContext, SharedString, WindowBounds, WindowOptions, px, size};
 use gpui_component::{Theme, ThemeRegistry};

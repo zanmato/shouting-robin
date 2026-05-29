@@ -345,11 +345,6 @@ impl Render for DetailsPanel {
                         SharedString::from(format_bytes(rec.size_bytes)),
                         muted,
                     ))
-                    .child(row(
-                        "Response Time",
-                        SharedString::from(format!("{}ms", rec.response_time.as_millis())),
-                        muted,
-                    ))
                     .child(row("Indexability", indexability_tag, muted))
                     .child(row("Canonical", or_dash(&rec.canonical), muted))
                     .when_some(rec.redirect_url.clone(), |el, redirect| {
@@ -711,14 +706,7 @@ impl Render for DetailsPanel {
                                 border,
                                 panel2,
                             )))
-                            .child(div().flex_1().child(vital_tile(
-                                "Resp",
-                                SharedString::from(format!("{}ms", rec.response_time.as_millis())),
-                                None,
-                                muted,
-                                border,
-                                panel2,
-                            )))
+                            .child(div().flex_1())
                             .child(div().flex_1()),
                     )
                     .into_any_element();
@@ -767,6 +755,32 @@ impl Render for DetailsPanel {
                         ),
                         muted,
                     ))
+                    .when(!rec.near_duplicate_urls.is_empty(), |el| {
+                        let mut urls_body = div().flex().flex_col().gap_0p5();
+                        for dup_url in &rec.near_duplicate_urls {
+                            urls_body = urls_body.child(
+                                div()
+                                    .text_xs()
+                                    .font_family(cx.theme().mono_font_family.clone())
+                                    .text_color(fg)
+                                    .truncate()
+                                    .child(SharedString::from(dup_url.clone())),
+                            );
+                        }
+                        el.child(
+                            div()
+                                .pl(px(0.))
+                                .pt_1()
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .pb_0p5()
+                                        .child("Duplicate Pages:"),
+                                )
+                                .child(urls_body),
+                        )
+                    })
                     .child(row(
                         "Closest Similarity",
                         SharedString::from(
@@ -806,8 +820,8 @@ impl Render for DetailsPanel {
 
                 let mut images_body = div().flex().flex_col().gap_1();
                 if rec.images.is_empty() {
-                    images_body =
-                        images_body.child(div().text_color(muted).child("No images found"));
+                    images_body = images_body
+                        .child(div().text_color(muted).text_sm().child("No images found"));
                 } else {
                     for image in &rec.images {
                         let alt_tag = if image.has_alt_attr {
@@ -1053,7 +1067,12 @@ impl Render for DetailsPanel {
                             "Inlinks (From)",
                             None,
                             Some(
-                                SharedString::from(format!("{} links", rec.backlinks.len()))
+                                div()
+                                    .text_xs()
+                                    .child(SharedString::from(format!(
+                                        "{} links",
+                                        rec.backlinks.len()
+                                    )))
                                     .into_any_element(),
                             ),
                             muted,

@@ -7,5 +7,7 @@ mod grid;
 mod types;
 
 pub use filter::filters_for_tab;
+#[cfg(test)]
+pub use filter::matching_urls;
 pub use grid::ResultsGrid;
 pub use types::{IssueFilter, ResultsGridEvent};

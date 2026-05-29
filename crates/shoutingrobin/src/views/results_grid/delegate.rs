@@ -96,8 +96,7 @@ impl ResultsDelegate {
                 | FlatRow::Hreflang { page, .. }
                 | FlatRow::SdItem { page, .. }
                 | FlatRow::LinkRow { page, .. } => *page,
-                FlatRow::IssuesRow { .. }
-                | FlatRow::DirectoryAggregate { .. } => return None,
+                FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => return None,
             };
             self.all_pages.get(page_index)
         } else {
@@ -271,6 +270,7 @@ impl ResultsDelegate {
         if self.active_tab == ResultTab::SiteStructure {
             self.flat_rows =
                 build_directory_aggregates(&self.all_pages, self.root_origin.as_deref());
+            self.filter_flat_rows();
             return;
         }
         if self.active_tab == ResultTab::Links {
@@ -378,8 +378,7 @@ impl ResultsDelegate {
                 | FlatRow::Hreflang { page, .. }
                 | FlatRow::SdItem { page, .. }
                 | FlatRow::LinkRow { page, .. } => *page,
-                FlatRow::IssuesRow { .. }
-                | FlatRow::DirectoryAggregate { .. } => return true,
+                FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => return true,
             };
             let Some(page) = self.all_pages.get(page_index) else {
                 return false;
@@ -787,8 +786,7 @@ impl TableDelegate for ResultsDelegate {
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. }
                     | FlatRow::LinkRow { page, .. } => *page,
-                    FlatRow::IssuesRow { .. }
-                    | FlatRow::DirectoryAggregate { .. } => 0,
+                    FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => 0,
                 };
 
                 let b_page = match b {
@@ -798,8 +796,7 @@ impl TableDelegate for ResultsDelegate {
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. }
                     | FlatRow::LinkRow { page, .. } => *page,
-                    FlatRow::IssuesRow { .. }
-                    | FlatRow::DirectoryAggregate { .. } => 0,
+                    FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => 0,
                 };
                 let a_record = &self.all_pages[a_page];
                 let b_record = &self.all_pages[b_page];

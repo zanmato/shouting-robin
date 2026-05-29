@@ -37,6 +37,7 @@ pub struct PageRecord {
     pub simhash: Option<u64>,
     pub closest_similarity: Option<u8>,
     pub near_duplicate_count: Option<u32>,
+    pub near_duplicate_urls: Vec<String>,
     pub in_sitemap: Option<bool>,
     pub sitemap_url: Option<String>,
     pub og_type: Option<String>,

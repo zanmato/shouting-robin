@@ -1,6 +1,8 @@
 use sqlx::SqlitePool;
 
-use crate::crawl::event::{A11yIssue, ImageRef, PageRecord, SdFormat, SdIssue, SdItem, SdSeverity};
+use crate::crawl::event::{
+    A11yIssue, ImageRef, Outlink, PageRecord, SdFormat, SdIssue, SdItem, SdSeverity,
+};
 
 const MIGRATIONS: &[(&str, &str)] = &[
     (
@@ -63,6 +65,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0015_ssr_content",
         include_str!("../../migrations/0015_ssr_content.sql"),
     ),
+    (
+        "0016_render_mode_and_near_dup_urls",
+        include_str!("../../migrations/0016_render_mode_and_near_dup_urls.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -102,13 +108,19 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-pub async fn create_crawl(pool: &SqlitePool, root_url: &str) -> Result<i64, sqlx::Error> {
+pub async fn create_crawl(
+    pool: &SqlitePool,
+    root_url: &str,
+    render_mode: &str,
+) -> Result<i64, sqlx::Error> {
     let now = chrono::Utc::now().timestamp();
-    let result = sqlx::query("INSERT INTO crawls (root_url, started_at) VALUES (?, ?)")
-        .bind(root_url)
-        .bind(now)
-        .execute(pool)
-        .await?;
+    let result =
+        sqlx::query("INSERT INTO crawls (root_url, started_at, render_mode) VALUES (?, ?, ?)")
+            .bind(root_url)
+            .bind(now)
+            .bind(render_mode)
+            .execute(pool)
+            .await?;
     Ok(result.last_insert_rowid())
 }
 
@@ -553,13 +565,14 @@ pub struct CrawlRow {
     pub started_at: i64,
     pub finished_at: Option<i64>,
     pub page_count: i64,
+    pub render_mode: String,
 }
 
 pub async fn list_crawls(pool: &SqlitePool) -> Result<Vec<CrawlRow>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (i64, String, i64, Option<i64>, i64)>(
+    let rows = sqlx::query_as::<_, (i64, String, i64, Option<i64>, i64, String)>(
         r#"
         SELECT c.id, c.root_url, c.started_at, c.finished_at,
-               COUNT(p.id) as page_count
+               COUNT(p.id) as page_count, c.render_mode
         FROM crawls c
         LEFT JOIN pages p ON p.crawl_id = c.id
         GROUP BY c.id
@@ -573,12 +586,13 @@ pub async fn list_crawls(pool: &SqlitePool) -> Result<Vec<CrawlRow>, sqlx::Error
     Ok(rows
         .into_iter()
         .map(
-            |(id, root_url, started_at, finished_at, page_count)| CrawlRow {
+            |(id, root_url, started_at, finished_at, page_count, render_mode)| CrawlRow {
                 id,
                 root_url,
                 started_at,
                 finished_at,
                 page_count,
+                render_mode,
             },
         )
         .collect())
@@ -633,6 +647,28 @@ pub async fn load_pages_for_crawl(
     .fetch_all(pool)
     .await?;
 
+    let robots_rows = sqlx::query_as::<_, (String, Option<String>)>(
+        r#"
+        SELECT url, robots
+        FROM pages WHERE crawl_id = ?
+        ORDER BY id
+        "#,
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+
+    let outlink_rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
+        r#"
+        SELECT src_url, dst_url, anchor, rel
+        FROM links WHERE crawl_id = ?
+        ORDER BY id
+        "#,
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+
     let redirect_rows = sqlx::query_as::<_, (String, Option<String>, Option<i64>)>(
         r#"
         SELECT url, redirect_url, redirect_status
@@ -679,10 +715,11 @@ pub async fn load_pages_for_crawl(
             Option<i64>,
             Option<i64>,
             Option<i64>,
+            Option<String>,
         ),
     >(
         r#"
-        SELECT url, hash, simhash, closest_similarity, near_duplicate_count
+        SELECT url, hash, simhash, closest_similarity, near_duplicate_count, near_duplicate_urls_json
         FROM pages WHERE crawl_id = ?
         ORDER BY id
         "#,
@@ -951,6 +988,21 @@ pub async fn load_pages_for_crawl(
         headers_by_url.insert(url.clone(), headers);
     }
 
+    let robots_by_url: std::collections::HashMap<String, String> = robots_rows
+        .into_iter()
+        .filter_map(|(url, robots)| robots.map(|r| (url, r)))
+        .collect();
+
+    let mut outlinks_by_url: std::collections::HashMap<String, Vec<Outlink>> =
+        std::collections::HashMap::new();
+    for (src_url, dst_url, anchor, rel) in outlink_rows {
+        outlinks_by_url.entry(src_url).or_default().push(Outlink {
+            dst_url,
+            anchor,
+            rel,
+        });
+    }
+
     let redirect_by_url: std::collections::HashMap<String, (String, Option<u16>)> = redirect_rows
         .into_iter()
         .filter_map(|(url, redirect, status)| {
@@ -1036,7 +1088,14 @@ pub async fn load_pages_for_crawl(
                         hreflang_issues_json,
                     ),
                 ),
-                (_, content_hash, simhash, closest_similarity, near_duplicate_count),
+                (
+                    _,
+                    content_hash,
+                    simhash,
+                    closest_similarity,
+                    near_duplicate_count,
+                    near_duplicate_urls_json,
+                ),
             )| {
                 let is_internal = is_same_domain(root_url, &url);
                 let images = images_by_url.remove(&url).unwrap_or_default();
@@ -1078,6 +1137,8 @@ pub async fn load_pages_for_crawl(
                 let page_a11y_issues = a11y_by_url.remove(&url).unwrap_or_default();
                 let page_sd_issues = sd_issues_by_url.remove(&url).unwrap_or_default();
                 let page_headers = headers_by_url.remove(&url).unwrap_or_default();
+                let page_robots = robots_by_url.get(&url).cloned();
+                let page_outlinks = outlinks_by_url.remove(&url).unwrap_or_default();
                 let page_redirect = redirect_by_url.get(&url).cloned();
                 let page_secondary = secondary_by_url.get(&url);
                 let page_link_score = link_scores.get(&url).copied();
@@ -1093,6 +1154,8 @@ pub async fn load_pages_for_crawl(
                     h1,
                     h2,
                     canonical,
+                    robots: page_robots,
+                    outlinks: page_outlinks,
                     word_count: word_count.map(|w| w as u32),
                     depth: depth.unwrap_or(0) as u32,
                     is_internal,
@@ -1115,6 +1178,10 @@ pub async fn load_pages_for_crawl(
                     simhash: simhash.map(|h| h as u64),
                     closest_similarity: closest_similarity.map(|s| s as u8),
                     near_duplicate_count: near_duplicate_count.map(|c| c as u32),
+                    near_duplicate_urls: near_duplicate_urls_json
+                        .as_deref()
+                        .and_then(|j| serde_json::from_str(j).ok())
+                        .unwrap_or_default(),
                     in_sitemap: page_in_sitemap,
                     sitemap_url: page_sitemap_url,
                     og_type,
@@ -1183,15 +1250,21 @@ pub async fn load_simhashes_for_crawl(
 pub async fn update_near_duplicates(
     pool: &SqlitePool,
     crawl_id: i64,
-    results: &[(String, u8, u32)],
+    results: &[(String, u8, u32, Vec<String>)],
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
-    for (url, similarity, count) in results {
+    for (url, similarity, count, dup_urls) in results {
+        let dup_urls_json = if dup_urls.is_empty() {
+            None
+        } else {
+            serde_json::to_string(dup_urls).ok()
+        };
         sqlx::query(
-            "UPDATE pages SET closest_similarity = ?, near_duplicate_count = ? WHERE crawl_id = ? AND url = ?",
+            "UPDATE pages SET closest_similarity = ?, near_duplicate_count = ?, near_duplicate_urls_json = ? WHERE crawl_id = ? AND url = ?",
         )
         .bind(*similarity as i64)
         .bind(*count as i64)
+        .bind(dup_urls_json)
         .bind(crawl_id)
         .bind(url)
         .execute(&mut *tx)

@@ -3,6 +3,7 @@ pub struct SimilarityResult {
     pub url: String,
     pub closest_similarity_percent: u8,
     pub near_duplicate_count: u32,
+    pub near_duplicate_urls: Vec<String>,
 }
 
 pub fn find_near_duplicates(
@@ -17,6 +18,7 @@ pub fn find_near_duplicates(
 
     let mut best_match = vec![0u8; pages.len()];
     let mut counts = vec![0u32; pages.len()];
+    let mut dup_urls: Vec<Vec<String>> = vec![Vec::new(); pages.len()];
 
     for index in 0..pages.len() {
         for other in (index + 1)..pages.len() {
@@ -33,6 +35,8 @@ pub fn find_near_duplicates(
             if !is_exact {
                 counts[index] += 1;
                 counts[other] += 1;
+                dup_urls[index].push(pages[other].0.clone());
+                dup_urls[other].push(pages[index].0.clone());
             }
 
             if similarity > best_match[index] {
@@ -51,6 +55,7 @@ pub fn find_near_duplicates(
                 url: pages[index].0.clone(),
                 closest_similarity_percent: best_match[index],
                 near_duplicate_count: counts[index],
+                near_duplicate_urls: std::mem::take(&mut dup_urls[index]),
             });
         }
     }
