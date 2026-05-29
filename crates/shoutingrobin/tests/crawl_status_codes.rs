@@ -154,7 +154,7 @@ fn crawl_test_site_with_mode(
         )
     };
 
-    let _ = cancel.clone();
+    let _cancel = cancel;
     rt.spawn(async move {
         fut.await;
     });
@@ -239,7 +239,7 @@ fn test_http_crawl() {
 
     let pages = crawl_test_site(&root_url);
 
-    let _ = server.kill();
+    server.kill();
 
     assert!(!pages.is_empty(), "crawl should discover pages");
 
@@ -431,7 +431,7 @@ fn test_chrome_crawl() {
         Duration::from_secs(120),
     );
 
-    let _ = server.kill();
+    server.kill();
 
     assert!(!pages.is_empty(), "crawl should discover pages");
 

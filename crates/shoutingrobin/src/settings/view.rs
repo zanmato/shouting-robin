@@ -156,7 +156,7 @@ impl SettingsView {
         };
 
         let db = AppDatabase::global(cx).clone();
-        let key_clone = key.clone();
+        let key_clone = key;
         let generations = self.save_generations.clone();
 
         let task = cx.spawn(async move |_, cx| {
@@ -472,7 +472,7 @@ impl SettingsView {
                                 )
                             },
                             {
-                                let view_handle = view_handle.clone();
+                                let view_handle = view_handle;
                                 move |val: SharedString, cx: &mut App| {
                                     let theme_name = val.to_string();
                                     AppSettings::global_mut(cx).settings.appearance.theme =
@@ -495,7 +495,7 @@ impl SettingsView {
                             },
                         )
                         .default_value(SharedString::from(
-                            default_settings.appearance.theme.clone(),
+                            default_settings.appearance.theme,
                         )),
                     )
                     .description("Choose the color theme for the application."),
@@ -504,7 +504,7 @@ impl SettingsView {
                     SettingItem::new(
                         "UI Font",
                         SettingField::render({
-                            let ui_font_select = ui_font_select.clone();
+                            let ui_font_select = ui_font_select;
                             move |options, _window, cx| {
                                 let theme_font = cx.theme().font_family.to_string();
                                 if let Some(state) = &ui_font_select {
@@ -526,7 +526,7 @@ impl SettingsView {
                     SettingItem::new(
                         "Monospace Font",
                         SettingField::render({
-                            let mono_font_select = mono_font_select.clone();
+                            let mono_font_select = mono_font_select;
                             move |options, _window, cx| {
                                 let theme_font = cx.theme().mono_font_family.to_string();
                                 if let Some(state) = &mono_font_select {

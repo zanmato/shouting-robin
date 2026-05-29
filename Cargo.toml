@@ -86,6 +86,10 @@ shoutingrobin-ui = { path = "crates/ui" }
 dbg_macro = "deny"
 todo = "deny"
 type_complexity = "allow"
+redundant_clone = "warn"
+manual_let_else = "warn"
+needless_pass_by_value = "warn"
+if_not_else = "warn"
 
 [profile.release]
 opt-level = 3

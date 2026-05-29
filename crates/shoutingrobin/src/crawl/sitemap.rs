@@ -57,9 +57,8 @@ async fn expand_sitemap(
     }
     visited.insert(url.to_string());
 
-    let body = match fetch_url(url).await {
-        Ok(b) => b,
-        Err(_) => return,
+    let Ok(body) = fetch_url(url).await else {
+        return;
     };
 
     if let Some(child_sitemaps) = parse_sitemap_index(&body) {

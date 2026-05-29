@@ -545,7 +545,7 @@ impl TableDelegate for ResultsDelegate {
             .size_full()
             .text_xs()
             .text_color(cx.theme().muted_foreground)
-            .child(column.name.clone())
+            .child(column.name)
     }
 
     fn render_td(
