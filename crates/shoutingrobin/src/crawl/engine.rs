@@ -7,7 +7,7 @@ use std::time::Duration;
 use flume::{Receiver, Sender};
 use gpui::{App, Global};
 use spider::features::chrome_common::{
-    RequestInterceptConfiguration, WaitForSelector, WebAutomation,
+    RequestInterceptConfiguration, WaitForIdleNetwork, WaitForSelector, WebAutomation,
 };
 use spider::website::Website;
 use sqlx::SqlitePool;
@@ -192,12 +192,21 @@ impl CrawlEngine {
                         .saturating_sub(5)
                         .clamp(3, 15);
                     website
-                        .with_chrome_intercept(RequestInterceptConfiguration::new(true))
+                        .with_chrome_intercept(RequestInterceptConfiguration::new(
+                            config.block_images,
+                        ))
                         .with_stealth(true)
                         .with_wait_for_idle_dom(Some(WaitForSelector::new(
                             Some(Duration::from_secs(wait_cap)),
                             "body".into(),
                         )))
+                        // Wait until the network is almost idle so that the
+                        // resources Chrome fetches to render the page are
+                        // present in the Resource Timing buffer when we harvest
+                        // them. Idle DOM alone returns before assets settle.
+                        .with_wait_for_almost_idle_network0(Some(WaitForIdleNetwork::new(Some(
+                            Duration::from_secs(wait_cap),
+                        ))))
                         .with_automation_scripts(Some(automation_map))
                         .with_evaluate_on_new_document(Some(Box::new(
                             PERF_OBSERVER_JS.to_string(),
@@ -266,6 +275,11 @@ impl CrawlEngine {
                 let mut total: u64 = 0;
                 let mut inlink_counts: std::collections::HashMap<String, (u32, u32)> =
                     std::collections::HashMap::new();
+                // Resource URLs already emitted as their own rows. The same
+                // asset (a shared stylesheet, say) shows up on most pages, so
+                // we record each one once.
+                let mut seen_resources: std::collections::HashSet<String> =
+                    std::collections::HashSet::new();
                 tracing::info!("page pump started, waiting for pages...");
                 loop {
                     let mut page = match rx.recv().await {
@@ -305,8 +319,19 @@ impl CrawlEngine {
                                 .next()
                                 .unwrap_or(ct_str)
                                 .trim()
+                                // Chrome's CDP can hand back header values still
+                                // wrapped in JSON quotes (e.g. "\"text/html\"").
+                                .trim_matches('"')
                                 .to_string(),
                         );
+                    }
+                    // Subresources fetched via full-resource crawling arrive
+                    // without response headers, so fall back to the URL's file
+                    // extension. Without this every resource is later defaulted
+                    // to text/html, leaving the Internal tab's CSS/JS/Images
+                    // filters empty.
+                    if record.content_type.is_none() {
+                        record.content_type = content_type_from_url(&record.url);
                     }
                     if let Some(ref headers) = page.headers {
                         record.headers = headers
@@ -340,12 +365,14 @@ impl CrawlEngine {
                         );
                     }
 
+                    let mut resource_timings: Vec<ResourceTiming> = Vec::new();
                     if chrome_mode {
                         if page.get_chrome_page().is_some() {
                             collect_performance_metrics(&page, &mut record).await;
                             if let Some(axe_js) = axe_js.as_deref() {
                                 collect_a11y_violations(&page, &mut record, axe_js).await;
                             }
+                            resource_timings = collect_resource_timings(&page).await;
                         } else {
                             tracing::warn!(
                                 url = %record.url,
@@ -413,6 +440,51 @@ impl CrawlEngine {
                     {
                         tracing::error!(error=%e, "failed to send page event");
                     }
+
+                    // Emit the resources Chrome loaded for this page as their
+                    // own rows (CSS/JS/images/fonts), deduplicated across the
+                    // crawl. No body is fetched or parsed here.
+                    for resource in resource_timings {
+                        if !resource.url.starts_with("http")
+                            || !seen_resources.insert(resource.url.clone())
+                        {
+                            continue;
+                        }
+                        let content_type = content_type_from_url(&resource.url).or_else(|| {
+                            match resource.initiator.as_str() {
+                                "script" => Some("text/javascript".to_string()),
+                                "css" | "link" => Some("text/css".to_string()),
+                                _ => None,
+                            }
+                        });
+                        let mut resource_record = PageRecord {
+                            url: resource.url.clone(),
+                            status: (resource.status > 0).then_some(resource.status),
+                            size_bytes: resource.size,
+                            content_type,
+                            response_time: Duration::from_millis(resource.duration),
+                            is_internal: is_same_domain(&root_for_pump, &resource.url),
+                            ..Default::default()
+                        };
+                        if let Some(sm_url) = sitemap_for_pump.get(&resource.url) {
+                            resource_record.in_sitemap = Some(true);
+                            resource_record.sitemap_url = Some(sm_url.clone());
+                        } else if !sitemap_for_pump.is_empty() {
+                            resource_record.in_sitemap = Some(false);
+                        }
+                        if let Err(e) =
+                            storage::insert_page(&pool_pages, crawl_id, &resource_record).await
+                        {
+                            tracing::warn!(error=%e, url=%resource_record.url, "failed to persist resource");
+                        }
+                        if let Err(e) = tx_pages
+                            .send_async(CrawlEvent::Page(Box::new(resource_record)))
+                            .await
+                        {
+                            tracing::error!(error=%e, "failed to send resource event");
+                        }
+                    }
+
                     if total.is_multiple_of(10) {
                         let _ = tx_pages
                             .send_async(CrawlEvent::Progress {
@@ -770,40 +842,27 @@ const METRICS_AUTOMATION_JS: &str = r#"
     try {
         var nav = performance.getEntriesByType('navigation')[0];
         var ttfb = nav ? Math.max(0, Math.round(nav.responseStart - nav.requestStart)) : null;
+        var paint = performance.getEntriesByType('paint');
+        var fcp = null;
+        for (var i = 0; i < paint.length; i++) {
+            if (paint[i].name === 'first-contentful-paint') {
+                fcp = Math.round(paint[i].startTime);
+                break;
+            }
+        }
         var lcp = null;
         var lcpEntries = performance.getEntriesByType('largest-contentful-paint');
         if (lcpEntries && lcpEntries.length) {
             lcp = Math.round(lcpEntries[lcpEntries.length - 1].startTime);
         }
-        if (lcp == null) {
-            var paint = performance.getEntriesByType('paint');
-            for (var i = 0; i < paint.length; i++) {
-                if (paint[i].name === 'first-contentful-paint') {
-                    lcp = Math.round(paint[i].startTime);
-                    break;
-                }
-            }
-        }
+        if (lcp == null) lcp = fcp;
         var cls = 0;
         var shifts = performance.getEntriesByType('layout-shift');
         for (var j = 0; j < shifts.length; j++) {
             if (!shifts[j].hadRecentInput) cls += shifts[j].value;
         }
         cls = Math.round(cls * 1000) / 1000;
-        try {
-            var target = document.body || document.documentElement;
-            target.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
-            target.dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
-            target.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-        } catch (e) {}
-        var inp = null;
-        var events = performance.getEntriesByType('event');
-        var maxDur = 0;
-        for (var k = 0; k < events.length; k++) {
-            if (events[k].duration > maxDur) maxDur = events[k].duration;
-        }
-        if (maxDur > 0) inp = Math.round(maxDur);
-        var data = { ttfb: ttfb, lcp: lcp, cls: cls, inp: inp };
+        var data = { ttfb: ttfb, lcp: lcp, cls: cls, fcp: fcp };
         var existing = document.getElementById('__sr_metrics');
         if (existing) existing.remove();
         var s = document.createElement('script');
@@ -814,6 +873,41 @@ const METRICS_AUTOMATION_JS: &str = r#"
     } catch (e) {}
 })()
 "#;
+
+/// Maps a URL's file extension to a MIME type. Used as a fallback for
+/// subresources that spider fetches without response headers, so the Internal
+/// tab can still categorize them by content type.
+fn content_type_from_url(url: &str) -> Option<String> {
+    let path = url::Url::parse(url)
+        .ok()
+        .map(|u| u.path().to_ascii_lowercase())
+        .unwrap_or_else(|| url.to_ascii_lowercase());
+    let ext = path.rsplit_once('.').map(|(_, ext)| ext)?;
+    let mime = match ext {
+        "css" => "text/css",
+        "js" | "mjs" => "text/javascript",
+        "json" => "application/json",
+        "pdf" => "application/pdf",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "avif" => "image/avif",
+        "ico" => "image/x-icon",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "otf" => "font/otf",
+        "eot" => "application/vnd.ms-fontobject",
+        "xml" => "application/xml",
+        "txt" => "text/plain",
+        "webm" => "video/webm",
+        "mp4" => "video/mp4",
+        _ => return None,
+    };
+    Some(mime.to_string())
+}
 
 pub fn is_same_domain(root: &str, url: &str) -> bool {
     let Ok(root_parsed) = url::Url::parse(root) else {
@@ -875,10 +969,19 @@ async fn collect_performance_metrics(page: &spider::page::Page, record: &mut Pag
 
     let js = r#"
     (function() {
-        var result = { ttfb: null, lcp: null, cls: null, inp: null };
+        var result = { ttfb: null, lcp: null, cls: null, fcp: null };
         try {
             var nav = performance.getEntriesByType('navigation')[0];
             if (nav) result.ttfb = Math.max(0, Math.round(nav.responseStart - nav.requestStart));
+        } catch(e) {}
+        try {
+            var paint = performance.getEntriesByType('paint');
+            for (var p = 0; p < paint.length; p++) {
+                if (paint[p].name === 'first-contentful-paint') {
+                    result.fcp = Math.round(paint[p].startTime);
+                    break;
+                }
+            }
         } catch(e) {}
         try {
             var lcp = null;
@@ -909,20 +1012,6 @@ async fn collect_performance_metrics(page: &spider::page::Page, record: &mut Pag
                 }
             }
             result.cls = Math.round(cls * 1000) / 1000;
-        } catch(e) {}
-        try {
-            var target = document.body || document.documentElement;
-            target.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
-            target.dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
-            target.dispatchEvent(new MouseEvent('click', {bubbles: true}));
-        } catch (e) {}
-        try {
-            var events = performance.getEntriesByType('event');
-            var maxDur = 0;
-            for (var k = 0; k < events.length; k++) {
-                if (events[k].duration > maxDur) maxDur = events[k].duration;
-            }
-            if (maxDur > 0) result.inp = Math.round(maxDur);
         } catch(e) {}
         return result;
     })()
@@ -957,16 +1046,88 @@ async fn collect_performance_metrics(page: &spider::page::Page, record: &mut Pag
         record.ttfb_ms = obj.get("ttfb").and_then(|v| v.as_u64());
         record.lcp_ms = obj.get("lcp").and_then(|v| v.as_u64());
         record.cls = obj.get("cls").and_then(|v| v.as_f64());
-        record.inp_ms = obj.get("inp").and_then(|v| v.as_u64());
+        record.fcp_ms = obj.get("fcp").and_then(|v| v.as_u64());
         tracing::debug!(
             url = %page.get_url(),
             ttfb = ?record.ttfb_ms,
             lcp = ?record.lcp_ms,
             cls = ?record.cls,
-            inp = ?record.inp_ms,
+            fcp = ?record.fcp_ms,
             "collected perf metrics"
         );
     }
+}
+
+/// A single resource Chrome loaded while rendering a page, read from the
+/// Resource Timing API. Lets us record CSS/JS/image/font resources without
+/// re-fetching them.
+#[derive(serde::Deserialize)]
+struct ResourceTiming {
+    url: String,
+    #[serde(default, rename = "type")]
+    initiator: String,
+    #[serde(default)]
+    size: u64,
+    #[serde(default)]
+    status: u16,
+    #[serde(default)]
+    duration: u64,
+}
+
+/// Reads `performance.getEntriesByType('resource')` from the rendered page.
+/// This is a single lightweight evaluate plus a small JSON parse; it never
+/// touches the network or parses any resource body.
+async fn collect_resource_timings(page: &spider::page::Page) -> Vec<ResourceTiming> {
+    let Some(chrome_page) = page.get_chrome_page() else {
+        return Vec::new();
+    };
+
+    let js = r#"
+    (function() {
+        try {
+            var out = [];
+            var entries = performance.getEntriesByType('resource');
+            for (var i = 0; i < entries.length; i++) {
+                var e = entries[i];
+                out.push({
+                    url: e.name,
+                    type: e.initiatorType || '',
+                    size: Math.round(e.transferSize || e.encodedBodySize || e.decodedBodySize || 0),
+                    status: (typeof e.responseStatus === 'number') ? e.responseStatus : 0,
+                    duration: Math.round(e.duration || 0)
+                });
+            }
+            return JSON.stringify(out);
+        } catch (e) { return "[]"; }
+    })()
+    "#;
+
+    let params = match spider::chromiumoxide::cdp::js_protocol::runtime::EvaluateParams::builder()
+        .expression(js)
+        .await_promise(false)
+        .return_by_value(true)
+        .build()
+    {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to build resource timing EvaluateParams");
+            return Vec::new();
+        }
+    };
+
+    let eval_result = match chrome_page.evaluate(params).await {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::warn!(url = %page.get_url(), error=%e, "resource timing evaluate failed");
+            return Vec::new();
+        }
+    };
+
+    eval_result
+        .value()
+        .and_then(|v| v.as_str())
+        .and_then(|json| serde_json::from_str::<Vec<ResourceTiming>>(json).ok())
+        .unwrap_or_default()
 }
 
 async fn fetch_axe_js() -> Option<String> {

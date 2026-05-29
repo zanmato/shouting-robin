@@ -373,9 +373,9 @@ pub(super) fn cell_text(
                 .map(|v| format!("{v:.3}"))
                 .unwrap_or_else(|| "-".into()),
         ),
-        "inp" => SharedString::from(
+        "fcp" => SharedString::from(
             record
-                .inp_ms
+                .fcp_ms
                 .map(|ms| format!("{ms}ms"))
                 .unwrap_or_else(|| "-".into()),
         ),

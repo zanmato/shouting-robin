@@ -146,6 +146,7 @@ impl CrawlBar {
             timeout_seconds: 30,
             respect_robots_txt: true,
             follow_sitemaps: true,
+            block_images: false,
             near_duplicate_threshold: 90,
             content_selector: String::new(),
             user_agent,

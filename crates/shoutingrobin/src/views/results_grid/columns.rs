@@ -151,9 +151,9 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("address", "Address", 380., Some(ColumnFixed::Left)),
             col("status_code", "Code", 70., None),
             col("ttfb", "TTFB", 80., None),
+            col("fcp", "FCP", 80., None),
             col("lcp", "LCP", 80., None),
             col("cls", "CLS", 80., None),
-            col("inp", "INP", 80., None),
         ],
         ResultTab::Ecommerce => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
@@ -325,9 +325,9 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "sd_errors"
             | "sd_warnings"
             | "ttfb"
+            | "fcp"
             | "lcp"
             | "cls"
-            | "inp"
             | "image_width"
             | "image_height"
             | "url_length"

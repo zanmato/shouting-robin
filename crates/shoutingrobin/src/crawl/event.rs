@@ -27,7 +27,7 @@ pub struct PageRecord {
     pub ttfb_ms: Option<u64>,
     pub lcp_ms: Option<u64>,
     pub cls: Option<f64>,
-    pub inp_ms: Option<u64>,
+    pub fcp_ms: Option<u64>,
     pub sd_jsonld_count: u32,
     pub sd_microdata_count: u32,
     pub sd_items: Vec<SdItem>,

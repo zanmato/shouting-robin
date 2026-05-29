@@ -18,6 +18,10 @@ pub struct CrawlConfig {
     pub respect_robots_txt: bool,
     #[serde(default)]
     pub follow_sitemaps: bool,
+    /// In Chrome mode, block images, media, fonts, stylesheets and analytics
+    /// during render (first-party assets are still allowed). Speeds up crawls.
+    #[serde(default)]
+    pub block_images: bool,
     pub near_duplicate_threshold: u8,
     pub content_selector: String,
     #[serde(default)]

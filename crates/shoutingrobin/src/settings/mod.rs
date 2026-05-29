@@ -49,6 +49,9 @@ impl Settings {
                 "crawl.follow_sitemaps" => {
                     settings.crawl.follow_sitemaps = value.parse().unwrap_or(true);
                 }
+                "crawl.block_images" => {
+                    settings.crawl.block_images = value.parse().unwrap_or(false);
+                }
                 "crawl.near_duplicate_threshold" => {
                     settings.crawl.near_duplicate_threshold =
                         value.parse().unwrap_or(90).clamp(50, 100);
@@ -97,6 +100,8 @@ pub struct CrawlSettings {
     pub timeout_seconds: u32,
     pub respect_robots_txt: bool,
     pub follow_sitemaps: bool,
+    #[serde(default)]
+    pub block_images: bool,
     pub near_duplicate_threshold: u8,
     pub content_selector: String,
     #[serde(default)]
@@ -112,6 +117,7 @@ impl Default for CrawlSettings {
             timeout_seconds: 30,
             respect_robots_txt: true,
             follow_sitemaps: true,
+            block_images: false,
             near_duplicate_threshold: 90,
             content_selector: String::new(),
             user_agent: String::new(),

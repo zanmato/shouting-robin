@@ -279,8 +279,8 @@ fn extract_perf_metrics(doc: &Html, record: &mut PageRecord) {
     if let Some(v) = value.get("cls").and_then(|v| v.as_f64()) {
         record.cls = Some(v);
     }
-    if let Some(v) = value.get("inp").and_then(|v| v.as_u64()) {
-        record.inp_ms = Some(v);
+    if let Some(v) = value.get("fcp").and_then(|v| v.as_u64()) {
+        record.fcp_ms = Some(v);
     }
 }
 

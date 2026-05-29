@@ -131,7 +131,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::All,
             IssueFilter::SlowLcp,
             IssueFilter::SlowCls,
-            IssueFilter::SlowInp,
+            IssueFilter::SlowFcp,
             IssueFilter::SlowTtfb,
         ],
         ResultTab::Ecommerce => &[
@@ -574,8 +574,8 @@ pub(super) fn filter_for_tab(
                 indices.retain(|&idx| pages[idx].lcp_ms.is_some_and(|ms| ms > 4000))
             }
             IssueFilter::SlowCls => indices.retain(|&idx| pages[idx].cls.is_some_and(|v| v > 0.25)),
-            IssueFilter::SlowInp => {
-                indices.retain(|&idx| pages[idx].inp_ms.is_some_and(|ms| ms > 500))
+            IssueFilter::SlowFcp => {
+                indices.retain(|&idx| pages[idx].fcp_ms.is_some_and(|ms| ms > 3000))
             }
             IssueFilter::SlowTtfb => {
                 indices.retain(|&idx| pages[idx].ttfb_ms.is_some_and(|ms| ms > 1800))

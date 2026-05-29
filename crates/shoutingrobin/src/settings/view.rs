@@ -394,6 +394,31 @@ impl SettingsView {
                     )
                     .description("Discover URLs from XML sitemaps."),
                     SettingItem::new(
+                        "Block Images",
+                        SettingField::switch(
+                            move |cx: &App| AppSettings::global(cx).settings.crawl.block_images,
+                            {
+                                let view_handle = view_handle.clone();
+                                move |val: bool, cx: &mut App| {
+                                    AppSettings::global_mut(cx).settings.crawl.block_images = val;
+
+                                    let key = "crawl.block_images".to_string();
+                                    let value = val.to_string();
+                                    if let Some(view) = view_handle.upgrade() {
+                                        view.update(cx, |view, cx| {
+                                            view.save_setting_debounced(key, value, cx);
+                                        });
+                                    }
+                                }
+                            },
+                        )
+                        .default_value(default_settings.crawl.block_images),
+                    )
+                    .description(
+                        "In Chrome mode, skip downloading images, media and fonts during \
+                         render to speed up crawls.",
+                    ),
+                    SettingItem::new(
                         "Near Duplicate Threshold (%)",
                         SettingField::number_input(
                             NumberFieldOptions {

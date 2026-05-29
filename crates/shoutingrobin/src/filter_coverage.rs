@@ -519,7 +519,7 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
             doc(
                 "Slow Performance Metrics Page Title Value",
                 "<meta name=\"description\" content=\"Page embedding slow core web vitals metrics for the perf filters.\">\
-                 <script id=\"__sr_metrics\">{\"ttfb\":2000,\"lcp\":5000,\"cls\":0.3,\"inp\":600}</script>",
+                 <script id=\"__sr_metrics\">{\"ttfb\":2000,\"lcp\":5000,\"cls\":0.3,\"fcp\":3500}</script>",
                 "<h1>Slow Perf Heading</h1><h2>Sub</h2><p>slow perf body</p>",
             ),
         ),
@@ -758,6 +758,7 @@ fn crawl_and_load(root_url: &str, render_mode: RenderMode, timeout: Duration) ->
                 timeout_seconds: 30,
                 respect_robots_txt: true,
                 follow_sitemaps: true,
+                block_images: false,
                 near_duplicate_threshold: 90,
                 content_selector: String::new(),
                 user_agent: None,
@@ -1053,7 +1054,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         // Performance (faked metrics; Chrome overwrites them, so HTTP only)
         F::SlowLcp => http(&["/slow-perf"], &[]),
         F::SlowCls => http(&["/slow-perf"], &[]),
-        F::SlowInp => http(&["/slow-perf"], &[]),
+        F::SlowFcp => http(&["/slow-perf"], &[]),
         F::SlowTtfb => http(&["/slow-perf"], &[]),
 
         // Ecommerce

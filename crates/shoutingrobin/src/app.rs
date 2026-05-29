@@ -261,6 +261,7 @@ impl ShoutingRobinApp {
             },
             respect_robots_txt: crawl_settings.respect_robots_txt,
             follow_sitemaps: crawl_settings.follow_sitemaps,
+            block_images: crawl_settings.block_images,
             near_duplicate_threshold: crawl_settings.near_duplicate_threshold,
             content_selector: crawl_settings.content_selector.clone(),
             user_agent: config.user_agent.clone().or_else(|| {

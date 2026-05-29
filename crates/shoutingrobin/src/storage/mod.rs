@@ -81,6 +81,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0019_links_csr_only",
         include_str!("../../migrations/0019_links_csr_only.sql"),
     ),
+    ("0020_fcp", include_str!("../../migrations/0020_fcp.sql")),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -283,18 +284,18 @@ async fn insert_performance(
     if record.ttfb_ms.is_none()
         && record.lcp_ms.is_none()
         && record.cls.is_none()
-        && record.inp_ms.is_none()
+        && record.fcp_ms.is_none()
     {
         return Ok(());
     }
     sqlx::query(
-        "INSERT INTO performance (crawl_id, page_url, lcp_ms, cls, inp_ms, ttfb_ms, transfer_kb) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+        "INSERT INTO performance (crawl_id, page_url, lcp_ms, cls, fcp_ms, ttfb_ms, transfer_kb) VALUES (?, ?, ?, ?, ?, ?, NULL)",
     )
     .bind(crawl_id)
     .bind(&record.url)
     .bind(record.lcp_ms.map(|ms| ms as i64))
     .bind(record.cls)
-    .bind(record.inp_ms.map(|ms| ms as i64))
+    .bind(record.fcp_ms.map(|ms| ms as i64))
     .bind(record.ttfb_ms.map(|ms| ms as i64))
     .execute(pool)
     .await?;
@@ -779,7 +780,7 @@ pub async fn load_pages_for_crawl(
     let perf_rows =
         sqlx::query_as::<_, (String, Option<i64>, Option<i64>, Option<f64>, Option<i64>)>(
             r#"
-        SELECT page_url, ttfb_ms, lcp_ms, cls, inp_ms
+        SELECT page_url, ttfb_ms, lcp_ms, cls, fcp_ms
         FROM performance WHERE crawl_id = ?
         "#,
         )
@@ -830,8 +831,8 @@ pub async fn load_pages_for_crawl(
         String,
         (Option<i64>, Option<i64>, Option<f64>, Option<i64>),
     > = std::collections::HashMap::new();
-    for (url, ttfb, lcp, cls, inp) in &perf_rows {
-        perf_by_url.insert(url.clone(), (*ttfb, *lcp, *cls, *inp));
+    for (url, ttfb, lcp, cls, fcp) in &perf_rows {
+        perf_by_url.insert(url.clone(), (*ttfb, *lcp, *cls, *fcp));
     }
 
     let mut sd_by_url: std::collections::HashMap<String, Vec<(String, String)>> =
@@ -1173,7 +1174,7 @@ pub async fn load_pages_for_crawl(
                 let sd_microdata_count = sd_entries
                     .map(|v| v.iter().filter(|(f, _)| f == "microdata").count() as u32)
                     .unwrap_or(0);
-                let (ttfb_ms, lcp_ms, cls, inp_ms) = perf_by_url
+                let (ttfb_ms, lcp_ms, cls, fcp_ms) = perf_by_url
                     .get(&url)
                     .copied()
                     .unwrap_or((None, None, None, None));
@@ -1226,7 +1227,7 @@ pub async fn load_pages_for_crawl(
                     ttfb_ms: ttfb_ms.map(|ms| ms as u64),
                     lcp_ms: lcp_ms.map(|ms| ms as u64),
                     cls,
-                    inp_ms: inp_ms.map(|ms| ms as u64),
+                    fcp_ms: fcp_ms.map(|ms| ms as u64),
                     sd_jsonld_count,
                     sd_microdata_count,
                     images,

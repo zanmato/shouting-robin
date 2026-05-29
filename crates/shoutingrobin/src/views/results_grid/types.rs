@@ -138,7 +138,7 @@ pub enum IssueFilter {
     ReadabilityVeryDifficult,
     SlowLcp,
     SlowCls,
-    SlowInp,
+    SlowFcp,
     SlowTtfb,
     SdTypeArticle,
     SdTypeProduct,
@@ -254,7 +254,7 @@ impl IssueFilter {
             IssueFilter::ReadabilityVeryDifficult => "Readability Very Difficult",
             IssueFilter::SlowLcp => "Slow LCP",
             IssueFilter::SlowCls => "Slow CLS",
-            IssueFilter::SlowInp => "Slow INP",
+            IssueFilter::SlowFcp => "Slow FCP",
             IssueFilter::SlowTtfb => "Slow TTFB",
             IssueFilter::SdTypeArticle => "Article",
             IssueFilter::SdTypeProduct => "Product",
@@ -392,7 +392,7 @@ impl IssueFilter {
             | Self::ReadabilityDifficult
             | Self::SlowLcp
             | Self::SlowCls
-            | Self::SlowInp
+            | Self::SlowFcp
             | Self::SlowTtfb
             | Self::Redirects
             | Self::MissingHsts

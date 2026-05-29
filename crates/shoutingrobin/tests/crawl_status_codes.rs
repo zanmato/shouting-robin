@@ -146,6 +146,7 @@ fn crawl_test_site_with_mode(
                 timeout_seconds: 30,
                 respect_robots_txt: true,
                 follow_sitemaps: true,
+                block_images: false,
                 near_duplicate_threshold: 90,
                 content_selector: String::new(),
                 user_agent: None,
@@ -387,8 +388,8 @@ fn test_http_crawl() {
             page.url
         );
         assert_eq!(
-            page.inp_ms, None,
-            "INP should be None in HTTP mode for {}",
+            page.fcp_ms, None,
+            "FCP should be None in HTTP mode for {}",
             page.url
         );
         assert_eq!(
@@ -410,6 +411,43 @@ fn test_http_crawl() {
     let orphan = orphan.unwrap();
     assert_eq!(orphan.status, Some(404), "orphan page should return 404");
     assert_eq!(orphan.in_sitemap, Some(true));
+
+    // Sitemap membership powers the "In sitemap" / "Not in sitemap" filters on
+    // the Sitemaps tab. A crawled page absent from the sitemap must be recorded
+    // as Some(false) (not None); a None here means sitemap matching never ran
+    // and every sitemap filter would silently select nothing.
+    assert_eq!(
+        images.in_sitemap,
+        Some(false),
+        "images.html is crawled but not listed in the sitemap, so it should be marked Not in sitemap"
+    );
+    // Response headers must be captured (requires spider's `headers` feature).
+    // Without them content_type detection and the entire Security tab (HSTS,
+    // CSP, X-Frame-Options, ...) silently treat every page as header-less.
+    assert!(
+        home.headers
+            .iter()
+            .any(|(name, _)| name.eq_ignore_ascii_case("content-type")),
+        "home page should capture response headers, got {:?}",
+        home.headers
+    );
+    // Resources (CSS/JS/images) are discovered from Chrome's Resource Timing in
+    // Chrome mode only, so the HTTP crawl should not produce resource rows.
+    assert!(
+        find_page(&pages, "/style.css").is_none(),
+        "HTTP mode should not crawl subresources"
+    );
+
+    let in_sitemap_count = pages.iter().filter(|p| p.in_sitemap == Some(true)).count();
+    let not_in_sitemap_count = pages.iter().filter(|p| p.in_sitemap == Some(false)).count();
+    assert!(
+        in_sitemap_count > 0,
+        "at least one page should populate the In-sitemap filter"
+    );
+    assert!(
+        not_in_sitemap_count > 0,
+        "at least one page should populate the Not-in-sitemap filter"
+    );
 }
 
 #[test]
@@ -510,6 +548,10 @@ fn test_chrome_crawl() {
         "Chrome mode should populate LCP for home"
     );
     assert!(
+        home.fcp_ms.is_some(),
+        "Chrome mode should populate FCP for home"
+    );
+    assert!(
         about.cls.is_some(),
         "Chrome mode should populate CLS for about"
     );
@@ -560,6 +602,36 @@ fn test_chrome_crawl() {
             .iter()
             .any(|i| i.src.contains("example.com")),
         "external page should have an external image"
+    );
+
+    // -- Resources (harvested from Chrome's Resource Timing) --
+    //
+    // The resources Chrome loads to render a page (CSS/JS/images) are recorded
+    // as their own rows without re-fetching, which is what populates the
+    // Internal tab's CSS / JavaScript / Images filters.
+    let css = find_page(&pages, "/style.css").expect("stylesheet should be a resource row");
+    assert!(
+        css.content_type
+            .as_deref()
+            .is_some_and(|ct| ct.contains("css")),
+        "style.css resource should report a CSS content type, got {:?}",
+        css.content_type
+    );
+    let js = find_page(&pages, "/app.js").expect("script should be a resource row");
+    assert!(
+        js.content_type
+            .as_deref()
+            .is_some_and(|ct| ct.contains("javascript")),
+        "app.js resource should report a JavaScript content type, got {:?}",
+        js.content_type
+    );
+    let logo = find_page(&pages, "/img/logo.png").expect("image should be a resource row");
+    assert!(
+        logo.content_type
+            .as_deref()
+            .is_some_and(|ct| ct.starts_with("image/")),
+        "logo.png resource should report an image content type, got {:?}",
+        logo.content_type
     );
 
     // -- Links --

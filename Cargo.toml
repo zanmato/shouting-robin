@@ -63,6 +63,7 @@ spider = { git = "https://github.com/zanmato/spider", branch = "shouting-robin",
     "regex",
     "serde",
     "time",
+    "headers",
 ] }
 
 # HTML parsing

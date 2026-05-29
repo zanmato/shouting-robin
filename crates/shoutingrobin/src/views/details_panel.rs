@@ -216,10 +216,10 @@ fn cls_tone(value: f64) -> Tone {
     }
 }
 
-fn inp_tone(ms: u64) -> Tone {
+fn fcp_tone(ms: u64) -> Tone {
     match ms {
-        0..=200 => Tone::Ok,
-        201..=500 => Tone::Warn,
+        0..=1800 => Tone::Ok,
+        1801..=3000 => Tone::Warn,
         _ => Tone::Err,
     }
 }
@@ -712,8 +712,8 @@ fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> 
         .cls
         .map(|v| format!("{:.3}", v))
         .unwrap_or_else(|| "-".into());
-    let inp_str = rec
-        .inp_ms
+    let fcp_str = rec
+        .fcp_ms
         .map(|ms| format!("{ms}ms"))
         .unwrap_or_else(|| "-".into());
     let ttfb_str = rec
@@ -746,9 +746,9 @@ fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> 
                     panel2,
                 )))
                 .child(div().flex_1().child(vital_tile(
-                    "INP",
-                    SharedString::from(inp_str),
-                    rec.inp_ms.map(inp_tone),
+                    "FCP",
+                    SharedString::from(fcp_str),
+                    rec.fcp_ms.map(fcp_tone),
                     muted,
                     border,
                     panel2,

@@ -269,6 +269,7 @@ impl ResultsDelegate {
         }
         if self.active_tab == ResultTab::Overview {
             self.flat_rows = build_issues_rows(&self.all_pages);
+            self.filter_flat_rows();
             return;
         }
         if self.active_tab == ResultTab::SiteStructure {
