@@ -971,7 +971,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         },
 
         // Internal content-type / indexability
-        F::NonIndexable => both(&["/robots-meta"], &["/"]),
+        F::NonIndexable => both(&["/robots-meta", "/not-found", "/server-error"], &["/"]),
         F::Html => both(&["/"], &["/syn-css"]),
         F::Images => both(&["/syn-img"], &["/"]),
         F::Css => both(&["/syn-css"], &["/"]),
@@ -1143,7 +1143,6 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
                 "/sd-article",
                 "/sd-organization",
                 "/sd-microdata",
-                "/spa",
                 "/withparam?x=1",
             ],
             &[],

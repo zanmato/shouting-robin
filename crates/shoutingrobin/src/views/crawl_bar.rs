@@ -32,7 +32,6 @@ pub struct CrawlBar {
     pub has_results: bool,
     default_mode: RenderMode,
     advanced_open: bool,
-    user_agent_input: gpui::Entity<InputState>,
     headers_input: gpui::Entity<InputState>,
     include_input: gpui::Entity<InputState>,
     exclude_input: gpui::Entity<InputState>,
@@ -62,8 +61,6 @@ impl CrawlBar {
             },
         );
 
-        let user_agent_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Default User-Agent"));
         let headers_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("Authorization: Bearer token  (one Name: Value per line)")
@@ -92,7 +89,6 @@ impl CrawlBar {
             has_results: false,
             default_mode: RenderMode::Http,
             advanced_open: false,
-            user_agent_input,
             headers_input,
             include_input,
             exclude_input,
@@ -105,13 +101,13 @@ impl CrawlBar {
 
     fn build_config(&self, cx: &Context<Self>) -> CrawlConfig {
         let user_agent = {
-            let val = self.user_agent_input.read(cx).value().to_string();
-            let trimmed = val.trim().to_string();
-            if trimmed.is_empty() {
-                None
-            } else {
-                Some(trimmed)
-            }
+            let val = crate::app_settings::AppSettings::global(cx)
+                .settings
+                .crawl
+                .user_agent
+                .trim()
+                .to_string();
+            if val.is_empty() { None } else { Some(val) }
         };
 
         let parse_lines = |entity: &gpui::Entity<InputState>| -> Vec<String> {
@@ -303,20 +299,6 @@ impl Render for CrawlBar {
                     .flex()
                     .gap_4()
                     .flex_wrap()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .w(px(200.))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("User-Agent"),
-                            )
-                            .child(Input::new(&self.user_agent_input).small()),
-                    )
                     .child(
                         div()
                             .flex()

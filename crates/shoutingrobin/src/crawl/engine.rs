@@ -264,6 +264,8 @@ impl CrawlEngine {
             let pump = tokio::spawn(async move {
                 let mut subscribe_guard = subscribe_guard;
                 let mut total: u64 = 0;
+                let mut inlink_counts: std::collections::HashMap<String, (u32, u32)> =
+                    std::collections::HashMap::new();
                 tracing::info!("page pump started, waiting for pages...");
                 loop {
                     let mut page = match rx.recv().await {
@@ -385,6 +387,17 @@ impl CrawlEngine {
                     }
                     if let Err(e) = storage::insert_page(&pool_pages, crawl_id, &record).await {
                         tracing::warn!(error=%e, url=%record.url, "failed to persist page");
+                    }
+                    for link in &record.outlinks {
+                        let entry = inlink_counts.entry(link.dst_url.clone()).or_insert((0, 0));
+                        entry.0 += 1;
+                        if link.csr_only {
+                            entry.1 += 1;
+                        }
+                    }
+                    if let Some((in_count, csr_in_count)) = inlink_counts.get(&record.url) {
+                        record.inlinks_count = *in_count;
+                        record.csr_inlinks_count = *csr_in_count;
                     }
                     tracing::info!(
                         total,
@@ -777,6 +790,12 @@ const METRICS_AUTOMATION_JS: &str = r#"
             if (!shifts[j].hadRecentInput) cls += shifts[j].value;
         }
         cls = Math.round(cls * 1000) / 1000;
+        try {
+            var target = document.body || document.documentElement;
+            target.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+            target.dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
+            target.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+        } catch (e) {}
         var inp = null;
         var events = performance.getEntriesByType('event');
         var maxDur = 0;
@@ -891,6 +910,12 @@ async fn collect_performance_metrics(page: &spider::page::Page, record: &mut Pag
             }
             result.cls = Math.round(cls * 1000) / 1000;
         } catch(e) {}
+        try {
+            var target = document.body || document.documentElement;
+            target.dispatchEvent(new PointerEvent('pointerdown', {bubbles: true}));
+            target.dispatchEvent(new PointerEvent('pointerup', {bubbles: true}));
+            target.dispatchEvent(new MouseEvent('click', {bubbles: true}));
+        } catch (e) {}
         try {
             var events = performance.getEntriesByType('event');
             var maxDur = 0;

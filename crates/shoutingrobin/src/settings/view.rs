@@ -55,8 +55,11 @@ where
             let set_value = set_value.clone();
 
             let state = window.use_keyed_state(key, cx, move |window, cx| {
-                let input =
-                    cx.new(|cx| InputState::new(window, cx).default_value(current.to_string()));
+                let input = cx.new(|cx| {
+                    let mut state = InputState::new(window, cx);
+                    state.set_value(SharedString::from(current.to_string()), window, cx);
+                    state
+                });
 
                 let step_sub = cx.subscribe_in(&input, window, {
                     let options = options.clone();

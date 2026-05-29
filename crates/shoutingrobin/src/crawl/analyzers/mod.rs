@@ -628,7 +628,38 @@ fn extract_body_text(doc: &Html) -> String {
     let Some(body) = doc.select(&body_sel).next() else {
         return String::new();
     };
-    body.text().collect::<Vec<_>>().join(" ")
+    let mut texts = Vec::new();
+    let mut skip_depth: usize = 0;
+    for edge in body.traverse() {
+        match edge {
+            ego_tree::iter::Edge::Open(node) => {
+                if let scraper::node::Node::Element(el) = node.value() {
+                    let tag = el.name();
+                    if (tag == "script" || tag == "style" || tag == "noscript") && skip_depth == 0 {
+                        skip_depth = 1;
+                        continue;
+                    }
+                    if skip_depth > 0 {
+                        skip_depth += 1;
+                        continue;
+                    }
+                }
+                if skip_depth == 0
+                    && let scraper::node::Node::Text(text) = node.value()
+                {
+                    texts.push(&**text);
+                }
+            }
+            ego_tree::iter::Edge::Close(node) => {
+                if skip_depth > 0
+                    && let scraper::node::Node::Element(_) = node.value()
+                {
+                    skip_depth -= 1;
+                }
+            }
+        }
+    }
+    texts.join(" ")
 }
 
 fn extract_selector_text(doc: &Html, selector_str: &str) -> Option<String> {

@@ -238,7 +238,7 @@ impl ResultsDelegate {
                                 (0..item_count)
                                     .filter(|item| {
                                         let row = flat_row_variant(tab, page_ix, *item);
-                                        flat_row_matches_filter(&row, p, filter)
+                                        flat_row_matches_filter(&row, p, filter, &self.all_pages)
                                     })
                                     .count()
                             })
@@ -387,7 +387,7 @@ impl ResultsDelegate {
             let Some(page) = self.all_pages.get(page_index) else {
                 return false;
             };
-            flat_row_matches_filter(row, page, self.issue_filter)
+            flat_row_matches_filter(row, page, self.issue_filter, &self.all_pages)
         });
     }
 

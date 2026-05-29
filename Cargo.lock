@@ -6632,6 +6632,7 @@ dependencies = [
  "chrono",
  "csv",
  "dirs 5.0.1",
+ "ego-tree",
  "flume",
  "gpui",
  "gpui-component",

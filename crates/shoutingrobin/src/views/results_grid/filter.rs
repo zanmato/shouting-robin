@@ -744,10 +744,36 @@ pub(super) fn filter_for_tab(
 
 use super::types::FlatRow;
 
+fn link_row_matches_filter(
+    link: &crate::crawl::event::Outlink,
+    page: &PageRecord,
+    filter: IssueFilter,
+    all_pages: &[PageRecord],
+) -> bool {
+    let dst_is_external = !is_same_domain(&page.url, &link.dst_url);
+    let rel_nofollow = link
+        .rel
+        .as_deref()
+        .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
+    let dst_status = all_pages
+        .iter()
+        .find(|p| p.url == link.dst_url)
+        .and_then(|p| p.status);
+
+    match filter {
+        IssueFilter::LinkExternal => dst_is_external,
+        IssueFilter::LinkNofollow => rel_nofollow,
+        IssueFilter::LinkBroken => dst_status.is_some_and(|c| c >= 400),
+        IssueFilter::LinkRedirected => dst_status.is_some_and(|c| (300..400).contains(&c)),
+        _ => true,
+    }
+}
+
 pub(super) fn flat_row_matches_filter(
     row: &FlatRow,
     page: &PageRecord,
     filter: IssueFilter,
+    all_pages: &[PageRecord],
 ) -> bool {
     match row {
         FlatRow::Image { item, .. } => {
@@ -768,10 +794,13 @@ pub(super) fn flat_row_matches_filter(
             };
             sd_item_matches_filter(sd_item, page, filter)
         }
-        FlatRow::Outlink { .. }
-        | FlatRow::Hreflang { .. }
-        | FlatRow::IssuesRow { .. }
-        | FlatRow::LinkRow { .. } => true,
+        FlatRow::LinkRow { item, .. } => {
+            let Some(link) = page.outlinks.get(*item) else {
+                return false;
+            };
+            link_row_matches_filter(link, page, filter, all_pages)
+        }
+        FlatRow::Outlink { .. } | FlatRow::Hreflang { .. } | FlatRow::IssuesRow { .. } => true,
         FlatRow::DirectoryAggregate { depth, .. } => match filter {
             IssueFilter::DepthShallow => *depth <= 1,
             IssueFilter::DepthMedium => *depth >= 2 && *depth <= 3,

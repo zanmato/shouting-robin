@@ -165,7 +165,8 @@ impl PageRecord {
                     "Indexable".to_string()
                 }
             }
-            _ => "N/A".to_string(),
+            Some(_) => "Non-Indexable".to_string(),
+            None => "N/A".to_string(),
         });
     }
 }
