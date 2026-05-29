@@ -71,8 +71,12 @@ impl CrawlEngine {
         self.cancel = Some(cancel.clone());
 
         let cancel_flag = cancel.clone();
+        let mode_str = match render_mode {
+            RenderMode::Http => "http",
+            RenderMode::Chrome => "chrome",
+        };
         let fut = async move {
-            let crawl_id = match storage::create_crawl(&pool, &root_url).await {
+            let crawl_id = match storage::create_crawl(&pool, &root_url, mode_str).await {
                 Ok(id) => id,
                 Err(e) => {
                     let _ = tx
@@ -475,6 +479,7 @@ async fn run_near_duplicate_analysis(pool: &SqlitePool, crawl_id: i64, threshold
                     r.url.clone(),
                     r.closest_similarity_percent,
                     r.near_duplicate_count,
+                    r.near_duplicate_urls.clone(),
                 )
             })
             .collect::<Vec<_>>(),

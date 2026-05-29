@@ -87,12 +87,26 @@ impl Render for CrawlsSidebar {
                         let is_selected = self.selected_id == Some(crawl.id);
                         let relative = relative_time(now, crawl.started_at);
                         let running = crawl.finished_at.is_none();
+                        let is_chrome = crawl.render_mode == "chrome";
+                        let mode_tag = if is_chrome {
+                            tone_tag(Tone::Accent)
+                                .rounded_full()
+                                .child(SharedString::from("Chrome"))
+                                .into_any_element()
+                        } else {
+                            tone_tag(Tone::Neutral)
+                                .rounded_full()
+                                .child(SharedString::from("HTTP"))
+                                .into_any_element()
+                        };
                         let count_tag = if running {
                             tone_tag(Tone::Warn)
+                                .rounded_full()
                                 .child(SharedString::from("running"))
                                 .into_any_element()
                         } else {
                             tone_tag(Tone::Neutral)
+                                .rounded_full()
                                 .child(SharedString::from(format!("{}", crawl.page_count)))
                                 .into_any_element()
                         };
@@ -148,7 +162,14 @@ impl Render for CrawlsSidebar {
                                             .child(relative),
                                     ),
                             )
-                            .child(count_tag)
+                            .child(
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .gap_1()
+                                    .child(count_tag)
+                                    .child(mode_tag),
+                            )
                             .context_menu({
                                 let crawl_id = crawl.id;
                                 let was_selected = is_selected;

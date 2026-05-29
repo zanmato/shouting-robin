@@ -185,8 +185,11 @@ impl ShoutingRobinApp {
         );
         subscriptions.push(sidebar_sub);
 
+        let focus_handle = cx.focus_handle();
+        window.focus(&focus_handle, cx);
+
         let mut app = Self {
-            focus_handle: cx.focus_handle(),
+            focus_handle,
             crawl_bar,
             app_menu_bar,
             sidebar,
@@ -507,6 +510,7 @@ impl Render for ShoutingRobinApp {
             .justify_between()
             .px_2()
             .py_1()
+            .min_h_7()
             .border_b_1()
             .border_color(cx.theme().border)
             .bg(cx.theme().background);
@@ -554,7 +558,7 @@ impl Render for ShoutingRobinApp {
         if has_results {
             filter_bar = filter_bar.child(
                 Button::new("export-csv")
-                    .small()
+                    .xsmall()
                     .ghost()
                     .label("Export CSV")
                     .on_click(cx.listener(|this, _, _, cx| {
