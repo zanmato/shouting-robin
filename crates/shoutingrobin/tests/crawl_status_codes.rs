@@ -3,7 +3,10 @@ use std::path::Path;
 use std::process::{Child, Command};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
+
+static CRAWL_TEST_MUTEX: Mutex<()> = Mutex::new(());
 
 struct ChildGuard(Child);
 
@@ -67,6 +70,7 @@ fn write_sitemap(port: u16) {
     let xml = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>{base}/</loc></url>
   <url><loc>{base}/index.html</loc></url>
   <url><loc>{base}/about.html</loc></url>
   <url><loc>{base}/orphan-page.html</loc></url>
@@ -234,6 +238,7 @@ fn ssr_diff_pct(record: &shoutingrobin::crawl::event::PageRecord) -> u32 {
 
 #[test]
 fn test_http_crawl() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap();
     let (mut server, port) = spawn_http_server();
     let root_url = format!("http://127.0.0.1:{port}/");
 
@@ -409,6 +414,7 @@ fn test_http_crawl() {
 
 #[test]
 fn test_chrome_crawl() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap();
     if !chrome_available() {
         eprintln!("skipping: no chrome binary on PATH");
         return;
