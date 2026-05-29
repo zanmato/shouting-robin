@@ -141,6 +141,7 @@ fn crawl_test_site_with_mode(
                 delay_ms: 0,
                 timeout_seconds: 30,
                 respect_robots_txt: true,
+                follow_sitemaps: true,
                 near_duplicate_threshold: 90,
                 content_selector: String::new(),
                 user_agent: None,
@@ -154,7 +155,6 @@ fn crawl_test_site_with_mode(
         )
     };
 
-    let _cancel = cancel;
     rt.spawn(async move {
         fut.await;
     });

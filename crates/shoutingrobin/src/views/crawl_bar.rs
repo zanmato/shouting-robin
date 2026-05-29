@@ -13,6 +13,9 @@ use crate::crawl::{CrawlConfig, RenderMode};
 use crate::ui::icon::Icon;
 
 #[derive(Clone, Debug)]
+// Start inherently carries the full crawl config; Stop is empty. The size
+// gap is expected for a low-frequency event emitted once per crawl.
+#[allow(clippy::large_enum_variant)]
 pub enum CrawlBarEvent {
     Start {
         url: String,
@@ -126,6 +129,7 @@ impl CrawlBar {
             delay_ms: 0,
             timeout_seconds: 30,
             respect_robots_txt: true,
+            follow_sitemaps: true,
             near_duplicate_threshold: 90,
             content_selector: String::new(),
             user_agent,

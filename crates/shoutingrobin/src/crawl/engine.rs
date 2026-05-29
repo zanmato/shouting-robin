@@ -95,11 +95,16 @@ impl CrawlEngine {
                 })
                 .await;
 
-            let sitemap_urls = crate::crawl::sitemap::discover_sitemaps(&root_url).await;
-            let sitemap_entries = crate::crawl::sitemap::fetch_sitemap_urls(&sitemap_urls, 3).await;
-            if let Err(e) = storage::insert_sitemap_urls(&pool, crawl_id, &sitemap_entries).await {
-                tracing::warn!(error=%e, "failed to persist sitemap URLs");
-            }
+            let sitemap_entries = if config.follow_sitemaps {
+                let sitemap_urls = crate::crawl::sitemap::discover_sitemaps(&root_url).await;
+                let entries = crate::crawl::sitemap::fetch_sitemap_urls(&sitemap_urls, 3).await;
+                if let Err(e) = storage::insert_sitemap_urls(&pool, crawl_id, &entries).await {
+                    tracing::warn!(error=%e, "failed to persist sitemap URLs");
+                }
+                entries
+            } else {
+                Vec::new()
+            };
 
             let mut sitemap_lookup: std::collections::HashMap<String, String> =
                 std::collections::HashMap::new();

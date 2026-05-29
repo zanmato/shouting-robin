@@ -776,6 +776,7 @@ fn crawl_and_load(root_url: &str, render_mode: RenderMode, timeout: Duration) ->
                 delay_ms: 0,
                 timeout_seconds: 30,
                 respect_robots_txt: true,
+                follow_sitemaps: true,
                 near_duplicate_threshold: 90,
                 content_selector: String::new(),
                 user_agent: None,

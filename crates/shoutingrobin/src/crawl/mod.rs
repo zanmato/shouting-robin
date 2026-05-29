@@ -16,6 +16,8 @@ pub struct CrawlConfig {
     pub delay_ms: u64,
     pub timeout_seconds: u32,
     pub respect_robots_txt: bool,
+    #[serde(default)]
+    pub follow_sitemaps: bool,
     pub near_duplicate_threshold: u8,
     pub content_selector: String,
     #[serde(default)]
