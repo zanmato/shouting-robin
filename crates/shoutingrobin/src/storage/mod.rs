@@ -1134,7 +1134,7 @@ pub async fn load_pages_for_crawl(
                     near_duplicate_urls_json,
                 ),
             )| {
-                let is_internal = is_same_domain(root_url, &url);
+                let is_internal = crate::crawl::engine::is_same_domain(root_url, &url);
                 let images = images_by_url.remove(&url).unwrap_or_default();
                 let hreflang_tags: Vec<(String, String)> = hreflang_tags_json
                     .as_deref()
@@ -1255,16 +1255,6 @@ pub async fn load_pages_for_crawl(
             },
         )
         .collect())
-}
-
-fn is_same_domain(root: &str, url: &str) -> bool {
-    let Ok(root_parsed) = url::Url::parse(root) else {
-        return true;
-    };
-    let Ok(url_parsed) = url::Url::parse(url) else {
-        return false;
-    };
-    root_parsed.host_str() == url_parsed.host_str()
 }
 
 pub async fn load_simhashes_for_crawl(
