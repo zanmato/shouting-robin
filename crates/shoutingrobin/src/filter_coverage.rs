@@ -12,11 +12,12 @@
 //! compile until its expected behavior is declared here.
 //!
 //! A handful of conditions cannot be produced by a normalized live crawl
-//! (redirect chains are followed so no 3xx is recorded, resource content-types
-//! are not crawled as pages, URLs never contain literal spaces/non-ascii, axe
-//! rule firing is environment-dependent, sitemap orphans are not persisted).
-//! Those are covered by injected synthetic `PageRecord`s (`synthetic_pages`),
-//! which exercise the pure filter logic deterministically.
+//! (resource content-types are not crawled as pages, URLs never contain literal
+//! spaces/non-ascii, axe rule firing is environment-dependent, sitemap orphans
+//! are not persisted, and redirects to loopback/private hosts are refused by the
+//! crawler's SSRF guard so a 127.0.0.1 test server cannot exercise a followed
+//! redirect). Those are covered by injected synthetic `PageRecord`s
+//! (`synthetic_pages`), which exercise the pure filter logic deterministically.
 //!
 //! Route map (served by `spawn_site`): see `route` below.
 
@@ -70,7 +71,6 @@ fn linked_paths() -> Vec<String> {
         "/slow-perf",
         "/not-found",
         "/server-error",
-        "/redirect-301",
         "/secure",
         "/MixedCase",
         "/under_score",
@@ -545,25 +545,6 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                 "the unique five hundred server error body text",
             ),
         ),
-        "/redirect-301" => (
-            // Redirect to a page that is NOT linked from home and has unique
-            // content, so the followed record does not become a content/title
-            // duplicate of any crawled page.
-            "HTTP/1.1 301 Moved Permanently",
-            format!("Location: {base}/redirect-landing\r\n"),
-            "<html><body>redirecting</body></html>".to_string(),
-        ),
-        "/redirect-landing" => (
-            ok,
-            no_headers,
-            plain(
-                "Redirect Landing Page Title Value Goes Here",
-                "Redirect Landing",
-                "Meta for the unique redirect landing page reached only via the 301.",
-                "Sub",
-                "the unique redirect landing destination body text",
-            ),
-        ),
         "/secure" => (
             ok,
             "strict-transport-security: max-age=31536000\r\ncontent-security-policy: default-src 'self'\r\nx-frame-options: DENY\r\nx-content-type-options: nosniff\r\n".to_string(),
@@ -668,7 +649,7 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                 "<meta name=\"description\" content=\"Page with assorted internal outlinks for the links filters.\">",
                 "<h1>Links Heading</h1><h2>Sub</h2>\
                  <p><a href=\"/not-found\">broken</a> \
-                 <a href=\"/redirect-301\">redirected</a> \
+                 <a href=\"/canonical-other\">redirected</a> \
                  <a href=\"/large\" rel=\"nofollow\">nofollow</a></p>",
             ),
         ),
@@ -872,6 +853,15 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             status: Some(301),
             ..internal(format!("{base}/syn-3xx"))
         },
+        // A followed (non-loop) redirect. The crawler's SSRF guard refuses to
+        // follow redirects to loopback/private hosts, so a 127.0.0.1 test server
+        // cannot produce a live followed redirect; cover the Redirects filter
+        // synthetically. Target is a normal page that does not redirect, so it
+        // must NOT be flagged as a redirect loop.
+        PageRecord {
+            redirect_url: Some(format!("{base}/large")),
+            ..internal(format!("{base}/syn-redirect"))
+        },
         PageRecord {
             redirect_url: Some(format!("{base}/syn-loop-b")),
             ..internal(format!("{base}/syn-loop-a"))
@@ -994,8 +984,8 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::Status3xx => both(&["/syn-3xx"], &[]),
         F::Status4xx => both(&["/not-found"], &["/"]),
         F::Status5xx => both(&["/server-error"], &["/"]),
-        F::Redirects => both(&["/redirect-301"], &["/"]),
-        F::RedirectLoop => both(&["/syn-loop-a"], &["/redirect-301"]),
+        F::Redirects => both(&["/syn-redirect"], &["/"]),
+        F::RedirectLoop => both(&["/syn-loop-a"], &["/syn-redirect"]),
 
         // Titles / meta / headings (uniform across the four heading tabs)
         F::Missing => both(&["/missing-all"], &["/"]),
@@ -1153,7 +1143,6 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
                 "/sd-article",
                 "/sd-organization",
                 "/sd-microdata",
-                "/redirect-301",
                 "/spa",
                 "/withparam?x=1",
             ],
