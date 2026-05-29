@@ -273,6 +273,958 @@ fn vital_tile(
         .into_any_element()
 }
 
+fn header_block(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
+    div()
+        .px_3()
+        .py_2()
+        .border_b_1()
+        .border_color(border)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(UiIcon::from(Icon::PanelRightOpen).small())
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .child("URL Details"),
+                ),
+        )
+        .child(
+            div()
+                .mt_1()
+                .text_xs()
+                .text_color(muted)
+                .child(SharedString::from(rec.url.clone())),
+        )
+        .into_any_element()
+}
+
+fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
+    let status_tag = match rec.status {
+        Some(c) => tone_tag(status_code_tone(c))
+            .child(SharedString::from(c.to_string()))
+            .into_any_element(),
+        None => div().text_color(muted).child("-").into_any_element(),
+    };
+    let indexability_value = rec.indexability.clone().unwrap_or_else(|| "-".into());
+    let indexability_tag = if indexability_value == "-" {
+        div().text_color(muted).child("-").into_any_element()
+    } else {
+        tone_tag(indexability_tone(&indexability_value))
+            .child(SharedString::from(indexability_value.clone()))
+            .into_any_element()
+    };
+    let url_info = div()
+        .flex()
+        .flex_col()
+        .w_full()
+        .gap_1()
+        .child(row("Address", SharedString::from(rec.url.clone()), muted))
+        .child(row("Status", status_tag, muted))
+        .child(row("Content Type", or_dash(&rec.content_type), muted))
+        .child(row(
+            "Size",
+            SharedString::from(format_bytes(rec.size_bytes)),
+            muted,
+        ))
+        .child(row("Indexability", indexability_tag, muted))
+        .child(row("Canonical", or_dash(&rec.canonical), muted))
+        .when_some(rec.redirect_url.clone(), |el, redirect| {
+            el.child(row("Redirect URI", SharedString::from(redirect), muted))
+                .child(row(
+                    "Redirect Status",
+                    SharedString::from(
+                        rec.redirect_status
+                            .map(|s| s.to_string())
+                            .unwrap_or_else(|| "301".to_string()),
+                    ),
+                    muted,
+                ))
+        })
+        .when(
+            rec.headers
+                .iter()
+                .any(|(k, _)| k.eq_ignore_ascii_case("last-modified")),
+            |el| {
+                el.child(row(
+                    "Last Modified",
+                    SharedString::from(
+                        rec.headers
+                            .iter()
+                            .find(|(k, _)| k.eq_ignore_ascii_case("last-modified"))
+                            .map(|(_, v)| v.as_str())
+                            .unwrap_or("-"),
+                    ),
+                    muted,
+                ))
+            },
+        )
+        .into_any_element();
+
+    section("URL Information", None, None, muted, border, url_info)
+}
+
+fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
+    let page_content = div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(row("Title", or_dash(&rec.title), muted))
+        .child(row(
+            "Title Length",
+            SharedString::from(
+                rec.title
+                    .as_ref()
+                    .map(|t| t.len().to_string())
+                    .unwrap_or_else(|| "0".into()),
+            ),
+            muted,
+        ))
+        .child(row(
+            "Title Pixel Width",
+            SharedString::from(
+                rec.title_pixel_width
+                    .map(|w| w.to_string())
+                    .unwrap_or_else(|| "-".into()),
+            ),
+            muted,
+        ))
+        .when_some(rec.title_2.clone(), |el, t2| {
+            el.child(row("Title 2", SharedString::from(t2), muted))
+        })
+        .child(row("Meta Desc", or_dash(&rec.meta_description), muted))
+        .child(row(
+            "Meta Length",
+            SharedString::from(
+                rec.meta_description
+                    .as_ref()
+                    .map(|d| d.len().to_string())
+                    .unwrap_or_else(|| "0".into()),
+            ),
+            muted,
+        ))
+        .child(row(
+            "Meta Pixel Width",
+            SharedString::from(
+                rec.meta_description_pixel_width
+                    .map(|w| w.to_string())
+                    .unwrap_or_else(|| "-".into()),
+            ),
+            muted,
+        ))
+        .when_some(rec.meta_description_2.clone(), |el, md2| {
+            el.child(row("Meta Desc 2", SharedString::from(md2), muted))
+        })
+        .child(row("H1", or_dash(&rec.h1), muted))
+        .child(row(
+            "H1 Length",
+            SharedString::from(
+                rec.h1
+                    .as_ref()
+                    .map(|h| h.len().to_string())
+                    .unwrap_or_else(|| "0".into()),
+            ),
+            muted,
+        ))
+        .when_some(rec.h1_2.clone(), |el, h1_2| {
+            el.child(row("H1-2", SharedString::from(h1_2), muted))
+        })
+        .child(row("H2", or_dash(&rec.h2), muted))
+        .child(row(
+            "Word Count",
+            SharedString::from(
+                rec.word_count
+                    .map(|w| w.to_string())
+                    .unwrap_or_else(|| "-".into()),
+            ),
+            muted,
+        ))
+        .child(row(
+            "Avg Words/Sentence",
+            SharedString::from(match (rec.word_count, rec.sentence_count) {
+                (Some(words), Some(sentences)) if sentences > 0 => {
+                    format!("{:.1}", words as f32 / sentences as f32)
+                }
+                _ => "-".to_string(),
+            }),
+            muted,
+        ))
+        .child(row(
+            "Reading Ease",
+            SharedString::from(
+                rec.flesch_reading_ease
+                    .map(|s| format!("{s:.1}"))
+                    .unwrap_or_else(|| "-".into()),
+            ),
+            muted,
+        ))
+        .child(row(
+            "Readability",
+            SharedString::from(rec.readability.as_deref().unwrap_or("-").to_string()),
+            muted,
+        ))
+        .when(rec.ssr_word_count.is_some(), |el| {
+            el.child(row(
+                "SSR Words",
+                SharedString::from(
+                    rec.ssr_word_count
+                        .map(|w| w.to_string())
+                        .unwrap_or_else(|| "-".into()),
+                ),
+                muted,
+            ))
+            .child(row(
+                "SSR/CSR Diff",
+                SharedString::from(ssr_diff_label(rec)),
+                muted,
+            ))
+        })
+        .child(row("Meta Robots", or_dash(&rec.robots), muted))
+        .into_any_element();
+
+    section("Page Content", None, None, muted, border, page_content)
+}
+
+fn structured_data_section(
+    rec: &PageRecord,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> AnyElement {
+    let sd_summary = if rec.sd_items.is_empty() {
+        None
+    } else {
+        Some(
+            tone_tag(Tone::Accent)
+                .child(SharedString::from(format!("{} types", rec.sd_items.len())))
+                .into_any_element(),
+        )
+    };
+    let sd_types_text = if rec.sd_types.is_empty() {
+        SharedString::from("-")
+    } else {
+        SharedString::from(rec.sd_types.join(", "))
+    };
+
+    let mut sd_items_body = div().flex().flex_col().gap_1();
+    for item in &rec.sd_items {
+        let format_label = match item.format {
+            SdFormat::JsonLd => "JSON-LD",
+            SdFormat::Microdata => "Microdata",
+        };
+        let format_tag = tone_tag(if item.format == SdFormat::JsonLd {
+            Tone::Accent
+        } else {
+            Tone::Neutral
+        })
+        .child(SharedString::from(format_label));
+        sd_items_body = sd_items_body.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .pt_1()
+                .child(
+                    div().flex().items_center().gap_1().child(format_tag).child(
+                        div()
+                            .text_color(fg)
+                            .child(SharedString::from(item.type_name.clone())),
+                    ),
+                )
+                .when(!item.raw_json.is_empty(), |el| {
+                    el.child(
+                        div()
+                            .text_xs()
+                            .font_family(cx.theme().mono_font_family.clone())
+                            .text_color(muted)
+                            .max_h(gpui::px(120.))
+                            .overflow_y_scrollbar()
+                            .child(SharedString::from(item.raw_json.clone())),
+                    )
+                }),
+        );
+    }
+    for issue in &rec.sd_issues {
+        let tone = match issue.severity {
+            SdSeverity::Error => Tone::Err,
+            SdSeverity::Warning => Tone::Warn,
+        };
+        sd_items_body = sd_items_body.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .pt_1()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(tone_tag(tone).child(SharedString::from(issue.code.clone())))
+                        .child(
+                            div()
+                                .text_color(fg)
+                                .child(SharedString::from(issue.type_name.clone())),
+                        ),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(SharedString::from(issue.message.clone())),
+                ),
+        );
+    }
+
+    let sd_body = div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(row("Types", sd_types_text, muted))
+        .child(row(
+            "JSON-LD",
+            SharedString::from(rec.sd_jsonld_count.to_string()),
+            muted,
+        ))
+        .child(row(
+            "Microdata",
+            SharedString::from(rec.sd_microdata_count.to_string()),
+            muted,
+        ))
+        .when(rec.og_type.is_some(), |el| {
+            el.child(row(
+                "Open Graph",
+                SharedString::from(rec.og_type.clone().unwrap_or_default()),
+                muted,
+            ))
+        })
+        .child(row(
+            "Errors",
+            if rec.sd_errors > 0 {
+                tone_tag(Tone::Err)
+                    .child(SharedString::from(rec.sd_errors.to_string()))
+                    .into_any_element()
+            } else {
+                SharedString::from("0").into_any_element()
+            },
+            muted,
+        ))
+        .child(row(
+            "Warnings",
+            if rec.sd_warnings > 0 {
+                tone_tag(Tone::Warn)
+                    .child(SharedString::from(rec.sd_warnings.to_string()))
+                    .into_any_element()
+            } else {
+                SharedString::from("0").into_any_element()
+            },
+            muted,
+        ))
+        .when(
+            !rec.sd_items.is_empty() || !rec.sd_issues.is_empty(),
+            |el| el.child(sd_items_body),
+        )
+        .into_any_element();
+
+    section(
+        "Structured Data",
+        Some(Icon::Braces),
+        sd_summary,
+        muted,
+        border,
+        sd_body,
+    )
+}
+
+fn accessibility_section(
+    rec: &PageRecord,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> AnyElement {
+    let total_a11y = rec.a11y_errors + rec.a11y_warnings;
+    let a11y_summary = if total_a11y == 0 {
+        None
+    } else {
+        let tone = if rec.a11y_errors > 0 {
+            Tone::Err
+        } else {
+            Tone::Warn
+        };
+        Some(
+            tone_tag(tone)
+                .child(SharedString::from(format!("{} issues", total_a11y)))
+                .into_any_element(),
+        )
+    };
+    let mut a11y_body = div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(row(
+            "Errors",
+            if rec.a11y_errors > 0 {
+                tone_tag(Tone::Err)
+                    .child(SharedString::from(rec.a11y_errors.to_string()))
+                    .into_any_element()
+            } else {
+                SharedString::from("0").into_any_element()
+            },
+            muted,
+        ))
+        .child(row(
+            "Warnings",
+            if rec.a11y_warnings > 0 {
+                tone_tag(Tone::Warn)
+                    .child(SharedString::from(rec.a11y_warnings.to_string()))
+                    .into_any_element()
+            } else {
+                SharedString::from("0").into_any_element()
+            },
+            muted,
+        ));
+    for issue in &rec.a11y_issues {
+        a11y_body = a11y_body.child(a11y_issue_row(issue, muted, fg, border, cx));
+    }
+    let a11y_body = a11y_body.into_any_element();
+
+    section(
+        "Accessibility",
+        Some(Icon::Accessibility),
+        a11y_summary,
+        muted,
+        border,
+        a11y_body,
+    )
+}
+
+fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> AnyElement {
+    let lcp_str = rec
+        .lcp_ms
+        .map(|ms| format!("{:.1}s", ms as f32 / 1000.0))
+        .unwrap_or_else(|| "-".into());
+    let cls_str = rec
+        .cls
+        .map(|v| format!("{:.3}", v))
+        .unwrap_or_else(|| "-".into());
+    let inp_str = rec
+        .inp_ms
+        .map(|ms| format!("{ms}ms"))
+        .unwrap_or_else(|| "-".into());
+    let ttfb_str = rec
+        .ttfb_ms
+        .map(|ms| format!("{ms}ms"))
+        .unwrap_or_else(|| "-".into());
+
+    let vitals_body = div()
+        .flex()
+        .flex_col()
+        .gap_2()
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .child(div().flex_1().child(vital_tile(
+                    "LCP",
+                    SharedString::from(lcp_str),
+                    rec.lcp_ms.map(lcp_tone),
+                    muted,
+                    border,
+                    panel2,
+                )))
+                .child(div().flex_1().child(vital_tile(
+                    "CLS",
+                    SharedString::from(cls_str),
+                    rec.cls.map(cls_tone),
+                    muted,
+                    border,
+                    panel2,
+                )))
+                .child(div().flex_1().child(vital_tile(
+                    "INP",
+                    SharedString::from(inp_str),
+                    rec.inp_ms.map(inp_tone),
+                    muted,
+                    border,
+                    panel2,
+                ))),
+        )
+        .child(
+            div()
+                .flex()
+                .gap_2()
+                .child(div().flex_1().child(vital_tile(
+                    "TTFB",
+                    SharedString::from(ttfb_str),
+                    rec.ttfb_ms.map(ttfb_tone),
+                    muted,
+                    border,
+                    panel2,
+                )))
+                .child(div().flex_1())
+                .child(div().flex_1()),
+        )
+        .into_any_element();
+
+    section(
+        "Core Web Vitals",
+        Some(Icon::Gauge),
+        None,
+        muted,
+        border,
+        vitals_body,
+    )
+}
+
+fn link_metrics_section(
+    rec: &PageRecord,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> AnyElement {
+    let link_score_str = rec
+        .link_score
+        .map(|s| format!("{s:.1}"))
+        .unwrap_or_else(|| "-".into());
+    let links_body = div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(row(
+            "Inlinks",
+            SharedString::from(rec.inlinks_count.to_string()),
+            muted,
+        ))
+        .child(row(
+            "Outlinks",
+            SharedString::from(rec.outlinks.len().to_string()),
+            muted,
+        ))
+        .child(row("Link Score", SharedString::from(link_score_str), muted))
+        .child(row(
+            "Backlinks",
+            SharedString::from(rec.backlinks.len().to_string()),
+            muted,
+        ))
+        .child(row(
+            "Depth",
+            SharedString::from(rec.depth.to_string()),
+            muted,
+        ))
+        .child(row(
+            "Hreflang",
+            SharedString::from(rec.hreflang_tags.len().to_string()),
+            muted,
+        ))
+        .child(row(
+            "Near Duplicates",
+            SharedString::from(
+                rec.near_duplicate_count
+                    .map(|c| c.to_string())
+                    .unwrap_or_else(|| "-".into()),
+            ),
+            muted,
+        ))
+        .when(!rec.near_duplicate_urls.is_empty(), |el| {
+            let mut urls_body = div().flex().flex_col().gap_0p5();
+            for dup_url in &rec.near_duplicate_urls {
+                urls_body = urls_body.child(
+                    div()
+                        .text_xs()
+                        .font_family(cx.theme().mono_font_family.clone())
+                        .text_color(fg)
+                        .truncate()
+                        .child(SharedString::from(dup_url.clone())),
+                );
+            }
+            el.child(
+                div()
+                    .pl(px(0.))
+                    .pt_1()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .pb_0p5()
+                            .child("Duplicate Pages:"),
+                    )
+                    .child(urls_body),
+            )
+        })
+        .child(row(
+            "Closest Similarity",
+            SharedString::from(
+                rec.closest_similarity
+                    .map(|s| format!("{s}%"))
+                    .unwrap_or_else(|| "-".into()),
+            ),
+            muted,
+        ))
+        .into_any_element();
+
+    section("Link Metrics", None, None, muted, border, links_body)
+}
+
+fn images_section(rec: &PageRecord, muted: Hsla, fg: Hsla, border: Hsla, cx: &App) -> AnyElement {
+    let images_summary = if rec.images.is_empty() {
+        None
+    } else {
+        let missing_alt = rec
+            .images
+            .iter()
+            .filter(|img| !img.has_alt_attr || img.alt.as_deref().is_none_or(|a| a.is_empty()))
+            .count();
+        if missing_alt > 0 {
+            Some(
+                tone_tag(Tone::Warn)
+                    .child(SharedString::from(format!("{} missing alt", missing_alt)))
+                    .into_any_element(),
+            )
+        } else {
+            Some(
+                tone_tag(Tone::Ok)
+                    .child(SharedString::from(format!("{} images", rec.images.len())))
+                    .into_any_element(),
+            )
+        }
+    };
+
+    let mut images_body = div().flex().flex_col().gap_1();
+    if rec.images.is_empty() {
+        images_body = images_body.child(div().text_color(muted).text_sm().child("No images found"));
+    } else {
+        for image in &rec.images {
+            let alt_tag = if image.has_alt_attr {
+                if image.alt.as_deref().is_none_or(|a| a.is_empty()) {
+                    tone_tag(Tone::Warn).child(SharedString::from("empty"))
+                } else {
+                    tone_tag(Tone::Ok).child(SharedString::from("yes"))
+                }
+            } else {
+                tone_tag(Tone::Err).child(SharedString::from("missing"))
+            };
+            images_body = images_body.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .pt_1()
+                    .border_t_1()
+                    .border_color(border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_family(cx.theme().mono_font_family.clone())
+                            .text_color(fg)
+                            .child(SharedString::from(image.src.clone())),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .text_xs()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(div().text_color(muted).child("Alt:"))
+                                    .child(alt_tag)
+                                    .when_some(image.alt.clone(), |el, alt| {
+                                        el.child(
+                                            div().text_color(fg).child(SharedString::from(alt)),
+                                        )
+                                    }),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .when_some(image.width, |el, w| {
+                                        el.child(
+                                            div()
+                                                .text_color(fg)
+                                                .child(SharedString::from(format!("{w}px"))),
+                                        )
+                                    })
+                                    .when(image.width.is_some() && image.height.is_some(), |el| {
+                                        el.child(div().text_color(muted).child("x"))
+                                    })
+                                    .when_some(image.height, |el, h| {
+                                        el.child(
+                                            div()
+                                                .text_color(fg)
+                                                .child(SharedString::from(format!("{h}px"))),
+                                        )
+                                    })
+                                    .when(image.width.is_none() && image.height.is_none(), |el| {
+                                        el.child(div().text_color(muted).child("no dimensions"))
+                                    }),
+                            ),
+                    ),
+            );
+        }
+    }
+    let images_section_body = images_body.into_any_element();
+
+    section(
+        "Images",
+        Some(Icon::Image),
+        images_summary,
+        muted,
+        border,
+        images_section_body,
+    )
+}
+
+fn serp_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App) -> AnyElement {
+    section(
+        "SERP Preview",
+        None,
+        None,
+        muted,
+        border,
+        serp_preview(rec, cx),
+    )
+}
+
+fn hreflang_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> Option<AnyElement> {
+    if rec.hreflang_issues.is_empty() {
+        return None;
+    }
+    let mut body = div().flex().flex_col().gap_0p5();
+    for issue in &rec.hreflang_issues {
+        let label = match issue {
+            crate::crawl::event::HreflangIssue::MissingReturnTag { lang, target_url } => {
+                format!("Missing return tag: {lang} -> {target_url}")
+            }
+            crate::crawl::event::HreflangIssue::InvalidLanguageCode { code } => {
+                format!("Invalid language code: {code}")
+            }
+            crate::crawl::event::HreflangIssue::MissingXDefault => "Missing x-default".into(),
+            crate::crawl::event::HreflangIssue::NonCanonicalUrl { hreflang_url } => {
+                format!("Non-canonical target: {hreflang_url}")
+            }
+        };
+        body = body.child(
+            div()
+                .text_xs()
+                .text_color(gpui::hsla(0. / 360., 0.84, 0.60, 1.0))
+                .child(SharedString::from(label)),
+        );
+    }
+    Some(section(
+        "Hreflang Issues",
+        None,
+        Some(
+            div()
+                .text_xs()
+                .text_color(muted)
+                .child(SharedString::from(rec.hreflang_issues.len().to_string()))
+                .into_any_element(),
+        ),
+        muted,
+        border,
+        body.into_any_element(),
+    ))
+}
+
+fn inlinks_section(
+    rec: &PageRecord,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> Option<AnyElement> {
+    if rec.backlinks.is_empty() {
+        return None;
+    }
+    let mut body = div().flex().flex_col().gap_0p5();
+    for bl in &rec.backlinks {
+        body =
+            body.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .pt_1()
+                    .border_t_1()
+                    .border_color(border)
+                    .child(
+                        div()
+                            .text_xs()
+                            .font_family(cx.theme().mono_font_family.clone())
+                            .text_color(fg)
+                            .child(SharedString::from(bl.source_url.clone())),
+                    )
+                    .child(
+                        div().text_xs().text_color(muted).child(SharedString::from(
+                            bl.anchor
+                                .as_deref()
+                                .map(|a| format!("Anchor: {a}"))
+                                .unwrap_or_else(|| "No anchor".into()),
+                        )),
+                    )
+                    .when(bl.rel.as_deref().is_some(), |el| {
+                        el.child(div().text_xs().text_color(muted).child(SharedString::from(
+                            format!("Rel: {}", bl.rel.as_deref().unwrap()),
+                        )))
+                    }),
+            );
+    }
+    Some(section(
+        "Inlinks (From)",
+        None,
+        Some(
+            div()
+                .text_xs()
+                .child(SharedString::from(format!("{} links", rec.backlinks.len())))
+                .into_any_element(),
+        ),
+        muted,
+        border,
+        body.into_any_element(),
+    ))
+}
+
+fn outlinks_section(
+    rec: &PageRecord,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> Option<AnyElement> {
+    if rec.outlinks.is_empty() {
+        return None;
+    }
+    let mut body = div().flex().flex_col().gap_0p5();
+    let display_count = rec.outlinks.len().min(50);
+    for link in &rec.outlinks[..display_count] {
+        let is_nofollow = link
+            .rel
+            .as_deref()
+            .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
+        body = body.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .pt_1()
+                .border_t_1()
+                .border_color(border)
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(
+                            div()
+                                .text_xs()
+                                .font_family(cx.theme().mono_font_family.clone())
+                                .text_color(fg)
+                                .child(SharedString::from(link.dst_url.clone())),
+                        )
+                        .when(is_nofollow, |el| {
+                            el.child(tone_tag(Tone::Warn).child(SharedString::from("nofollow")))
+                        }),
+                )
+                .child(
+                    div().text_xs().text_color(muted).child(SharedString::from(
+                        link.anchor
+                            .as_deref()
+                            .map(|a| a.to_string())
+                            .unwrap_or_else(|| "-".into()),
+                    )),
+                ),
+        );
+    }
+    if rec.outlinks.len() > display_count {
+        body = body.child(
+            div()
+                .text_xs()
+                .text_color(muted)
+                .pt_1()
+                .child(SharedString::from(format!(
+                    "... and {} more",
+                    rec.outlinks.len() - display_count
+                ))),
+        );
+    }
+    Some(section(
+        "Outlinks (To)",
+        None,
+        Some(
+            div()
+                .text_xs()
+                .child(SharedString::from(format!("{} links", rec.outlinks.len())))
+                .into_any_element(),
+        ),
+        muted,
+        border,
+        body.into_any_element(),
+    ))
+}
+
+fn headers_section(
+    rec: &PageRecord,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> Option<AnyElement> {
+    if rec.headers.is_empty() {
+        return None;
+    }
+    let mut headers_body = div().flex().flex_col().gap_0p5();
+    for (key, value) in &rec.headers {
+        let display_value = if value.len() > 80 {
+            format!("{}...", &value[..80])
+        } else {
+            value.clone()
+        };
+        headers_body = headers_body.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .pt_1()
+                .border_t_1()
+                .border_color(border)
+                .child(
+                    div()
+                        .text_xs()
+                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .text_color(muted)
+                        .child(SharedString::from(key.clone())),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .font_family(cx.theme().mono_font_family.clone())
+                        .text_color(fg)
+                        .overflow_x_scrollbar()
+                        .child(SharedString::from(display_value)),
+                ),
+        );
+    }
+    Some(section(
+        "HTTP Headers",
+        None,
+        Some(SharedString::from(format!("{} headers", rec.headers.len())).into_any_element()),
+        muted,
+        border,
+        headers_body.into_any_element(),
+    ))
+}
+
 impl Render for DetailsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
@@ -291,959 +1243,31 @@ impl Render for DetailsPanel {
                 .text_color(muted)
                 .child("Select a URL to inspect details.")
                 .into_any_element(),
-            Some(rec) => {
-                let header = div()
-                    .px_3()
-                    .py_2()
-                    .border_b_1()
-                    .border_color(border)
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .child(UiIcon::from(Icon::PanelRightOpen).small())
-                            .child(
-                                div()
-                                    .text_sm()
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .child("URL Details"),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .mt_1()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(SharedString::from(rec.url.clone())),
-                    );
-
-                // URL Information
-                let status_tag = match rec.status {
-                    Some(c) => tone_tag(status_code_tone(c))
-                        .child(SharedString::from(c.to_string()))
-                        .into_any_element(),
-                    None => div().text_color(muted).child("-").into_any_element(),
-                };
-                let indexability_value = rec.indexability.clone().unwrap_or_else(|| "-".into());
-                let indexability_tag = if indexability_value == "-" {
-                    div().text_color(muted).child("-").into_any_element()
-                } else {
-                    tone_tag(indexability_tone(&indexability_value))
-                        .child(SharedString::from(indexability_value.clone()))
-                        .into_any_element()
-                };
-                let url_info = div()
-                    .flex()
-                    .flex_col()
-                    .w_full()
-                    .gap_1()
-                    .child(row("Address", SharedString::from(rec.url.clone()), muted))
-                    .child(row("Status", status_tag, muted))
-                    .child(row("Content Type", or_dash(&rec.content_type), muted))
-                    .child(row(
-                        "Size",
-                        SharedString::from(format_bytes(rec.size_bytes)),
-                        muted,
-                    ))
-                    .child(row("Indexability", indexability_tag, muted))
-                    .child(row("Canonical", or_dash(&rec.canonical), muted))
-                    .when_some(rec.redirect_url.clone(), |el, redirect| {
-                        el.child(row("Redirect URI", SharedString::from(redirect), muted))
-                            .child(row(
-                                "Redirect Status",
-                                SharedString::from(
-                                    rec.redirect_status
-                                        .map(|s| s.to_string())
-                                        .unwrap_or_else(|| "301".to_string()),
-                                ),
-                                muted,
-                            ))
-                    })
-                    .when(
-                        rec.headers
-                            .iter()
-                            .any(|(k, _)| k.eq_ignore_ascii_case("last-modified")),
-                        |el| {
-                            el.child(row(
-                                "Last Modified",
-                                SharedString::from(
-                                    rec.headers
-                                        .iter()
-                                        .find(|(k, _)| k.eq_ignore_ascii_case("last-modified"))
-                                        .map(|(_, v)| v.as_str())
-                                        .unwrap_or("-"),
-                                ),
-                                muted,
-                            ))
-                        },
-                    )
-                    .into_any_element();
-
-                // Page content
-                let page_content = div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(row("Title", or_dash(&rec.title), muted))
-                    .child(row(
-                        "Title Length",
-                        SharedString::from(
-                            rec.title
-                                .as_ref()
-                                .map(|t| t.len().to_string())
-                                .unwrap_or_else(|| "0".into()),
-                        ),
-                        muted,
-                    ))
-                    .child(row(
-                        "Title Pixel Width",
-                        SharedString::from(
-                            rec.title_pixel_width
-                                .map(|w| w.to_string())
-                                .unwrap_or_else(|| "-".into()),
-                        ),
-                        muted,
-                    ))
-                    .when_some(rec.title_2.clone(), |el, t2| {
-                        el.child(row("Title 2", SharedString::from(t2), muted))
-                    })
-                    .child(row("Meta Desc", or_dash(&rec.meta_description), muted))
-                    .child(row(
-                        "Meta Length",
-                        SharedString::from(
-                            rec.meta_description
-                                .as_ref()
-                                .map(|d| d.len().to_string())
-                                .unwrap_or_else(|| "0".into()),
-                        ),
-                        muted,
-                    ))
-                    .child(row(
-                        "Meta Pixel Width",
-                        SharedString::from(
-                            rec.meta_description_pixel_width
-                                .map(|w| w.to_string())
-                                .unwrap_or_else(|| "-".into()),
-                        ),
-                        muted,
-                    ))
-                    .when_some(rec.meta_description_2.clone(), |el, md2| {
-                        el.child(row("Meta Desc 2", SharedString::from(md2), muted))
-                    })
-                    .child(row("H1", or_dash(&rec.h1), muted))
-                    .child(row(
-                        "H1 Length",
-                        SharedString::from(
-                            rec.h1
-                                .as_ref()
-                                .map(|h| h.len().to_string())
-                                .unwrap_or_else(|| "0".into()),
-                        ),
-                        muted,
-                    ))
-                    .when_some(rec.h1_2.clone(), |el, h1_2| {
-                        el.child(row("H1-2", SharedString::from(h1_2), muted))
-                    })
-                    .child(row("H2", or_dash(&rec.h2), muted))
-                    .child(row(
-                        "Word Count",
-                        SharedString::from(
-                            rec.word_count
-                                .map(|w| w.to_string())
-                                .unwrap_or_else(|| "-".into()),
-                        ),
-                        muted,
-                    ))
-                    .child(row(
-                        "Avg Words/Sentence",
-                        SharedString::from(match (rec.word_count, rec.sentence_count) {
-                            (Some(words), Some(sentences)) if sentences > 0 => {
-                                format!("{:.1}", words as f32 / sentences as f32)
-                            }
-                            _ => "-".to_string(),
-                        }),
-                        muted,
-                    ))
-                    .child(row(
-                        "Reading Ease",
-                        SharedString::from(
-                            rec.flesch_reading_ease
-                                .map(|s| format!("{s:.1}"))
-                                .unwrap_or_else(|| "-".into()),
-                        ),
-                        muted,
-                    ))
-                    .child(row(
-                        "Readability",
-                        SharedString::from(rec.readability.as_deref().unwrap_or("-").to_string()),
-                        muted,
-                    ))
-                    .when(rec.ssr_word_count.is_some(), |el| {
-                        el.child(row(
-                            "SSR Words",
-                            SharedString::from(
-                                rec.ssr_word_count
-                                    .map(|w| w.to_string())
-                                    .unwrap_or_else(|| "-".into()),
-                            ),
-                            muted,
-                        ))
-                        .child(row(
-                            "SSR/CSR Diff",
-                            SharedString::from(ssr_diff_label(rec)),
-                            muted,
-                        ))
-                    })
-                    .child(row("Meta Robots", or_dash(&rec.robots), muted))
-                    .into_any_element();
-
-                // Structured data
-                let sd_summary = if rec.sd_items.is_empty() {
-                    None
-                } else {
-                    Some(
-                        tone_tag(Tone::Accent)
-                            .child(SharedString::from(format!("{} types", rec.sd_items.len())))
-                            .into_any_element(),
-                    )
-                };
-                let sd_types_text = if rec.sd_types.is_empty() {
-                    SharedString::from("-")
-                } else {
-                    SharedString::from(rec.sd_types.join(", "))
-                };
-
-                let mut sd_items_body = div().flex().flex_col().gap_1();
-                for item in &rec.sd_items {
-                    let format_label = match item.format {
-                        SdFormat::JsonLd => "JSON-LD",
-                        SdFormat::Microdata => "Microdata",
-                    };
-                    let format_tag = tone_tag(if item.format == SdFormat::JsonLd {
-                        Tone::Accent
-                    } else {
-                        Tone::Neutral
-                    })
-                    .child(SharedString::from(format_label));
-                    sd_items_body = sd_items_body.child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .pt_1()
-                            .child(
-                                div().flex().items_center().gap_1().child(format_tag).child(
-                                    div()
-                                        .text_color(fg)
-                                        .child(SharedString::from(item.type_name.clone())),
-                                ),
-                            )
-                            .when(!item.raw_json.is_empty(), |el| {
-                                el.child(
-                                    div()
-                                        .text_xs()
-                                        .font_family(cx.theme().mono_font_family.clone())
-                                        .text_color(muted)
-                                        .max_h(gpui::px(120.))
-                                        .overflow_y_scrollbar()
-                                        .child(SharedString::from(item.raw_json.clone())),
-                                )
-                            }),
-                    );
-                }
-                for issue in &rec.sd_issues {
-                    let tone = match issue.severity {
-                        SdSeverity::Error => Tone::Err,
-                        SdSeverity::Warning => Tone::Warn,
-                    };
-                    sd_items_body = sd_items_body.child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_0p5()
-                            .pt_1()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .child(
-                                        tone_tag(tone)
-                                            .child(SharedString::from(issue.code.clone())),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_color(fg)
-                                            .child(SharedString::from(issue.type_name.clone())),
-                                    ),
-                            )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(SharedString::from(issue.message.clone())),
-                            ),
-                    );
-                }
-
-                let sd_body = div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(row("Types", sd_types_text, muted))
-                    .child(row(
-                        "JSON-LD",
-                        SharedString::from(rec.sd_jsonld_count.to_string()),
-                        muted,
-                    ))
-                    .child(row(
-                        "Microdata",
-                        SharedString::from(rec.sd_microdata_count.to_string()),
-                        muted,
-                    ))
-                    .when(rec.og_type.is_some(), |el| {
-                        el.child(row(
-                            "Open Graph",
-                            SharedString::from(rec.og_type.clone().unwrap_or_default()),
-                            muted,
-                        ))
-                    })
-                    .child(row(
-                        "Errors",
-                        if rec.sd_errors > 0 {
-                            tone_tag(Tone::Err)
-                                .child(SharedString::from(rec.sd_errors.to_string()))
-                                .into_any_element()
-                        } else {
-                            SharedString::from("0").into_any_element()
-                        },
-                        muted,
-                    ))
-                    .child(row(
-                        "Warnings",
-                        if rec.sd_warnings > 0 {
-                            tone_tag(Tone::Warn)
-                                .child(SharedString::from(rec.sd_warnings.to_string()))
-                                .into_any_element()
-                        } else {
-                            SharedString::from("0").into_any_element()
-                        },
-                        muted,
-                    ))
-                    .when(
-                        !rec.sd_items.is_empty() || !rec.sd_issues.is_empty(),
-                        |el| el.child(sd_items_body),
-                    )
-                    .into_any_element();
-
-                // Accessibility
-                let total_a11y = rec.a11y_errors + rec.a11y_warnings;
-                let a11y_summary = if total_a11y == 0 {
-                    None
-                } else {
-                    let tone = if rec.a11y_errors > 0 {
-                        Tone::Err
-                    } else {
-                        Tone::Warn
-                    };
-                    Some(
-                        tone_tag(tone)
-                            .child(SharedString::from(format!("{} issues", total_a11y)))
-                            .into_any_element(),
-                    )
-                };
-                let mut a11y_body = div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(row(
-                        "Errors",
-                        if rec.a11y_errors > 0 {
-                            tone_tag(Tone::Err)
-                                .child(SharedString::from(rec.a11y_errors.to_string()))
-                                .into_any_element()
-                        } else {
-                            SharedString::from("0").into_any_element()
-                        },
-                        muted,
-                    ))
-                    .child(row(
-                        "Warnings",
-                        if rec.a11y_warnings > 0 {
-                            tone_tag(Tone::Warn)
-                                .child(SharedString::from(rec.a11y_warnings.to_string()))
-                                .into_any_element()
-                        } else {
-                            SharedString::from("0").into_any_element()
-                        },
-                        muted,
-                    ));
-                for issue in &rec.a11y_issues {
-                    a11y_body = a11y_body.child(a11y_issue_row(issue, muted, fg, border, cx));
-                }
-                let a11y_body = a11y_body.into_any_element();
-
-                // Core Web Vitals tile grid
-                let lcp_str = rec
-                    .lcp_ms
-                    .map(|ms| format!("{:.1}s", ms as f32 / 1000.0))
-                    .unwrap_or_else(|| "-".into());
-                let cls_str = rec
-                    .cls
-                    .map(|v| format!("{:.3}", v))
-                    .unwrap_or_else(|| "-".into());
-                let inp_str = rec
-                    .inp_ms
-                    .map(|ms| format!("{ms}ms"))
-                    .unwrap_or_else(|| "-".into());
-                let ttfb_str = rec
-                    .ttfb_ms
-                    .map(|ms| format!("{ms}ms"))
-                    .unwrap_or_else(|| "-".into());
-
-                let vitals_body = div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(div().flex_1().child(vital_tile(
-                                "LCP",
-                                SharedString::from(lcp_str),
-                                rec.lcp_ms.map(lcp_tone),
-                                muted,
-                                border,
-                                panel2,
-                            )))
-                            .child(div().flex_1().child(vital_tile(
-                                "CLS",
-                                SharedString::from(cls_str),
-                                rec.cls.map(cls_tone),
-                                muted,
-                                border,
-                                panel2,
-                            )))
-                            .child(div().flex_1().child(vital_tile(
-                                "INP",
-                                SharedString::from(inp_str),
-                                rec.inp_ms.map(inp_tone),
-                                muted,
-                                border,
-                                panel2,
-                            ))),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .child(div().flex_1().child(vital_tile(
-                                "TTFB",
-                                SharedString::from(ttfb_str),
-                                rec.ttfb_ms.map(ttfb_tone),
-                                muted,
-                                border,
-                                panel2,
-                            )))
-                            .child(div().flex_1())
-                            .child(div().flex_1()),
-                    )
-                    .into_any_element();
-
-                // Link metrics
-                let link_score_str = rec
-                    .link_score
-                    .map(|s| format!("{s:.1}"))
-                    .unwrap_or_else(|| "-".into());
-                let links_body = div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(row(
-                        "Inlinks",
-                        SharedString::from(rec.inlinks_count.to_string()),
-                        muted,
-                    ))
-                    .child(row(
-                        "Outlinks",
-                        SharedString::from(rec.outlinks.len().to_string()),
-                        muted,
-                    ))
-                    .child(row("Link Score", SharedString::from(link_score_str), muted))
-                    .child(row(
-                        "Backlinks",
-                        SharedString::from(rec.backlinks.len().to_string()),
-                        muted,
-                    ))
-                    .child(row(
-                        "Depth",
-                        SharedString::from(rec.depth.to_string()),
-                        muted,
-                    ))
-                    .child(row(
-                        "Hreflang",
-                        SharedString::from(rec.hreflang_tags.len().to_string()),
-                        muted,
-                    ))
-                    .child(row(
-                        "Near Duplicates",
-                        SharedString::from(
-                            rec.near_duplicate_count
-                                .map(|c| c.to_string())
-                                .unwrap_or_else(|| "-".into()),
-                        ),
-                        muted,
-                    ))
-                    .when(!rec.near_duplicate_urls.is_empty(), |el| {
-                        let mut urls_body = div().flex().flex_col().gap_0p5();
-                        for dup_url in &rec.near_duplicate_urls {
-                            urls_body = urls_body.child(
-                                div()
-                                    .text_xs()
-                                    .font_family(cx.theme().mono_font_family.clone())
-                                    .text_color(fg)
-                                    .truncate()
-                                    .child(SharedString::from(dup_url.clone())),
-                            );
-                        }
-                        el.child(
-                            div()
-                                .pl(px(0.))
-                                .pt_1()
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(muted)
-                                        .pb_0p5()
-                                        .child("Duplicate Pages:"),
-                                )
-                                .child(urls_body),
-                        )
-                    })
-                    .child(row(
-                        "Closest Similarity",
-                        SharedString::from(
-                            rec.closest_similarity
-                                .map(|s| format!("{s}%"))
-                                .unwrap_or_else(|| "-".into()),
-                        ),
-                        muted,
-                    ))
-                    .into_any_element();
-
-                // Images
-                let images_summary = if rec.images.is_empty() {
-                    None
-                } else {
-                    let missing_alt = rec
-                        .images
-                        .iter()
-                        .filter(|img| {
-                            !img.has_alt_attr || img.alt.as_deref().is_none_or(|a| a.is_empty())
-                        })
-                        .count();
-                    if missing_alt > 0 {
-                        Some(
-                            tone_tag(Tone::Warn)
-                                .child(SharedString::from(format!("{} missing alt", missing_alt)))
-                                .into_any_element(),
-                        )
-                    } else {
-                        Some(
-                            tone_tag(Tone::Ok)
-                                .child(SharedString::from(format!("{} images", rec.images.len())))
-                                .into_any_element(),
-                        )
-                    }
-                };
-
-                let mut images_body = div().flex().flex_col().gap_1();
-                if rec.images.is_empty() {
-                    images_body = images_body
-                        .child(div().text_color(muted).text_sm().child("No images found"));
-                } else {
-                    for image in &rec.images {
-                        let alt_tag = if image.has_alt_attr {
-                            if image.alt.as_deref().is_none_or(|a| a.is_empty()) {
-                                tone_tag(Tone::Warn).child(SharedString::from("empty"))
-                            } else {
-                                tone_tag(Tone::Ok).child(SharedString::from("yes"))
-                            }
-                        } else {
-                            tone_tag(Tone::Err).child(SharedString::from("missing"))
-                        };
-                        images_body = images_body.child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_0p5()
-                                .pt_1()
-                                .border_t_1()
-                                .border_color(border)
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .font_family(cx.theme().mono_font_family.clone())
-                                        .text_color(fg)
-                                        .child(SharedString::from(image.src.clone())),
-                                )
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        .text_xs()
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_1()
-                                                .child(div().text_color(muted).child("Alt:"))
-                                                .child(alt_tag)
-                                                .when_some(image.alt.clone(), |el, alt| {
-                                                    el.child(
-                                                        div()
-                                                            .text_color(fg)
-                                                            .child(SharedString::from(alt)),
-                                                    )
-                                                }),
-                                        )
-                                        .child(
-                                            div()
-                                                .flex()
-                                                .items_center()
-                                                .gap_1()
-                                                .when_some(image.width, |el, w| {
-                                                    el.child(div().text_color(fg).child(
-                                                        SharedString::from(format!("{w}px")),
-                                                    ))
-                                                })
-                                                .when(
-                                                    image.width.is_some() && image.height.is_some(),
-                                                    |el| {
-                                                        el.child(div().text_color(muted).child("x"))
-                                                    },
-                                                )
-                                                .when_some(image.height, |el, h| {
-                                                    el.child(div().text_color(fg).child(
-                                                        SharedString::from(format!("{h}px")),
-                                                    ))
-                                                })
-                                                .when(
-                                                    image.width.is_none() && image.height.is_none(),
-                                                    |el| {
-                                                        el.child(
-                                                            div()
-                                                                .text_color(muted)
-                                                                .child("no dimensions"),
-                                                        )
-                                                    },
-                                                ),
-                                        ),
-                                ),
-                        );
-                    }
-                }
-                let images_section_body = images_body.into_any_element();
-
-                div()
-                    .id("details-scroll")
-                    .overflow_y_scrollbar()
-                    .flex()
-                    .flex_col()
-                    .child(header)
-                    .child(section(
-                        "URL Information",
-                        None,
-                        None,
-                        muted,
-                        border,
-                        url_info,
-                    ))
-                    .child(section(
-                        "Page Content",
-                        None,
-                        None,
-                        muted,
-                        border,
-                        page_content,
-                    ))
-                    .child(section(
-                        "Structured Data",
-                        Some(Icon::Braces),
-                        sd_summary,
-                        muted,
-                        border,
-                        sd_body,
-                    ))
-                    .child(section(
-                        "Accessibility",
-                        Some(Icon::Accessibility),
-                        a11y_summary,
-                        muted,
-                        border,
-                        a11y_body,
-                    ))
-                    .child(section(
-                        "Core Web Vitals",
-                        Some(Icon::Gauge),
-                        None,
-                        muted,
-                        border,
-                        vitals_body,
-                    ))
-                    .child(section(
-                        "Link Metrics",
-                        None,
-                        None,
-                        muted,
-                        border,
-                        links_body,
-                    ))
-                    .child(section(
-                        "Images",
-                        Some(Icon::Image),
-                        images_summary,
-                        muted,
-                        border,
-                        images_section_body,
-                    ))
-                    .child(section(
-                        "SERP Preview",
-                        None,
-                        None,
-                        muted,
-                        border,
-                        serp_preview(rec, cx),
-                    ))
-                    .when(!rec.hreflang_issues.is_empty(), |el| {
-                        let mut body = div().flex().flex_col().gap_0p5();
-                        for issue in &rec.hreflang_issues {
-                            let label = match issue {
-                                crate::crawl::event::HreflangIssue::MissingReturnTag {
-                                    lang,
-                                    target_url,
-                                } => {
-                                    format!("Missing return tag: {lang} -> {target_url}")
-                                }
-                                crate::crawl::event::HreflangIssue::InvalidLanguageCode {
-                                    code,
-                                } => {
-                                    format!("Invalid language code: {code}")
-                                }
-                                crate::crawl::event::HreflangIssue::MissingXDefault => {
-                                    "Missing x-default".into()
-                                }
-                                crate::crawl::event::HreflangIssue::NonCanonicalUrl {
-                                    hreflang_url,
-                                } => {
-                                    format!("Non-canonical target: {hreflang_url}")
-                                }
-                            };
-                            body = body.child(
-                                div()
-                                    .text_xs()
-                                    .text_color(gpui::hsla(0. / 360., 0.84, 0.60, 1.0))
-                                    .child(SharedString::from(label)),
-                            );
-                        }
-                        el.child(section(
-                            "Hreflang Issues",
-                            None,
-                            Some(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(SharedString::from(
-                                        rec.hreflang_issues.len().to_string(),
-                                    ))
-                                    .into_any_element(),
-                            ),
-                            muted,
-                            border,
-                            body.into_any_element(),
-                        ))
-                    })
-                    .when(!rec.backlinks.is_empty(), |el| {
-                        let mut body = div().flex().flex_col().gap_0p5();
-                        for bl in &rec.backlinks {
-                            body = body.child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_0p5()
-                                    .pt_1()
-                                    .border_t_1()
-                                    .border_color(border)
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_family(cx.theme().mono_font_family.clone())
-                                            .text_color(fg)
-                                            .child(SharedString::from(bl.source_url.clone())),
-                                    )
-                                    .child(
-                                        div().text_xs().text_color(muted).child(
-                                            SharedString::from(
-                                                bl.anchor
-                                                    .as_deref()
-                                                    .map(|a| format!("Anchor: {a}"))
-                                                    .unwrap_or_else(|| "No anchor".into()),
-                                            ),
-                                        ),
-                                    )
-                                    .when(bl.rel.as_deref().is_some(), |el| {
-                                        el.child(div().text_xs().text_color(muted).child(
-                                            SharedString::from(format!(
-                                                "Rel: {}",
-                                                bl.rel.as_deref().unwrap()
-                                            )),
-                                        ))
-                                    }),
-                            );
-                        }
-                        el.child(section(
-                            "Inlinks (From)",
-                            None,
-                            Some(
-                                div()
-                                    .text_xs()
-                                    .child(SharedString::from(format!(
-                                        "{} links",
-                                        rec.backlinks.len()
-                                    )))
-                                    .into_any_element(),
-                            ),
-                            muted,
-                            border,
-                            body.into_any_element(),
-                        ))
-                    })
-                    .when(!rec.outlinks.is_empty(), |el| {
-                        let mut body = div().flex().flex_col().gap_0p5();
-                        let display_count = rec.outlinks.len().min(50);
-                        for link in &rec.outlinks[..display_count] {
-                            let is_nofollow = link
-                                .rel
-                                .as_deref()
-                                .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
-                            body = body.child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_0p5()
-                                    .pt_1()
-                                    .border_t_1()
-                                    .border_color(border)
-                                    .child(
-                                        div()
-                                            .flex()
-                                            .items_center()
-                                            .gap_1()
-                                            .child(
-                                                div()
-                                                    .text_xs()
-                                                    .font_family(
-                                                        cx.theme().mono_font_family.clone(),
-                                                    )
-                                                    .text_color(fg)
-                                                    .child(SharedString::from(
-                                                        link.dst_url.clone(),
-                                                    )),
-                                            )
-                                            .when(is_nofollow, |el| {
-                                                el.child(
-                                                    tone_tag(Tone::Warn)
-                                                        .child(SharedString::from("nofollow")),
-                                                )
-                                            }),
-                                    )
-                                    .child(
-                                        div().text_xs().text_color(muted).child(
-                                            SharedString::from(
-                                                link.anchor
-                                                    .as_deref()
-                                                    .map(|a| a.to_string())
-                                                    .unwrap_or_else(|| "-".into()),
-                                            ),
-                                        ),
-                                    ),
-                            );
-                        }
-                        if rec.outlinks.len() > display_count {
-                            body = body.child(div().text_xs().text_color(muted).pt_1().child(
-                                SharedString::from(format!(
-                                    "... and {} more",
-                                    rec.outlinks.len() - display_count
-                                )),
-                            ));
-                        }
-                        el.child(section(
-                            "Outlinks (To)",
-                            None,
-                            Some(
-                                div()
-                                    .text_xs()
-                                    .child(SharedString::from(format!(
-                                        "{} links",
-                                        rec.outlinks.len()
-                                    )))
-                                    .into_any_element(),
-                            ),
-                            muted,
-                            border,
-                            body.into_any_element(),
-                        ))
-                    })
-                    .when(!rec.headers.is_empty(), |el| {
-                        let mut headers_body = div().flex().flex_col().gap_0p5();
-                        for (key, value) in &rec.headers {
-                            let display_value = if value.len() > 80 {
-                                format!("{}...", &value[..80])
-                            } else {
-                                value.clone()
-                            };
-                            headers_body = headers_body.child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .gap_0p5()
-                                    .pt_1()
-                                    .border_t_1()
-                                    .border_color(border)
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                                            .text_color(muted)
-                                            .child(SharedString::from(key.clone())),
-                                    )
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .font_family(cx.theme().mono_font_family.clone())
-                                            .text_color(fg)
-                                            .overflow_x_scrollbar()
-                                            .child(SharedString::from(display_value)),
-                                    ),
-                            );
-                        }
-                        el.child(section(
-                            "HTTP Headers",
-                            None,
-                            Some(
-                                SharedString::from(format!("{} headers", rec.headers.len()))
-                                    .into_any_element(),
-                            ),
-                            muted,
-                            border,
-                            headers_body.into_any_element(),
-                        ))
-                    })
-                    .into_any_element()
-            }
+            Some(rec) => div()
+                .id("details-scroll")
+                .overflow_y_scrollbar()
+                .flex()
+                .flex_col()
+                .child(header_block(rec, muted, border))
+                .child(url_information_section(rec, muted, border))
+                .child(page_content_section(rec, muted, border))
+                .child(structured_data_section(rec, muted, fg, border, cx))
+                .child(accessibility_section(rec, muted, fg, border, cx))
+                .child(vitals_section(rec, muted, border, panel2))
+                .child(link_metrics_section(rec, muted, fg, border, cx))
+                .child(images_section(rec, muted, fg, border, cx))
+                .child(serp_section(rec, muted, border, cx))
+                .when_some(hreflang_section(rec, muted, border), |el, s| el.child(s))
+                .when_some(inlinks_section(rec, muted, fg, border, cx), |el, s| {
+                    el.child(s)
+                })
+                .when_some(outlinks_section(rec, muted, fg, border, cx), |el, s| {
+                    el.child(s)
+                })
+                .when_some(headers_section(rec, muted, fg, border, cx), |el, s| {
+                    el.child(s)
+                })
+                .into_any_element(),
         };
 
         div()
