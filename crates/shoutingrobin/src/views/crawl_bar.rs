@@ -33,8 +33,10 @@ pub struct CrawlBar {
     default_mode: RenderMode,
     advanced_open: bool,
     user_agent_input: gpui::Entity<InputState>,
+    headers_input: gpui::Entity<InputState>,
     include_input: gpui::Entity<InputState>,
     exclude_input: gpui::Entity<InputState>,
+    crawl_subdomains: bool,
     list_mode: bool,
     list_urls_input: gpui::Entity<InputState>,
     _subscriptions: Vec<gpui::Subscription>,
@@ -62,6 +64,11 @@ impl CrawlBar {
 
         let user_agent_input =
             cx.new(|cx| InputState::new(window, cx).placeholder("Default User-Agent"));
+        let headers_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder("Authorization: Bearer token  (one Name: Value per line)")
+                .auto_grow(3, 8)
+        });
         let include_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .placeholder("/blog/.*  (one regex per line)")
@@ -86,8 +93,10 @@ impl CrawlBar {
             default_mode: RenderMode::Http,
             advanced_open: false,
             user_agent_input,
+            headers_input,
             include_input,
             exclude_input,
+            crawl_subdomains: false,
             list_mode: false,
             list_urls_input,
             _subscriptions: vec![input_sub],
@@ -117,6 +126,17 @@ impl CrawlBar {
 
         let include_patterns = parse_lines(&self.include_input);
         let exclude_patterns = parse_lines(&self.exclude_input);
+        let extra_headers = parse_lines(&self.headers_input)
+            .into_iter()
+            .filter_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                let name = name.trim();
+                if name.is_empty() {
+                    return None;
+                }
+                Some((name.to_string(), value.trim().to_string()))
+            })
+            .collect();
         let seed_urls = if self.list_mode {
             parse_lines(&self.list_urls_input)
         } else {
@@ -133,10 +153,10 @@ impl CrawlBar {
             near_duplicate_threshold: 90,
             content_selector: String::new(),
             user_agent,
-            extra_headers: Vec::new(),
+            extra_headers,
             include_patterns,
             exclude_patterns,
-            crawl_subdomains: false,
+            crawl_subdomains: self.crawl_subdomains,
             list_mode: self.list_mode,
             seed_urls,
         }
@@ -183,6 +203,7 @@ impl Render for CrawlBar {
         let default_mode = self.default_mode;
         let advanced_open = self.advanced_open;
         let list_mode = self.list_mode;
+        let crawl_subdomains = self.crawl_subdomains;
 
         let main_row = div()
             .id("crawl-bar-main")
@@ -324,6 +345,29 @@ impl Render for CrawlBar {
                             .flex()
                             .flex_col()
                             .gap_1()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Subdomains"),
+                            )
+                            .child(
+                                Button::new("subdomains-toggle")
+                                    .xsmall()
+                                    .when(crawl_subdomains, |b| b.primary())
+                                    .when(!crawl_subdomains, |b| b.ghost())
+                                    .label(if crawl_subdomains { "On" } else { "Off" })
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.crawl_subdomains = !this.crawl_subdomains;
+                                        cx.notify();
+                                    })),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
                             .w(px(200.))
                             .child(
                                 div()
@@ -346,6 +390,20 @@ impl Render for CrawlBar {
                                     .child("Exclude (regex)"),
                             )
                             .child(Input::new(&self.exclude_input).small()),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .w(px(200.))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("Custom Headers"),
+                            )
+                            .child(Input::new(&self.headers_input).small()),
                     ),
             )
             .when(list_mode, |el| {
