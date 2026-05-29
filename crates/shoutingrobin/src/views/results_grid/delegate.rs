@@ -1,13 +1,17 @@
 use std::collections::{HashMap, HashSet};
 
-use gpui::{App, Context, IntoElement, ParentElement, SharedString, Styled, Window, div};
+use gpui::{
+    App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div,
+};
 use gpui_component::{
-    ActiveTheme,
+    ActiveTheme, Icon as UiIcon, Sizable,
     table::{ColumnSort, TableDelegate, TableState},
 };
 
 use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::PageRecord;
+use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, tone_tag};
 use crate::views::ResultTab;
 
@@ -631,6 +635,58 @@ impl TableDelegate for ResultsDelegate {
                             };
                             cell.child(tone_tag(tone).child(text))
                         }
+                        "source" => {
+                            let url = record.url.clone();
+                            cell.child(
+                                div()
+                                    .group("url-cell")
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(text)
+                                    .child(
+                                        div().invisible().group_hover("url-cell", |s| s.visible()),
+                                    )
+                                    .child(
+                                        div()
+                                            .id(ElementId::Name(
+                                                format!("open-src-{row_ix}").into(),
+                                            ))
+                                            .cursor_pointer()
+                                            .child(UiIcon::from(Icon::ExternalLink).xsmall())
+                                            .on_click(move |_, _window, cx| {
+                                                cx.open_url(&url);
+                                            }),
+                                    ),
+                            )
+                        }
+                        "destination" => {
+                            let url = link.dst_url.clone();
+                            cell.child(
+                                div()
+                                    .group("url-cell-dst")
+                                    .flex()
+                                    .items_center()
+                                    .gap_1()
+                                    .child(text)
+                                    .child(
+                                        div()
+                                            .invisible()
+                                            .group_hover("url-cell-dst", |s| s.visible()),
+                                    )
+                                    .child(
+                                        div()
+                                            .id(ElementId::Name(
+                                                format!("open-dst-{row_ix}").into(),
+                                            ))
+                                            .cursor_pointer()
+                                            .child(UiIcon::from(Icon::ExternalLink).xsmall())
+                                            .on_click(move |_, _window, cx| {
+                                                cx.open_url(&url);
+                                            }),
+                                    ),
+                            )
+                        }
                         _ => cell.child(text),
                     }
                 }
@@ -698,7 +754,26 @@ impl TableDelegate for ResultsDelegate {
                 self.active_tab,
                 self.root_origin.as_deref(),
             );
-            if let Some(tag) = render_cell_tag(record, &key, &text) {
+            if key.as_ref() == "address" {
+                let url = record.url.clone();
+                let icon = div()
+                    .id(ElementId::Name(format!("open-url-{row_ix}").into()))
+                    .cursor_pointer()
+                    .child(UiIcon::from(Icon::ExternalLink).xsmall())
+                    .on_click(move |_, _window, cx| {
+                        cx.open_url(&url);
+                    });
+                cell.child(
+                    div()
+                        .group("url-cell")
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(text)
+                        .child(div().invisible().group_hover("url-cell", |s| s.visible()))
+                        .child(icon),
+                )
+            } else if let Some(tag) = render_cell_tag(record, &key, &text) {
                 cell.child(tag)
             } else {
                 cell.child(text)

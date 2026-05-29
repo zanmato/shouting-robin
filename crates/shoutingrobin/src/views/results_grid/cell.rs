@@ -447,6 +447,34 @@ pub(super) fn cell_text(
         } else {
             "0".into()
         }),
+        "csr_inlinks" => SharedString::from(if record.csr_inlinks_count > 0 {
+            record.csr_inlinks_count.to_string()
+        } else {
+            "0".into()
+        }),
+        "csr_outlinks" => {
+            let csr_out = record.outlinks.iter().filter(|o| o.csr_only).count();
+            SharedString::from(csr_out.to_string())
+        }
+        "csr_inlinks_pct" => {
+            if record.inlinks_count > 0 && record.csr_inlinks_count > 0 {
+                let pct = (record.csr_inlinks_count as f64 / record.inlinks_count as f64 * 100.0)
+                    .round() as u32;
+                SharedString::from(format!("{pct}%"))
+            } else {
+                SharedString::from("-")
+            }
+        }
+        "csr_outlinks_pct" => {
+            let total = record.outlinks.len();
+            let csr_out = record.outlinks.iter().filter(|o| o.csr_only).count();
+            if total > 0 && csr_out > 0 {
+                let pct = (csr_out as f64 / total as f64 * 100.0).round() as u32;
+                SharedString::from(format!("{pct}%"))
+            } else {
+                SharedString::from("-")
+            }
+        }
         "outlinks_count" => SharedString::from(record.outlinks.len().to_string()),
         "folder_depth" => {
             let depth = url::Url::parse(&record.url)

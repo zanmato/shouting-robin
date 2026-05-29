@@ -802,8 +802,53 @@ fn link_metrics_section(
             muted,
         ))
         .child(row(
+            "CSR Inlinks",
+            SharedString::from(rec.csr_inlinks_count.to_string()),
+            muted,
+        ))
+        .child(row(
+            "CSR In %",
+            SharedString::from(if rec.inlinks_count > 0 && rec.csr_inlinks_count > 0 {
+                format!(
+                    "{}%",
+                    (rec.csr_inlinks_count as f64 / rec.inlinks_count as f64 * 100.0).round()
+                        as u32
+                )
+            } else {
+                "-".into()
+            }),
+            muted,
+        ))
+        .child(row(
             "Outlinks",
             SharedString::from(rec.outlinks.len().to_string()),
+            muted,
+        ))
+        .child(row(
+            "CSR Outlinks",
+            SharedString::from(
+                rec.outlinks
+                    .iter()
+                    .filter(|o| o.csr_only)
+                    .count()
+                    .to_string(),
+            ),
+            muted,
+        ))
+        .child(row(
+            "CSR Out %",
+            SharedString::from({
+                let total = rec.outlinks.len();
+                let csr_out = rec.outlinks.iter().filter(|o| o.csr_only).count();
+                if total > 0 && csr_out > 0 {
+                    format!(
+                        "{}%",
+                        (csr_out as f64 / total as f64 * 100.0).round() as u32
+                    )
+                } else {
+                    "-".into()
+                }
+            }),
             muted,
         ))
         .child(row("Link Score", SharedString::from(link_score_str), muted))

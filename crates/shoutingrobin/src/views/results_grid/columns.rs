@@ -27,7 +27,11 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("depth", "Depth", 60., None),
             col("folder_depth", "Folder Depth", 90., None),
             col("inlinks", "Inlinks", 70., None),
+            col("csr_inlinks", "CSR In", 70., None),
+            col("csr_inlinks_pct", "CSR In %", 80., None),
             col("outlinks_count", "Outlinks", 70., None),
+            col("csr_outlinks", "CSR Out", 70., None),
+            col("csr_outlinks_pct", "CSR Out %", 80., None),
             col("last_modified", "Last Modified", 130., None),
             col("redirect_url", "Redirect URI", 350., None),
             col("closest_similarity", "Closest Sim.", 90., None),
@@ -311,6 +315,10 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "folder_depth"
             | "inlinks"
             | "outlinks_count"
+            | "csr_inlinks"
+            | "csr_outlinks"
+            | "csr_inlinks_pct"
+            | "csr_outlinks_pct"
             | "closest_similarity"
             | "near_duplicate_count"
             | "occurrences"

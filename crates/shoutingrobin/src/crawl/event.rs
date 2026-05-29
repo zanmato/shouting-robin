@@ -44,6 +44,7 @@ pub struct PageRecord {
     pub ecommerce: Option<EcommerceAudit>,
     pub outlinks: Vec<Outlink>,
     pub inlinks_count: u32,
+    pub csr_inlinks_count: u32,
     pub a11y_errors: u32,
     pub a11y_warnings: u32,
     pub a11y_issues: Vec<A11yIssue>,
@@ -131,6 +132,7 @@ pub struct Outlink {
     pub dst_url: String,
     pub anchor: Option<String>,
     pub rel: Option<String>,
+    pub csr_only: bool,
 }
 
 #[derive(Debug, Clone)]

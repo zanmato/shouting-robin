@@ -177,6 +177,26 @@ pub fn analyze_ssr(record: &mut PageRecord, raw_html: &str, content_selector: &s
     record.ssr_word_count = Some(ssr_word_count);
     record.ssr_h1 = ssr_h1;
     record.ssr_content_missing = Some(low_content || h1_only_after_render);
+
+    let ssr_link_dsts: std::collections::HashSet<String> = {
+        let Ok(sel) = Selector::parse("a[href]") else {
+            return;
+        };
+        let Some(base) = url::Url::parse(&record.url).ok() else {
+            return;
+        };
+        doc.select(&sel)
+            .filter_map(|el| {
+                let href = el.value().attr("href")?;
+                resolve_href(&base, href)
+            })
+            .collect()
+    };
+    for link in &mut record.outlinks {
+        if !ssr_link_dsts.contains(&link.dst_url) {
+            link.csr_only = true;
+        }
+    }
 }
 
 fn is_meta_refresh(doc: &Html) -> bool {
@@ -375,26 +395,29 @@ fn extract_images(doc: &Html, record: &mut PageRecord) {
     }
 }
 
+fn resolve_href(base_url: &url::Url, href: &str) -> Option<String> {
+    let resolved = base_url.join(href).ok()?;
+    let dst = resolved.to_string();
+    if dst.starts_with('#') || dst.starts_with("javascript:") || dst.starts_with("mailto:") {
+        return None;
+    }
+    Some(dst)
+}
+
 fn extract_anchors(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse("a[href]") else {
         return;
     };
-    let base = url::Url::parse(&record.url).ok();
+    let Some(base) = url::Url::parse(&record.url).ok() else {
+        return;
+    };
     for el in doc.select(&sel) {
         let Some(href) = el.value().attr("href") else {
             continue;
         };
-        let resolved = match base.as_ref() {
-            Some(base_url) => base_url.join(href).ok(),
-            None => continue,
-        };
-        let Some(resolved_url) = resolved else {
+        let Some(dst) = resolve_href(&base, href) else {
             continue;
         };
-        let dst = resolved_url.to_string();
-        if dst.starts_with('#') || dst.starts_with("javascript:") || dst.starts_with("mailto:") {
-            continue;
-        }
         let anchor: String = el.text().collect::<Vec<_>>().join(" ");
         let anchor = if anchor.trim().is_empty() {
             None
@@ -406,6 +429,7 @@ fn extract_anchors(doc: &Html, record: &mut PageRecord) {
             dst_url: dst,
             anchor,
             rel,
+            csr_only: false,
         });
     }
 }
@@ -1362,5 +1386,85 @@ mod tests {
         analyze_ssr(&mut r, raw, "");
         assert_eq!(r.ssr_content_missing, None);
         assert_eq!(r.ssr_word_count, None);
+    }
+
+    #[test]
+    fn csr_only_set_for_links_absent_from_raw_html() {
+        let mut r = PageRecord {
+            url: "https://example.com/page".into(),
+            word_count: Some(200),
+            h1: Some("Heading".into()),
+            outlinks: vec![
+                Outlink {
+                    dst_url: "https://example.com/".into(),
+                    anchor: Some("Home".into()),
+                    rel: None,
+                    csr_only: false,
+                },
+                Outlink {
+                    dst_url: "https://example.com/js-link".into(),
+                    anchor: Some("JS Link".into()),
+                    rel: None,
+                    csr_only: false,
+                },
+            ],
+            ..Default::default()
+        };
+        let raw = r#"<html><head><title>T</title></head><body>
+            <h1>Heading</h1>
+            <a href="https://example.com/">Home</a>
+            <p>enough words to pass the threshold one two three four five six seven eight nine ten</p>
+            </body></html>"#;
+        analyze_ssr(&mut r, raw, "");
+        assert!(
+            !r.outlinks[0].csr_only,
+            "link in raw HTML should not be csr_only"
+        );
+        assert!(
+            r.outlinks[1].csr_only,
+            "link absent from raw HTML should be csr_only"
+        );
+    }
+
+    #[test]
+    fn csr_only_not_set_when_all_links_present_in_raw() {
+        let mut r = PageRecord {
+            url: "https://example.com/page".into(),
+            word_count: Some(50),
+            h1: Some("Heading".into()),
+            outlinks: vec![Outlink {
+                dst_url: "https://example.com/about".into(),
+                anchor: Some("About".into()),
+                rel: None,
+                csr_only: false,
+            }],
+            ..Default::default()
+        };
+        let raw = r#"<html><head><title>T</title></head><body>
+            <h1>Heading</h1>
+            <a href="https://example.com/about">About</a>
+            <p>one two three four five six seven eight nine ten</p>
+            </body></html>"#;
+        analyze_ssr(&mut r, raw, "");
+        assert!(!r.outlinks[0].csr_only);
+    }
+
+    #[test]
+    fn csr_only_not_touched_in_http_mode() {
+        let mut r = PageRecord {
+            url: "https://example.com/page".into(),
+            ..Default::default()
+        };
+        analyze_html(
+            &mut r,
+            r#"<html><head><title>T</title></head><body>
+            <a href="https://example.com/a">A</a>
+            <a href="https://example.com/b">B</a>
+            </body></html>"#,
+            "",
+        );
+        assert_eq!(r.outlinks.len(), 2);
+        assert!(!r.outlinks[0].csr_only);
+        assert!(!r.outlinks[1].csr_only);
     }
 }
