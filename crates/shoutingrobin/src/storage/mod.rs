@@ -73,6 +73,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0017_readability",
         include_str!("../../migrations/0017_readability.sql"),
     ),
+    (
+        "0018_blocked_by_robots",
+        include_str!("../../migrations/0018_blocked_by_robots.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -181,8 +185,9 @@ pub async fn insert_page(
             title_2, meta_description_2, h1_2, h2_2,
             title_pixel_width, meta_description_pixel_width,
             ssr_word_count, ssr_h1, ssr_content_missing,
-            sentence_count, syllable_count, flesch_reading_ease, readability
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            sentence_count, syllable_count, flesch_reading_ease, readability,
+            blocked_by_robots
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
@@ -226,6 +231,7 @@ pub async fn insert_page(
     .bind(record.syllable_count.map(|s| s as i64))
     .bind(record.flesch_reading_ease.map(|f| f as f64))
     .bind(record.readability.as_deref())
+    .bind(record.blocked_by_robots.map(|b| b as i64))
     .execute(pool)
     .await?;
 
@@ -706,13 +712,15 @@ pub async fn load_pages_for_crawl(
             Option<i64>,
             Option<f64>,
             Option<String>,
+            Option<i64>,
         ),
     >(
         r#"
         SELECT url, title_2, meta_description_2, h1_2, h2_2,
                title_pixel_width, meta_description_pixel_width,
                ssr_word_count, ssr_h1, ssr_content_missing,
-               sentence_count, syllable_count, flesch_reading_ease, readability
+               sentence_count, syllable_count, flesch_reading_ease, readability,
+               blocked_by_robots
         FROM pages WHERE crawl_id = ?
         ORDER BY id
         "#,
@@ -1038,6 +1046,7 @@ pub async fn load_pages_for_crawl(
         syllable_count: Option<u32>,
         flesch_reading_ease: Option<f32>,
         readability: Option<String>,
+        blocked_by_robots: Option<bool>,
     }
     let secondary_by_url: std::collections::HashMap<String, SecondaryData> = secondary_rows
         .into_iter()
@@ -1057,6 +1066,7 @@ pub async fn load_pages_for_crawl(
                 syllable_count,
                 flesch_reading_ease,
                 readability,
+                blocked_by_robots,
             )| {
                 (
                     url,
@@ -1074,6 +1084,7 @@ pub async fn load_pages_for_crawl(
                         syllable_count: syllable_count.map(|s| s as u32),
                         flesch_reading_ease: flesch_reading_ease.map(|f| f as f32),
                         readability,
+                        blocked_by_robots: blocked_by_robots.map(|b| b != 0),
                     },
                 )
             },
@@ -1235,6 +1246,7 @@ pub async fn load_pages_for_crawl(
                     syllable_count: page_secondary.and_then(|s| s.syllable_count),
                     flesch_reading_ease: page_secondary.and_then(|s| s.flesch_reading_ease),
                     readability: page_secondary.and_then(|s| s.readability.clone()),
+                    blocked_by_robots: page_secondary.and_then(|s| s.blocked_by_robots),
                     link_score: page_link_score,
                     backlinks: page_backlinks,
                     hreflang_issues,

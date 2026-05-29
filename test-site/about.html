@@ -13,11 +13,25 @@
   "url": "http://127.0.0.1:8000/"
 }
 </script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Product",
+  "name": "Test Product",
+  "description": "A test product for structured data verification.",
+  "offers": {
+    "@type": "Offer",
+    "price": "29.99",
+    "priceCurrency": "USD"
+  }
+}
+</script>
 </head>
 <body>
 <h1>About</h1>
 <h2>Subsection</h2>
 <p>This page has a single H1, an H2 and JSON-LD structured data.</p>
+<script>requestAnimationFrame(function(){requestAnimationFrame(function(){var h=document.createElement("div");h.style.cssText="height:120px;background:#ddd;margin:0 0 10px 0;font-size:24px;line-height:120px;text-align:center";h.textContent="This banner was injected after first paint";document.body.insertBefore(h,document.body.firstChild);});});</script>
 <a href="/index.html">Home</a>
 </body>
 </html>

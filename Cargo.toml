@@ -53,7 +53,7 @@ flume = "0.11"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
 
 # Crawl backend
-spider = { version = "2.51.203", default-features = false, features = [
+spider = { path = "../spider/spider", default-features = false, features = [
     "chrome",
     "chrome_intercept",
     "chrome_stealth",

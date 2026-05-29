@@ -1011,6 +1011,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::NearDuplicates => both(&["/near-dup-a", "/near-dup-b"], &["/"]),
         F::LowContent => both(&["/low-content"], &["/large"]),
         F::SsrContentMissing => chrome(&["/spa"], &[]),
+        F::BlockedByRobots => both(&[], &[]),
 
         // Images
         F::MissingAltText => both(&["/images"], &[]),

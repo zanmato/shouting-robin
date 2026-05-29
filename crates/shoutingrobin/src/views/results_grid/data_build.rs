@@ -56,6 +56,7 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Content Requires JavaScript (SSR)" => {
             Some((ResultTab::Content, IssueFilter::SsrContentMissing))
         }
+        "Blocked by robots.txt" => Some((ResultTab::Content, IssueFilter::BlockedByRobots)),
         "Redirects" => Some((ResultTab::ResponseCodes, IssueFilter::Redirects)),
         "Missing HSTS" => Some((ResultTab::Security, IssueFilter::MissingHsts)),
         "Missing CSP" => Some((ResultTab::Security, IssueFilter::MissingCsp)),
@@ -392,6 +393,23 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
                 .into(),
             hint: "Ensure critical content (headings, copy) is present in the initial HTML so \
                    search engines relying on the server response can index it."
+                .into(),
+        });
+    }
+
+    let blocked_by_robots = internal
+        .iter()
+        .filter(|p| p.blocked_by_robots == Some(true))
+        .count();
+    if blocked_by_robots > 0 {
+        entries.push(IssueEntry {
+            name: "Blocked by robots.txt".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: blocked_by_robots,
+            pct: blocked_by_robots as f32 / total * 100.0,
+            description: "These internal URLs are disallowed by the site's robots.txt file.".into(),
+            hint: "Review robots.txt rules to ensure important pages are not accidentally blocked."
                 .into(),
         });
     }

@@ -173,7 +173,9 @@ impl CrawlEngine {
             }
 
             match render_mode {
-                RenderMode::Http => {}
+                RenderMode::Http => {
+                    website.with_disable_chrome(true);
+                }
                 RenderMode::Chrome => {
                     let mut automation_map =
                         spider::features::chrome_common::AutomationScriptsMap::default();
@@ -181,13 +183,6 @@ impl CrawlEngine {
                         "/".to_string(),
                         vec![WebAutomation::Evaluate(METRICS_AUTOMATION_JS.to_string())],
                     );
-                    // Wait for the DOM to stop mutating rather than for network
-                    // idle. Network idle never settles on pages with background
-                    // requests (favicon, analytics, 404 subresources), burning the
-                    // full timeout on every page; DOM idle settles sub-second once
-                    // rendering/hydration finishes. The cap is the upper bound and
-                    // must stay below `request_timeout` so a slow page returns
-                    // content instead of a synthetic 504.
                     let wait_cap = (config.timeout_seconds as u64)
                         .saturating_sub(5)
                         .clamp(3, 15);
@@ -198,8 +193,22 @@ impl CrawlEngine {
                             Some(Duration::from_secs(wait_cap)),
                             "body".into(),
                         )))
-                        .with_automation_scripts(Some(automation_map));
+                        .with_automation_scripts(Some(automation_map))
+                        .with_evaluate_on_new_document(Some(Box::new(
+                            PERF_OBSERVER_JS.to_string(),
+                        )));
                 }
+            }
+
+            let blocked_urls: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
+                std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+            {
+                let blocked_urls = blocked_urls.clone();
+                website.with_on_link_blocked_callback(Some(move |url: String| {
+                    if let Ok(mut guard) = blocked_urls.lock() {
+                        guard.push(url);
+                    }
+                }));
             }
 
             if website.build().is_err() {
@@ -440,6 +449,26 @@ impl CrawlEngine {
                 }
                 if !orphans.is_empty() {
                     tracing::info!(count = orphans.len(), "found sitemap orphan URLs");
+                }
+            }
+
+            {
+                let blocked =
+                    std::mem::take(&mut *blocked_urls.lock().unwrap_or_else(|e| e.into_inner()));
+                let mut seen = std::collections::HashSet::new();
+                for url in &blocked {
+                    if seen.insert(url.clone()) {
+                        let record = PageRecord {
+                            url: url.clone(),
+                            is_internal: is_same_domain(&root_url, url),
+                            blocked_by_robots: Some(true),
+                            ..Default::default()
+                        };
+                        let _ = tx.send_async(CrawlEvent::Page(Box::new(record))).await;
+                    }
+                }
+                if !blocked.is_empty() {
+                    tracing::info!(count = blocked.len(), "found robots.txt-blocked URLs");
                 }
             }
 
@@ -700,6 +729,24 @@ fn is_valid_bcp47(code: &str) -> bool {
     true
 }
 
+const PERF_OBSERVER_JS: &str = r#"
+window.__sr_cls = 0;
+try {
+    new PerformanceObserver(function(list) {
+        var e = list.getEntries();
+        for (var i = 0; i < e.length; i++) {
+            if (!e[i].hadRecentInput) window.__sr_cls += e[i].value;
+        }
+    }).observe({ type: 'layout-shift', buffered: true });
+} catch(e) {}
+try {
+    window.__sr_lcp_entries = [];
+    new PerformanceObserver(function(list) {
+        window.__sr_lcp_entries = window.__sr_lcp_entries.concat(list.getEntries());
+    }).observe({ type: 'largest-contentful-paint', buffered: true });
+} catch(e) {}
+"#;
+
 const METRICS_AUTOMATION_JS: &str = r#"
 (function() {
     try {
@@ -803,27 +850,48 @@ async fn collect_performance_metrics(page: &spider::page::Page, record: &mut Pag
     };
 
     let js = r#"
-    (async function() {
-        await new Promise(function(resolve) { setTimeout(resolve, 0); });
+    (function() {
         var result = { ttfb: null, lcp: null, cls: null, inp: null };
         try {
             var nav = performance.getEntriesByType('navigation')[0];
-            if (nav) result.ttfb = Math.round(nav.responseStart - nav.requestStart);
+            if (nav) result.ttfb = Math.max(0, Math.round(nav.responseStart - nav.requestStart));
         } catch(e) {}
         try {
-            var lcpEntries = performance.getEntriesByType('largest-contentful-paint');
-            if (lcpEntries.length > 0) result.lcp = Math.round(lcpEntries[lcpEntries.length - 1].startTime);
+            var lcp = null;
+            if (window.__sr_lcp_entries && window.__sr_lcp_entries.length > 0) {
+                lcp = Math.round(window.__sr_lcp_entries[window.__sr_lcp_entries.length - 1].startTime);
+            }
+            if (lcp == null) {
+                var entries = performance.getEntriesByType('largest-contentful-paint');
+                if (entries && entries.length > 0) lcp = Math.round(entries[entries.length - 1].startTime);
+            }
+            if (lcp == null) {
+                var paint = performance.getEntriesByType('paint');
+                for (var i = 0; i < paint.length; i++) {
+                    if (paint[i].name === 'first-contentful-paint') {
+                        lcp = Math.round(paint[i].startTime);
+                        break;
+                    }
+                }
+            }
+            result.lcp = lcp;
         } catch(e) {}
         try {
-            var shifts = performance.getEntriesByType('layout-shift');
-            var cls = 0;
-            for (var i = 0; i < shifts.length; i++) if (!shifts[i].hadRecentInput) cls += shifts[i].value;
+            var cls = window.__sr_cls || 0;
+            if (cls === 0) {
+                var shifts = performance.getEntriesByType('layout-shift');
+                for (var j = 0; j < shifts.length; j++) {
+                    if (!shifts[j].hadRecentInput) cls += shifts[j].value;
+                }
+            }
             result.cls = Math.round(cls * 1000) / 1000;
         } catch(e) {}
         try {
             var events = performance.getEntriesByType('event');
             var maxDur = 0;
-            for (var i = 0; i < events.length; i++) if (events[i].duration > maxDur) maxDur = events[i].duration;
+            for (var k = 0; k < events.length; k++) {
+                if (events[k].duration > maxDur) maxDur = events[k].duration;
+            }
             if (maxDur > 0) result.inp = Math.round(maxDur);
         } catch(e) {}
         return result;
@@ -832,7 +900,7 @@ async fn collect_performance_metrics(page: &spider::page::Page, record: &mut Pag
 
     let params = match spider::chromiumoxide::cdp::js_protocol::runtime::EvaluateParams::builder()
         .expression(js)
-        .await_promise(true)
+        .await_promise(false)
         .return_by_value(true)
         .build()
     {

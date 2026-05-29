@@ -72,6 +72,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::NearDuplicates,
             IssueFilter::LowContent,
             IssueFilter::SsrContentMissing,
+            IssueFilter::BlockedByRobots,
             IssueFilter::ReadabilityDifficult,
             IssueFilter::ReadabilityVeryDifficult,
         ],
@@ -557,6 +558,9 @@ pub(super) fn filter_for_tab(
             }
             IssueFilter::SsrContentMissing => {
                 indices.retain(|&idx| pages[idx].ssr_content_missing == Some(true))
+            }
+            IssueFilter::BlockedByRobots => {
+                indices.retain(|&idx| pages[idx].blocked_by_robots == Some(true))
             }
             IssueFilter::ReadabilityDifficult => indices.retain(|&idx| {
                 pages[idx]
