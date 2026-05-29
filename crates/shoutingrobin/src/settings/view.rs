@@ -560,6 +560,37 @@ impl SettingsView {
                     )
                     .description("CSS selector to scope word count and duplicate detection. Leave empty to use full page body."),
                 ]),
+                SettingGroup::new().title("Identification").items(vec![
+                    SettingItem::new(
+                        "User-Agent",
+                        SettingField::input(
+                            move |cx: &App| {
+                                SharedString::from(
+                                    AppSettings::global(cx).settings.crawl.user_agent.clone(),
+                                )
+                            },
+                            {
+                                let view_handle = view_handle.clone();
+                                move |val: SharedString, cx: &mut App| {
+                                    AppSettings::global_mut(cx).settings.crawl.user_agent =
+                                        val.to_string();
+
+                                    let key = "crawl.user_agent".to_string();
+                                    let value = val.to_string();
+                                    if let Some(view) = view_handle.upgrade() {
+                                        view.update(cx, |view, cx| {
+                                            view.save_setting_debounced(key, value, cx);
+                                        });
+                                    }
+                                }
+                            },
+                        )
+                        .default_value(SharedString::from("")),
+                    )
+                    .description(
+                        "Default User-Agent header for crawls. Leave empty for the built-in default. The crawl bar's Advanced field overrides this per crawl.",
+                    ),
+                ]),
             ]),
             SettingPage::new("Appearance").resettable(true).groups(vec![
                 SettingGroup::new().title("Theme").items(vec![

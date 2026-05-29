@@ -56,6 +56,9 @@ impl Settings {
                 "crawl.content_selector" => {
                     settings.crawl.content_selector = value.clone();
                 }
+                "crawl.user_agent" => {
+                    settings.crawl.user_agent = value.clone();
+                }
                 "appearance.theme" => {
                     settings.appearance.theme = value.clone();
                 }
@@ -96,6 +99,8 @@ pub struct CrawlSettings {
     pub follow_sitemaps: bool,
     pub near_duplicate_threshold: u8,
     pub content_selector: String,
+    #[serde(default)]
+    pub user_agent: String,
 }
 
 impl Default for CrawlSettings {
@@ -109,6 +114,7 @@ impl Default for CrawlSettings {
             follow_sitemaps: true,
             near_duplicate_threshold: 90,
             content_selector: String::new(),
+            user_agent: String::new(),
         }
     }
 }

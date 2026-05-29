@@ -263,6 +263,14 @@ impl ShoutingRobinApp {
             follow_sitemaps: crawl_settings.follow_sitemaps,
             near_duplicate_threshold: crawl_settings.near_duplicate_threshold,
             content_selector: crawl_settings.content_selector.clone(),
+            user_agent: config.user_agent.clone().or_else(|| {
+                let ua = crawl_settings.user_agent.trim();
+                if ua.is_empty() {
+                    None
+                } else {
+                    Some(ua.to_string())
+                }
+            }),
             ..config
         };
         let (cancel, fut) = {
