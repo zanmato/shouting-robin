@@ -1,14 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
 use gpui::{
-    App, Context, ElementId, InteractiveElement, IntoElement, ParentElement, SharedString,
+    App, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
     StatefulInteractiveElement, Styled, Window, div,
 };
 use gpui_component::{
     ActiveTheme, Icon as UiIcon, Sizable, StyledExt as _,
     table::{ColumnSort, TableDelegate, TableState},
+    tooltip::Tooltip,
 };
 
+use crate::a11y_rules::rule_description;
 use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::PageRecord;
 use crate::ui::icon::Icon;
@@ -805,9 +807,7 @@ impl TableDelegate for ResultsDelegate {
                                     )
                                     .child(
                                         div()
-                                            .id(ElementId::Name(
-                                                format!("open-src-{row_ix}").into(),
-                                            ))
+                                            .id(("open-src", row_ix))
                                             .cursor_pointer()
                                             .child(UiIcon::from(Icon::ExternalLink).xsmall())
                                             .on_click(move |_, _window, cx| {
@@ -832,9 +832,7 @@ impl TableDelegate for ResultsDelegate {
                                     )
                                     .child(
                                         div()
-                                            .id(ElementId::Name(
-                                                format!("open-dst-{row_ix}").into(),
-                                            ))
+                                            .id(("open-dst", row_ix))
                                             .cursor_pointer()
                                             .child(UiIcon::from(Icon::ExternalLink).xsmall())
                                             .on_click(move |_, _window, cx| {
@@ -873,16 +871,39 @@ impl TableDelegate for ResultsDelegate {
                         _ => cell.child(text),
                     }
                 }
+                FlatRow::A11yIssue { page, item } => {
+                    let Some(record) = self.all_pages.get(*page) else {
+                        return cell;
+                    };
+                    let Some(issue) = record.a11y_issues.get(*item) else {
+                        return cell;
+                    };
+                    let text = flat_cell_text(record, row, &key, self.root_origin.as_deref());
+                    if key.as_ref() == "a11y_rule" {
+                        if let Some(desc) = rule_description(&issue.rule) {
+                            let desc = SharedString::from(desc.to_string());
+                            cell.child(div().id(("a11y-rule-tip", row_ix)).child(text).tooltip(
+                                move |window, cx| Tooltip::new(desc.clone()).build(window, cx),
+                            ))
+                        } else {
+                            cell.child(text)
+                        }
+                    } else if let Some(tag) = render_cell_tag(record, &key, &text) {
+                        cell.child(tag)
+                    } else {
+                        cell.child(text)
+                    }
+                }
                 _ => {
                     let page_index = match row {
                         FlatRow::Image { page, .. }
-                        | FlatRow::A11yIssue { page, .. }
                         | FlatRow::Hreflang { page, .. }
                         | FlatRow::SdItem { page, .. } => *page,
                         FlatRow::IssuesRow { .. }
                         | FlatRow::ChangeRow { .. }
                         | FlatRow::LinkRow { .. }
-                        | FlatRow::DirectoryAggregate { .. } => unreachable!(),
+                        | FlatRow::DirectoryAggregate { .. }
+                        | FlatRow::A11yIssue { .. } => unreachable!(),
                     };
                     let Some(record) = self.all_pages.get(page_index) else {
                         return cell;

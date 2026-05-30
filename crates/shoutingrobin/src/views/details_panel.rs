@@ -2,8 +2,11 @@ use gpui::{
     AnyElement, App, Context, Hsla, InteractiveElement, IntoElement, ParentElement, Render,
     SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
 };
-use gpui_component::{ActiveTheme, Icon as UiIcon, Sizable as _, scroll::ScrollableElement as _};
+use gpui_component::{
+    ActiveTheme, Icon as UiIcon, Sizable as _, scroll::ScrollableElement as _, tooltip::Tooltip,
+};
 
+use crate::a11y_rules::rule_description;
 use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdSeverity};
 use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
@@ -12,14 +15,32 @@ use shoutingrobin_ui::JsonView;
 
 pub struct DetailsPanel {
     pub selected: Option<PageRecord>,
+    json_views: Vec<Option<JsonView>>,
 }
 
 impl DetailsPanel {
     pub fn new() -> Self {
-        Self { selected: None }
+        Self {
+            selected: None,
+            json_views: Vec::new(),
+        }
     }
 
     pub fn set_selected(&mut self, record: Option<PageRecord>, cx: &mut Context<Self>) {
+        self.json_views = match &record {
+            Some(rec) => rec
+                .sd_items
+                .iter()
+                .map(|item| {
+                    if item.raw_json.is_empty() {
+                        None
+                    } else {
+                        Some(JsonView::new(&item.raw_json, cx))
+                    }
+                })
+                .collect(),
+            None => Vec::new(),
+        };
         self.selected = record;
         cx.notify();
     }
@@ -161,9 +182,29 @@ fn serp_preview(rec: &PageRecord, cx: &App) -> AnyElement {
         .into_any_element()
 }
 
-fn a11y_issue_row(issue: &A11yIssue, muted: Hsla, fg: Hsla, border: Hsla, cx: &App) -> AnyElement {
+fn a11y_issue_row(
+    issue: &A11yIssue,
+    index: usize,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> AnyElement {
     let impact_tag =
         tone_tag(a11y_impact_tone(&issue.impact)).child(SharedString::from(issue.impact.clone()));
+    let rule_name = SharedString::from(issue.rule.clone());
+    let rule_el: AnyElement = match rule_description(&issue.rule) {
+        Some(desc) => {
+            let desc = SharedString::from(desc.to_string());
+            div()
+                .id(("a11y-rule-tip", index))
+                .text_color(fg)
+                .child(rule_name)
+                .tooltip(move |window, cx| Tooltip::new(desc.clone()).build(window, cx))
+                .into_any_element()
+        }
+        None => div().text_color(fg).child(rule_name).into_any_element(),
+    };
     div()
         .flex()
         .flex_col()
@@ -172,11 +213,12 @@ fn a11y_issue_row(issue: &A11yIssue, muted: Hsla, fg: Hsla, border: Hsla, cx: &A
         .border_t_1()
         .border_color(border)
         .child(
-            div().flex().items_center().gap_1().child(impact_tag).child(
-                div()
-                    .text_color(fg)
-                    .child(SharedString::from(issue.rule.clone())),
-            ),
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(impact_tag)
+                .child(rule_el),
         )
         .when_some(issue.target.clone(), |el, target| {
             el.child(
@@ -509,10 +551,10 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
 
 fn structured_data_section(
     rec: &PageRecord,
+    json_views: &[Option<JsonView>],
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
-    _cx: &App,
 ) -> AnyElement {
     let sd_summary = if rec.sd_items.is_empty() {
         None
@@ -530,7 +572,7 @@ fn structured_data_section(
     };
 
     let mut sd_items_body = div().flex().flex_col().gap_1();
-    for item in &rec.sd_items {
+    for (item, json_view) in rec.sd_items.iter().zip(json_views.iter()) {
         let format_label = match item.format {
             SdFormat::JsonLd => "JSON-LD",
             SdFormat::Microdata => "Microdata",
@@ -554,9 +596,7 @@ fn structured_data_section(
                             .child(SharedString::from(item.type_name.clone())),
                     ),
                 )
-                .when(!item.raw_json.is_empty(), |el| {
-                    el.child(JsonView::new(item.raw_json.clone()))
-                }),
+                .when_some(json_view.clone(), |el, view| el.child(view)),
         );
     }
     for issue in &rec.sd_issues {
@@ -699,8 +739,8 @@ fn accessibility_section(
             },
             muted,
         ));
-    for issue in &rec.a11y_issues {
-        a11y_body = a11y_body.child(a11y_issue_row(issue, muted, fg, border, cx));
+    for (index, issue) in rec.a11y_issues.iter().enumerate() {
+        a11y_body = a11y_body.child(a11y_issue_row(issue, index, muted, fg, border, cx));
     }
     let a11y_body = a11y_body.into_any_element();
 
@@ -1312,7 +1352,13 @@ impl Render for DetailsPanel {
                 .child(header_block(rec, muted, border))
                 .child(url_information_section(rec, muted, border))
                 .child(page_content_section(rec, muted, border))
-                .child(structured_data_section(rec, muted, fg, border, cx))
+                .child(structured_data_section(
+                    rec,
+                    &self.json_views,
+                    muted,
+                    fg,
+                    border,
+                ))
                 .child(accessibility_section(rec, muted, fg, border, cx))
                 .child(vitals_section(rec, muted, border, panel2))
                 .child(link_metrics_section(rec, muted, fg, border, cx))

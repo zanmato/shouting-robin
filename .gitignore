@@ -3,3 +3,4 @@
 .cargo
 /*.md
 sitemap.xml
+scripts/local/
