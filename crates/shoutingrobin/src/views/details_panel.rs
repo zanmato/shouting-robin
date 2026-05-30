@@ -11,11 +11,12 @@ use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdSeverity};
 use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::results_grid::ssr_diff_label;
-use shoutingrobin_ui::JsonView;
+use shoutingrobin_ui::{HtmlView, JsonView};
 
 pub struct DetailsPanel {
     pub selected: Option<PageRecord>,
     json_views: Vec<Option<JsonView>>,
+    html_views: Vec<Option<HtmlView>>,
 }
 
 impl DetailsPanel {
@@ -23,6 +24,7 @@ impl DetailsPanel {
         Self {
             selected: None,
             json_views: Vec::new(),
+            html_views: Vec::new(),
         }
     }
 
@@ -37,6 +39,20 @@ impl DetailsPanel {
                     } else {
                         Some(JsonView::new(&item.raw_json, cx))
                     }
+                })
+                .collect(),
+            None => Vec::new(),
+        };
+        self.html_views = match &record {
+            Some(rec) => rec
+                .a11y_issues
+                .iter()
+                .map(|issue| {
+                    issue
+                        .html
+                        .as_deref()
+                        .filter(|h| !h.is_empty())
+                        .map(|h| HtmlView::new(h, cx))
                 })
                 .collect(),
             None => Vec::new(),
@@ -184,11 +200,11 @@ fn serp_preview(rec: &PageRecord, cx: &App) -> AnyElement {
 
 fn a11y_issue_row(
     issue: &A11yIssue,
+    html_view: Option<&HtmlView>,
     index: usize,
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
-    cx: &App,
 ) -> AnyElement {
     let impact_tag =
         tone_tag(a11y_impact_tone(&issue.impact)).child(SharedString::from(issue.impact.clone()));
@@ -199,11 +215,16 @@ fn a11y_issue_row(
             div()
                 .id(("a11y-rule-tip", index))
                 .text_color(fg)
+                .text_sm()
                 .child(rule_name)
                 .tooltip(move |window, cx| Tooltip::new(desc.clone()).build(window, cx))
                 .into_any_element()
         }
-        None => div().text_color(fg).child(rule_name).into_any_element(),
+        None => div()
+            .text_color(fg)
+            .text_sm()
+            .child(rule_name)
+            .into_any_element(),
     };
     div()
         .flex()
@@ -228,16 +249,7 @@ fn a11y_issue_row(
                     .child(SharedString::from(target)),
             )
         })
-        .when_some(issue.html.clone(), |el, html| {
-            el.child(
-                div()
-                    .text_xs()
-                    .font_family(cx.theme().mono_font_family.clone())
-                    .text_color(muted)
-                    .overflow_x_scrollbar()
-                    .child(SharedString::from(html)),
-            )
-        })
+        .when_some(html_view.cloned(), |el, view| el.child(view))
         .into_any_element()
 }
 
@@ -593,6 +605,7 @@ fn structured_data_section(
                     div().flex().items_center().gap_1().child(format_tag).child(
                         div()
                             .text_color(fg)
+                            .text_sm()
                             .child(SharedString::from(item.type_name.clone())),
                     ),
                 )
@@ -619,6 +632,7 @@ fn structured_data_section(
                         .child(
                             div()
                                 .text_color(fg)
+                                .text_sm()
                                 .child(SharedString::from(issue.type_name.clone())),
                         ),
                 )
@@ -693,10 +707,10 @@ fn structured_data_section(
 
 fn accessibility_section(
     rec: &PageRecord,
+    html_views: &[Option<HtmlView>],
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
-    cx: &App,
 ) -> AnyElement {
     let total_a11y = rec.a11y_errors + rec.a11y_warnings;
     let a11y_summary = if total_a11y == 0 {
@@ -740,7 +754,14 @@ fn accessibility_section(
             muted,
         ));
     for (index, issue) in rec.a11y_issues.iter().enumerate() {
-        a11y_body = a11y_body.child(a11y_issue_row(issue, index, muted, fg, border, cx));
+        a11y_body = a11y_body.child(a11y_issue_row(
+            issue,
+            html_views[index].as_ref(),
+            index,
+            muted,
+            fg,
+            border,
+        ));
     }
     let a11y_body = a11y_body.into_any_element();
 
@@ -1359,7 +1380,13 @@ impl Render for DetailsPanel {
                     fg,
                     border,
                 ))
-                .child(accessibility_section(rec, muted, fg, border, cx))
+                .child(accessibility_section(
+                    rec,
+                    &self.html_views,
+                    muted,
+                    fg,
+                    border,
+                ))
                 .child(vitals_section(rec, muted, border, panel2))
                 .child(link_metrics_section(rec, muted, fg, border, cx))
                 .child(images_section(rec, muted, fg, border, cx))

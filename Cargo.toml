@@ -17,7 +17,7 @@ publish = false
 gpui = { git = "https://github.com/zed-industries/zed" }
 gpui-macros = "0.2.2"
 gpui-component = { git = "https://github.com/longbridge/gpui-component/", features = [
-    "tree-sitter-languages",
+    "tree-sitter-html",
 ] }
 gpui-component-macros = { git = "https://github.com/longbridge/gpui-component/" }
 gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
