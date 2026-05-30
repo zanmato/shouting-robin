@@ -91,6 +91,7 @@ impl CrawlEngine {
 
             let _ = tx
                 .send_async(CrawlEvent::Started {
+                    crawl_id,
                     root_url: root_url.clone(),
                 })
                 .await;

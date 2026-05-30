@@ -189,7 +189,7 @@ impl PageRecord {
 
 #[derive(Debug, Clone)]
 pub enum CrawlEvent {
-    Started { root_url: String },
+    Started { crawl_id: i64, root_url: String },
     Page(Box<PageRecord>),
     Progress { crawled: u64, queued: u64 },
     Finished { total: u64 },

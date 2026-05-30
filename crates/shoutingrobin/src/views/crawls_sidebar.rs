@@ -38,7 +38,6 @@ impl CrawlsSidebar {
         cx.notify();
     }
 
-    #[allow(dead_code)]
     pub fn set_selected_id(&mut self, id: i64, cx: &mut Context<Self>) {
         self.selected_id = Some(id);
         cx.notify();

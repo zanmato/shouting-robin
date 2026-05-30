@@ -468,12 +468,17 @@ impl ShoutingRobinApp {
                     _ => {}
                 }
                 cx.update(|cx| match event {
-                    CrawlEvent::Started { root_url } => {
+                    CrawlEvent::Started { crawl_id, root_url } => {
                         results_grid.update(cx, |g, cx| {
                             g.set_root_url(root_url.as_str(), cx);
                         });
                         if let Some(this) = this.upgrade() {
-                            this.update(cx, |this, cx| this.load_crawl_history(cx));
+                            this.update(cx, |this, cx| {
+                                this.load_crawl_history(cx);
+                                this.sidebar.update(cx, |sidebar, cx| {
+                                    sidebar.set_selected_id(crawl_id, cx);
+                                });
+                            });
                         }
                     }
                     CrawlEvent::Page(boxed_record) => {
