@@ -95,7 +95,6 @@ impl ResultsDelegate {
         if tab_is_flattened(self.active_tab) {
             let page_index = match self.flat_rows.get(index)? {
                 FlatRow::Image { page, .. }
-                | FlatRow::Outlink { page, .. }
                 | FlatRow::A11yIssue { page, .. }
                 | FlatRow::Hreflang { page, .. }
                 | FlatRow::SdItem { page, .. }
@@ -302,37 +301,18 @@ impl ResultsDelegate {
         }
         let active_tab = self.active_tab;
         let all_pages = &self.all_pages;
-        self.flat_rows = if active_tab == ResultTab::External {
-            self.filtered_indices
-                .iter()
-                .flat_map(|&page_index| {
-                    let Some(page) = all_pages.get(page_index) else {
-                        return Vec::<FlatRow>::new();
-                    };
-                    page.outlinks
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, link)| !is_same_domain(&page.url, &link.dst_url))
-                        .map(|(item_index, _)| FlatRow::Outlink {
-                            page: page_index,
-                            item: item_index,
-                        })
-                        .collect()
-                })
-                .collect()
-        } else {
-            self.filtered_indices
-                .iter()
-                .flat_map(|&page_index| {
-                    let item_count = all_pages
-                        .get(page_index)
-                        .map(|page| flat_row_item_count(page, active_tab))
-                        .unwrap_or(0);
-                    (0..item_count)
-                        .map(move |item_index| flat_row_variant(active_tab, page_index, item_index))
-                })
-                .collect()
-        };
+        self.flat_rows = self
+            .filtered_indices
+            .iter()
+            .flat_map(|&page_index| {
+                let item_count = all_pages
+                    .get(page_index)
+                    .map(|page| flat_row_item_count(page, active_tab))
+                    .unwrap_or(0);
+                (0..item_count)
+                    .map(move |item_index| flat_row_variant(active_tab, page_index, item_index))
+            })
+            .collect();
         self.filter_flat_rows();
     }
 
@@ -378,7 +358,6 @@ impl ResultsDelegate {
         self.flat_rows.retain(|row| {
             let page_index = match row {
                 FlatRow::Image { page, .. }
-                | FlatRow::Outlink { page, .. }
                 | FlatRow::A11yIssue { page, .. }
                 | FlatRow::Hreflang { page, .. }
                 | FlatRow::SdItem { page, .. }
@@ -507,7 +486,6 @@ impl ResultsDelegate {
             _ => {
                 let page_index = match row {
                     FlatRow::Image { page, .. }
-                    | FlatRow::Outlink { page, .. }
                     | FlatRow::A11yIssue { page, .. }
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. } => *page,
@@ -721,7 +699,6 @@ impl TableDelegate for ResultsDelegate {
                 _ => {
                     let page_index = match row {
                         FlatRow::Image { page, .. }
-                        | FlatRow::Outlink { page, .. }
                         | FlatRow::A11yIssue { page, .. }
                         | FlatRow::Hreflang { page, .. }
                         | FlatRow::SdItem { page, .. } => *page,
@@ -755,26 +732,7 @@ impl TableDelegate for ResultsDelegate {
                 self.active_tab,
                 self.root_origin.as_deref(),
             );
-            if key.as_ref() == "address" {
-                let url = record.url.clone();
-                let icon = div()
-                    .id(ElementId::Name(format!("open-url-{row_ix}").into()))
-                    .cursor_pointer()
-                    .child(UiIcon::from(Icon::ExternalLink).xsmall())
-                    .on_click(move |_, _window, cx| {
-                        cx.open_url(&url);
-                    });
-                cell.child(
-                    div()
-                        .group("url-cell")
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .child(text)
-                        .child(div().invisible().group_hover("url-cell", |s| s.visible()))
-                        .child(icon),
-                )
-            } else if let Some(tag) = render_cell_tag(record, &key, &text) {
+            if let Some(tag) = render_cell_tag(record, &key, &text) {
                 cell.child(tag)
             } else {
                 cell.child(text)
@@ -857,7 +815,6 @@ impl TableDelegate for ResultsDelegate {
                 }
                 let a_page = match a {
                     FlatRow::Image { page, .. }
-                    | FlatRow::Outlink { page, .. }
                     | FlatRow::A11yIssue { page, .. }
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. }
@@ -867,7 +824,6 @@ impl TableDelegate for ResultsDelegate {
 
                 let b_page = match b {
                     FlatRow::Image { page, .. }
-                    | FlatRow::Outlink { page, .. }
                     | FlatRow::A11yIssue { page, .. }
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. }

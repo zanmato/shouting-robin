@@ -1,6 +1,6 @@
 use gpui::{
     AnyElement, App, Context, Hsla, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, Styled, Window, div, prelude::FluentBuilder, px,
+    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{ActiveTheme, Icon as UiIcon, Sizable as _, scroll::ScrollableElement as _};
 
@@ -274,6 +274,7 @@ fn vital_tile(
 }
 
 fn header_block(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
+    let url = rec.url.clone();
     div()
         .px_3()
         .py_2()
@@ -283,13 +284,30 @@ fn header_block(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
             div()
                 .flex()
                 .items_center()
+                .justify_between()
                 .gap_2()
-                .child(UiIcon::from(Icon::PanelRightOpen).small())
                 .child(
                     div()
-                        .text_sm()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .child("URL Details"),
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(UiIcon::from(Icon::PanelRightOpen).small())
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child("URL Details"),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("open-url-details")
+                        .cursor_pointer()
+                        .text_color(muted)
+                        .child(UiIcon::from(Icon::ExternalLink).small())
+                        .on_click(move |_, _window, cx| {
+                            cx.open_url(&url);
+                        }),
                 ),
         )
         .child(

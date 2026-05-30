@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use gpui::{ParentElement, SharedString};
 
-use crate::crawl::event::{A11yIssue, ImageRef, Outlink, PageRecord, SdFormat, SdItem};
+use crate::crawl::event::{A11yIssue, ImageRef, PageRecord, SdFormat, SdItem};
 use crate::ui::tag::{Tone, count_tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::ResultTab;
 
@@ -49,12 +49,6 @@ pub(super) fn flat_cell_text(
                 return SharedString::default();
             };
             image_cell_text(record, image, col_key, root_origin)
-        }
-        FlatRow::Outlink { item, .. } => {
-            let Some(outlink) = record.outlinks.get(*item) else {
-                return SharedString::default();
-            };
-            outlink_cell_text(record, outlink, col_key, root_origin)
         }
         FlatRow::A11yIssue { item, .. } => {
             let Some(issue) = record.a11y_issues.get(*item) else {
@@ -134,24 +128,6 @@ fn image_cell_text(
                 .unwrap_or_else(|| "-".into()),
         ),
         "image_has_alt" => SharedString::from(if image.has_alt_attr { "Yes" } else { "No" }),
-        "indexability" => {
-            SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
-        }
-        _ => SharedString::default(),
-    }
-}
-
-fn outlink_cell_text(
-    record: &PageRecord,
-    outlink: &Outlink,
-    col_key: &str,
-    root_origin: Option<&str>,
-) -> SharedString {
-    match col_key {
-        "address" => page_address(record, root_origin),
-        "outlink_dst" => SharedString::from(outlink.dst_url.clone()),
-        "outlink_anchor" => SharedString::from(outlink.anchor.clone().unwrap_or_default()),
-        "outlink_rel" => SharedString::from(outlink.rel.clone().unwrap_or_default()),
         "indexability" => {
             SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
         }

@@ -39,10 +39,11 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("link_score", "Link Score", 80., None),
         ],
         ResultTab::External => vec![
-            col("address", "Address", 380., Some(ColumnFixed::Left)),
-            col("outlink_dst", "Destination", 380., None),
-            col("outlink_anchor", "Anchor Text", 250., None),
-            col("outlink_rel", "Rel", 120., None),
+            col("address", "Address", 420., Some(ColumnFixed::Left)),
+            col("content", "Content Type", 160., None),
+            col("status_code", "Code", 70., None),
+            col("status", "Status", 100., None),
+            col("size", "Size", 90., None),
             col("indexability", "Indexability", 110., None),
         ],
         ResultTab::ResponseCodes => vec![
@@ -98,6 +99,8 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("readability", "Readability", 120., None),
             col("closest_similarity", "Closest Sim.", 90., None),
             col("near_duplicate_count", "Near Dups", 80., None),
+            col("ssr_words", "SSR Words", 90., None),
+            col("ssr_diff", "SSR Diff", 90., None),
             col("indexability", "Indexability", 110., None),
         ],
         ResultTab::Images => vec![
@@ -338,6 +341,8 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "dir_non_indexable"
             | "avg_words_per_sentence"
             | "reading_ease"
+            | "ssr_words"
+            | "ssr_diff"
     )
 }
 

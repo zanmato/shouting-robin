@@ -9,7 +9,6 @@ use super::types::{FlatRow, IssueEntry, IssueFilter, IssuePriority, IssueType};
 pub(super) fn flat_row_item_count(page: &PageRecord, tab: ResultTab) -> usize {
     match tab {
         ResultTab::Images => page.images.len(),
-        ResultTab::External => page.outlinks.len(),
         ResultTab::Accessibility => page.a11y_issues.len(),
         ResultTab::Hreflang => page.hreflang_tags.len().max(1),
         ResultTab::StructuredData => page.sd_items.len().max(1),
@@ -20,7 +19,6 @@ pub(super) fn flat_row_item_count(page: &PageRecord, tab: ResultTab) -> usize {
 pub(super) fn flat_row_variant(tab: ResultTab, page: usize, item: usize) -> FlatRow {
     match tab {
         ResultTab::Images => FlatRow::Image { page, item },
-        ResultTab::External => FlatRow::Outlink { page, item },
         ResultTab::Accessibility => FlatRow::A11yIssue { page, item },
         ResultTab::Hreflang => FlatRow::Hreflang { page, item },
         ResultTab::StructuredData => FlatRow::SdItem { page, item },

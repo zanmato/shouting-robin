@@ -903,6 +903,16 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             ],
         ),
         with_headers("/syn-xrobots", &[("x-robots-tag", "noindex")]),
+        // External resources/URLs (other origin) are recorded with
+        // is_internal == false and surface on the External tab. A normalized
+        // crawl of a single 127.0.0.1 origin produces none, so cover it here.
+        PageRecord {
+            url: "https://cdn.example.net/asset.png".to_string(),
+            status: Some(200),
+            content_type: Some("image/png".to_string()),
+            is_internal: false,
+            ..Default::default()
+        },
     ]
 }
 
@@ -966,7 +976,9 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
     use IssueFilter as F;
     match filter {
         F::All => match tab {
-            ResultTab::External => both(&["/external"], &["/"]),
+            // External lists external URLs/resources (is_internal == false);
+            // no internal page (e.g. "/") should appear here.
+            ResultTab::External => both(&["/asset.png"], &["/"]),
             ResultTab::Images => both(&["/images"], &["/"]),
             _ => both(&["/"], &[]),
         },

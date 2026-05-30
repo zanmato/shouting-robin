@@ -7,10 +7,6 @@ pub(crate) enum FlatRow {
         page: usize,
         item: usize,
     },
-    Outlink {
-        page: usize,
-        item: usize,
-    },
     A11yIssue {
         page: usize,
         item: usize,
@@ -45,7 +41,6 @@ pub(crate) fn tab_is_flattened(tab: ResultTab) -> bool {
     matches!(
         tab,
         ResultTab::Images
-            | ResultTab::External
             | ResultTab::Accessibility
             | ResultTab::Hreflang
             | ResultTab::StructuredData

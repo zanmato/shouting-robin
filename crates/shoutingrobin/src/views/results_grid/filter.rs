@@ -241,14 +241,26 @@ pub(super) fn filter_for_tab(
             .filter(|(_, p)| p.is_internal)
             .map(|(i, _)| i)
             .collect(),
+        // External URLs and resources (images/scripts/styles on other origins)
+        // are recorded as their own rows with is_internal == false. External
+        // anchor links between pages live on the Links tab's External filter.
         ResultTab::External => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| !p.is_internal)
+            .map(|(i, _)| i)
+            .collect(),
+        // Performance metrics only exist for navigated HTML documents; assets
+        // (CSS/JS/images, whether internal or external) never carry web vitals,
+        // so they are excluded here rather than shown with empty metric columns.
+        ResultTab::Performance => pages
             .iter()
             .enumerate()
             .filter(|(_, p)| {
                 p.is_internal
-                    && p.outlinks
-                        .iter()
-                        .any(|link| !is_same_domain(&p.url, &link.dst_url))
+                    && p.content_type
+                        .as_deref()
+                        .is_none_or(|ct| ct.starts_with("text/html"))
             })
             .map(|(i, _)| i)
             .collect(),
@@ -800,7 +812,7 @@ pub(super) fn flat_row_matches_filter(
             };
             link_row_matches_filter(link, page, filter, all_pages)
         }
-        FlatRow::Outlink { .. } | FlatRow::Hreflang { .. } | FlatRow::IssuesRow { .. } => true,
+        FlatRow::Hreflang { .. } | FlatRow::IssuesRow { .. } => true,
         FlatRow::DirectoryAggregate { depth, .. } => match filter {
             IssueFilter::DepthShallow => *depth <= 1,
             IssueFilter::DepthMedium => *depth >= 2 && *depth <= 3,
