@@ -43,11 +43,8 @@ pub struct CrawlBar {
 
 impl CrawlBar {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let url_input = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("https://books.toscrape.com")
-                .default_value("https://books.toscrape.com")
-        });
+        let url_input =
+            cx.new(|cx| InputState::new(window, cx).placeholder("https://books.toscrape.com"));
 
         let input_sub = cx.subscribe_in(
             &url_input,

@@ -4,7 +4,9 @@ use crate::crawl::event::{HreflangIssue, PageRecord};
 use crate::views::ResultTab;
 
 use super::columns::header_exists;
-use super::types::{FlatRow, IssueEntry, IssueFilter, IssuePriority, IssueType};
+use super::types::{
+    ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, IssuePriority, IssueType,
+};
 
 pub(super) fn flat_row_item_count(page: &PageRecord, tab: ResultTab) -> usize {
     match tab {
@@ -629,6 +631,107 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     entries
 }
 
+/// Compares the loaded crawl's internal pages against a baseline crawl, keyed by
+/// URL, producing one entry per page that was added, removed, or changed.
+pub(super) fn build_change_entries(
+    current: &[PageRecord],
+    baseline: &[PageRecord],
+) -> Vec<ChangeEntry> {
+    let current_by_url: HashMap<&str, &PageRecord> = current
+        .iter()
+        .filter(|p| p.is_internal)
+        .map(|p| (p.url.as_str(), p))
+        .collect();
+    let baseline_by_url: HashMap<&str, &PageRecord> = baseline
+        .iter()
+        .filter(|p| p.is_internal)
+        .map(|p| (p.url.as_str(), p))
+        .collect();
+
+    let mut entries = Vec::new();
+
+    for (url, page) in &current_by_url {
+        match baseline_by_url.get(url) {
+            None => entries.push(ChangeEntry {
+                url: (*url).to_string(),
+                kind: ChangeKind::Added,
+                status_before: None,
+                status_after: page.status,
+                changes: Vec::new(),
+            }),
+            Some(previous) => {
+                let changes = describe_changes(previous, page);
+                if !changes.is_empty() {
+                    entries.push(ChangeEntry {
+                        url: (*url).to_string(),
+                        kind: ChangeKind::Changed,
+                        status_before: previous.status,
+                        status_after: page.status,
+                        changes,
+                    });
+                }
+            }
+        }
+    }
+
+    for (url, previous) in &baseline_by_url {
+        if !current_by_url.contains_key(url) {
+            entries.push(ChangeEntry {
+                url: (*url).to_string(),
+                kind: ChangeKind::Removed,
+                status_before: previous.status,
+                status_after: None,
+                changes: Vec::new(),
+            });
+        }
+    }
+
+    entries.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.url.cmp(&b.url)));
+    entries
+}
+
+fn describe_changes(before: &PageRecord, after: &PageRecord) -> Vec<String> {
+    fn opt_num(value: Option<u32>) -> String {
+        value.map(|v| v.to_string()).unwrap_or_else(|| "-".into())
+    }
+    fn opt_status(value: Option<u16>) -> String {
+        value.map(|v| v.to_string()).unwrap_or_else(|| "-".into())
+    }
+
+    let mut out = Vec::new();
+    if before.status != after.status {
+        out.push(format!(
+            "status {} → {}",
+            opt_status(before.status),
+            opt_status(after.status)
+        ));
+    }
+    if before.indexability != after.indexability {
+        out.push(format!(
+            "{} → {}",
+            before.indexability.as_deref().unwrap_or("-"),
+            after.indexability.as_deref().unwrap_or("-")
+        ));
+    }
+    if before.title != after.title {
+        out.push("title changed".into());
+    }
+    if before.h1 != after.h1 {
+        out.push("h1 changed".into());
+    }
+    if before.meta_description != after.meta_description {
+        out.push("meta description changed".into());
+    }
+    if before.word_count != after.word_count {
+        out.push(format!(
+            "words {} → {}",
+            opt_num(before.word_count),
+            opt_num(after.word_count)
+        ));
+    }
+    out
+}
+
 pub(super) fn build_issues_rows(pages: &[PageRecord]) -> Vec<FlatRow> {
     build_issues_entries(pages)
         .into_iter()
@@ -777,5 +880,41 @@ mod tests {
         let entries = build_issues_entries(&pages);
         assert_eq!(count_for(&entries, "Duplicate H1"), 2);
         assert_eq!(count_for(&entries, "Missing H1"), 0);
+    }
+
+    fn change_for<'a>(entries: &'a [ChangeEntry], url: &str) -> Option<&'a ChangeEntry> {
+        entries.iter().find(|e| e.url == url)
+    }
+
+    #[test]
+    fn change_entries_classify_added_removed_changed() {
+        let baseline = vec![
+            page("https://a.test/keep", Some("Heading")),
+            page("https://a.test/gone", Some("Heading")),
+        ];
+        let mut changed = page("https://a.test/keep", Some("New Heading"));
+        changed.status = Some(200);
+        let current = vec![changed, page("https://a.test/new", Some("Heading"))];
+
+        let entries = build_change_entries(&current, &baseline);
+
+        assert_eq!(
+            change_for(&entries, "https://a.test/new").unwrap().kind,
+            ChangeKind::Added
+        );
+        assert_eq!(
+            change_for(&entries, "https://a.test/gone").unwrap().kind,
+            ChangeKind::Removed
+        );
+        let keep = change_for(&entries, "https://a.test/keep").unwrap();
+        assert_eq!(keep.kind, ChangeKind::Changed);
+        assert!(keep.changes.iter().any(|c| c.contains("h1")));
+    }
+
+    #[test]
+    fn change_entries_skip_unchanged_pages() {
+        let baseline = vec![page("https://a.test/keep", Some("Heading"))];
+        let current = vec![page("https://a.test/keep", Some("Heading"))];
+        assert!(build_change_entries(&current, &baseline).is_empty());
     }
 }

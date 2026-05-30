@@ -128,27 +128,61 @@ impl ShoutingRobinApp {
                     cx.spawn(async move |_, cx| {
                         let pages =
                             crate::storage::load_pages_for_crawl(&pool, crawl_id, &root_url).await;
-                        match pages {
-                            Ok(pages) => {
-                                tracing::info!(count = pages.len(), "loaded pages for crawl");
-                                cx.update(|cx| {
-                                    results_grid.update(cx, |g, cx| {
-                                        g.clear(cx);
-                                        g.set_root_url(&root_url, cx);
-                                        for record in pages {
-                                            g.push(record, cx);
-                                        }
-                                    });
-                                    crawl_bar.update(cx, |bar, cx| {
-                                        bar.has_results = true;
-                                        cx.notify();
-                                    });
-                                });
-                            }
+                        let pages = match pages {
+                            Ok(pages) => pages,
                             Err(e) => {
                                 tracing::error!(error=%e, "failed to load pages for crawl");
+                                return;
                             }
-                        }
+                        };
+                        tracing::info!(count = pages.len(), "loaded pages for crawl");
+
+                        let baseline = match crate::storage::find_previous_crawl(
+                            &pool,
+                            &root_url,
+                            Some(crawl_id),
+                        )
+                        .await
+                        {
+                            Ok(Some(previous)) => match crate::storage::load_pages_for_crawl(
+                                &pool,
+                                previous.id,
+                                &previous.root_url,
+                            )
+                            .await
+                            {
+                                Ok(baseline_pages) => Some((baseline_pages, previous.started_at)),
+                                Err(e) => {
+                                    tracing::error!(error=%e, "failed to load baseline pages");
+                                    None
+                                }
+                            },
+                            Ok(None) => None,
+                            Err(e) => {
+                                tracing::error!(error=%e, "failed to find previous crawl");
+                                None
+                            }
+                        };
+
+                        cx.update(|cx| {
+                            results_grid.update(cx, |g, cx| {
+                                g.clear(cx);
+                                g.set_root_url(&root_url, cx);
+                                for record in pages {
+                                    g.push(record, cx);
+                                }
+                                match baseline {
+                                    Some((baseline_pages, started_at)) => {
+                                        g.set_baseline(baseline_pages, started_at, cx)
+                                    }
+                                    None => g.clear_baseline(cx),
+                                }
+                            });
+                            crawl_bar.update(cx, |bar, cx| {
+                                bar.has_results = true;
+                                cx.notify();
+                            });
+                        });
                     })
                     .detach();
                 }
@@ -315,6 +349,52 @@ impl ShoutingRobinApp {
         self._cancel = None;
     }
 
+    /// Loads the previous crawl of `root_url` (if any) and installs it as the
+    /// comparison baseline on the results grid, or clears the baseline when no
+    /// earlier crawl exists.
+    fn apply_baseline(
+        &mut self,
+        root_url: String,
+        current_crawl_id: Option<i64>,
+        cx: &mut Context<Self>,
+    ) {
+        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        let results_grid = self.results_grid.clone();
+        cx.spawn(async move |_, cx| {
+            let baseline =
+                match crate::storage::find_previous_crawl(&pool, &root_url, current_crawl_id).await
+                {
+                    Ok(Some(previous)) => match crate::storage::load_pages_for_crawl(
+                        &pool,
+                        previous.id,
+                        &previous.root_url,
+                    )
+                    .await
+                    {
+                        Ok(baseline_pages) => Some((baseline_pages, previous.started_at)),
+                        Err(e) => {
+                            tracing::error!(error=%e, "failed to load baseline pages");
+                            None
+                        }
+                    },
+                    Ok(None) => None,
+                    Err(e) => {
+                        tracing::error!(error=%e, "failed to find previous crawl");
+                        None
+                    }
+                };
+            cx.update(|cx| {
+                results_grid.update(cx, |g, cx| match baseline {
+                    Some((baseline_pages, started_at)) => {
+                        g.set_baseline(baseline_pages, started_at, cx)
+                    }
+                    None => g.clear_baseline(cx),
+                });
+            });
+        })
+        .detach();
+    }
+
     fn export_csv(&mut self, cx: &mut Context<Self>) {
         let csv_result = self.results_grid.read(cx).export_csv(cx);
         let csv_content = match csv_result {
@@ -443,6 +523,9 @@ impl ShoutingRobinApp {
                                     cx.notify();
                                 });
                                 this.load_crawl_history(cx);
+                                if let Some(root_url) = this.results_grid.read(cx).root_url(cx) {
+                                    this.apply_baseline(root_url, None, cx);
+                                }
                             });
                         }
                     }
@@ -506,7 +589,26 @@ impl Render for ShoutingRobinApp {
         let bg = cx.theme().background;
         let fg = cx.theme().foreground;
 
-        let active_ix = ResultTab::ALL
+        let has_baseline = self.results_grid.read(cx).has_baseline(cx);
+
+        // The Changes tab only exists while a comparison baseline is active. If
+        // the baseline went away (e.g. a new crawl started) while it was open,
+        // fall back to the Overview tab so the bar and grid stay in sync.
+        if !has_baseline && self.active_tab == ResultTab::Changes {
+            self.active_tab = ResultTab::Overview;
+            self.issue_filter = IssueFilter::All;
+            self.results_grid.update(cx, |grid, cx| {
+                grid.switch_tab(ResultTab::Overview, cx);
+            });
+        }
+
+        let visible_tabs: Vec<ResultTab> = ResultTab::ALL
+            .iter()
+            .copied()
+            .filter(|tab| *tab != ResultTab::Changes || has_baseline)
+            .collect();
+
+        let active_ix = visible_tabs
             .iter()
             .position(|t| *t == self.active_tab)
             .unwrap_or(0);
@@ -515,25 +617,29 @@ impl Render for ShoutingRobinApp {
             .underline()
             .pl_2()
             .selected_index(active_ix)
-            .on_click(cx.listener(|this, ix: &usize, _w, cx| {
-                if let Some(tab) = ResultTab::ALL.get(*ix).copied() {
-                    this.active_tab = tab;
-                    this.issue_filter = IssueFilter::All;
-                    this.results_grid.update(cx, |grid, cx| {
-                        grid.switch_tab(tab, cx);
-                    });
+            .on_click(cx.listener({
+                let visible_tabs = visible_tabs.clone();
+                move |this, ix: &usize, _w, cx| {
+                    if let Some(tab) = visible_tabs.get(*ix).copied() {
+                        this.active_tab = tab;
+                        this.issue_filter = IssueFilter::All;
+                        this.results_grid.update(cx, |grid, cx| {
+                            grid.switch_tab(tab, cx);
+                        });
+                    }
                 }
             }))
             .track_scroll(&self.tabbar_scroll_handle);
 
         let tab_counts = self.results_grid.read(cx).tab_counts(cx);
 
-        for tab in ResultTab::ALL {
+        for tab in &visible_tabs {
+            let tab = *tab;
             let mut t = Tab::new().label(tab.label());
             if let Some(icon) = tab.icon() {
                 t = t.prefix(UiIcon::from(icon).xsmall());
             }
-            if let Some(counts) = tab_counts.get(tab) {
+            if let Some(counts) = tab_counts.get(&tab) {
                 let (badge_count, tone) = if counts.errors > 0 {
                     (counts.errors, crate::ui::tag::Tone::Err)
                 } else if counts.warnings > 0 {
@@ -607,6 +713,21 @@ impl Render for ShoutingRobinApp {
                     .child(format!(
                         "{} results",
                         self.results_grid.read(cx).row_count(cx)
+                    )),
+            );
+        }
+
+        if has_baseline && let Some(started_at) = self.results_grid.read(cx).baseline_started_at(cx)
+        {
+            let now = chrono::Utc::now().timestamp();
+            filter_left = filter_left.child(
+                div()
+                    .pl_2()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(format!(
+                        "Comparing to crawl from {}",
+                        relative_time(now, started_at)
                     )),
             );
         }
@@ -741,6 +862,25 @@ fn init_menus(cx: &mut App) {
     cx.set_menus(build_menu());
     let menu = build_menu().into_iter().map(|menu| menu.owned()).collect();
     GlobalState::global_mut(cx).set_app_menus(menu);
+}
+
+fn relative_time(now: i64, ts: i64) -> String {
+    let delta = now.saturating_sub(ts);
+    if delta < 60 {
+        return "just now".into();
+    }
+    if delta < 3600 {
+        return format!("{}m ago", delta / 60);
+    }
+    if delta < 86_400 {
+        return format!("{}h ago", delta / 3600);
+    }
+    if delta < 7 * 86_400 {
+        return format!("{}d ago", delta / 86_400);
+    }
+    chrono::DateTime::from_timestamp(ts, 0)
+        .map(|dt| dt.format("%b %-d").to_string())
+        .unwrap_or_else(|| "unknown".into())
 }
 
 fn init_keys(cx: &mut App) {

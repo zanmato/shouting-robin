@@ -22,6 +22,9 @@ pub(crate) enum FlatRow {
     IssuesRow {
         index: usize,
     },
+    ChangeRow {
+        index: usize,
+    },
     LinkRow {
         page: usize,
         item: usize,
@@ -47,6 +50,7 @@ pub(crate) fn tab_is_flattened(tab: ResultTab) -> bool {
             | ResultTab::Overview
             | ResultTab::Links
             | ResultTab::SiteStructure
+            | ResultTab::Changes
     )
 }
 
@@ -177,6 +181,9 @@ pub enum IssueFilter {
     DepthShallow,
     DepthMedium,
     DepthDeep,
+    ChangeAdded,
+    ChangeRemoved,
+    ChangeChanged,
 }
 
 impl IssueFilter {
@@ -293,6 +300,9 @@ impl IssueFilter {
             IssueFilter::DepthShallow => "Depth 0-1",
             IssueFilter::DepthMedium => "Depth 2-3",
             IssueFilter::DepthDeep => "Depth 4+",
+            IssueFilter::ChangeAdded => "Added",
+            IssueFilter::ChangeRemoved => "Removed",
+            IssueFilter::ChangeChanged => "Changed",
         }
     }
 
@@ -328,6 +338,7 @@ impl IssueFilter {
             | Self::PriorityLow
             | Self::LinkExternal
             | Self::DepthShallow
+            | Self::ChangeAdded
             | Self::DepthMedium => Tone::Neutral,
 
             Self::Status4xx
@@ -344,6 +355,7 @@ impl IssueFilter {
             | Self::DirectiveNoindex
             | Self::LinkBroken
             | Self::IssueTypeError
+            | Self::ChangeRemoved
             | Self::PriorityHigh => Tone::Err,
 
             Self::NonIndexable
@@ -410,6 +422,7 @@ impl IssueFilter {
             | Self::PriorityMedium
             | Self::LinkRedirected
             | Self::LinkNofollow
+            | Self::ChangeChanged
             | Self::DepthDeep => Tone::Warn,
         }
     }
@@ -474,4 +487,71 @@ pub struct IssueEntry {
     pub pct: f32,
     pub description: String,
     pub hint: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ChangeKind {
+    Added,
+    Removed,
+    Changed,
+}
+
+impl ChangeKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Added => "Added",
+            Self::Removed => "Removed",
+            Self::Changed => "Changed",
+        }
+    }
+
+    pub fn tone(self) -> Tone {
+        match self {
+            Self::Added => Tone::Ok,
+            Self::Removed => Tone::Err,
+            Self::Changed => Tone::Warn,
+        }
+    }
+}
+
+/// A single per-URL difference between the loaded crawl and its baseline.
+#[derive(Clone, Debug)]
+pub struct ChangeEntry {
+    pub url: String,
+    pub kind: ChangeKind,
+    pub status_before: Option<u16>,
+    pub status_after: Option<u16>,
+    pub changes: Vec<String>,
+}
+
+impl ChangeEntry {
+    pub fn status_text(&self) -> String {
+        let before = self
+            .status_before
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "-".into());
+        let after = self
+            .status_after
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| "-".into());
+        match self.kind {
+            ChangeKind::Added => format!("→ {after}"),
+            ChangeKind::Removed => format!("{before} →"),
+            ChangeKind::Changed => {
+                if self.status_before == self.status_after {
+                    after
+                } else {
+                    format!("{before} → {after}")
+                }
+            }
+        }
+    }
+
+    pub fn detail_text(&self) -> String {
+        match self.kind {
+            ChangeKind::Added => "New page".into(),
+            ChangeKind::Removed => "Page removed".into(),
+            ChangeKind::Changed => self.changes.join(", "),
+        }
+    }
 }

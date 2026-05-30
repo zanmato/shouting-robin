@@ -619,6 +619,68 @@ pub async fn list_crawls(pool: &SqlitePool) -> Result<Vec<CrawlRow>, sqlx::Error
         .collect())
 }
 
+/// Finds the crawl to use as a comparison baseline for a given root URL.
+///
+/// When `current_crawl_id` is `Some`, returns the most recent crawl of the same
+/// `root_url` that started strictly before the given crawl (the sidebar flow).
+/// When `None`, the current crawl is assumed to be the most recent row for the
+/// URL (a just-finished live crawl), so we skip it with `OFFSET 1`.
+pub async fn find_previous_crawl(
+    pool: &SqlitePool,
+    root_url: &str,
+    current_crawl_id: Option<i64>,
+) -> Result<Option<CrawlRow>, sqlx::Error> {
+    let row = match current_crawl_id {
+        Some(id) => {
+            sqlx::query_as::<_, (i64, String, i64, Option<i64>, i64, String)>(
+                r#"
+                SELECT c.id, c.root_url, c.started_at, c.finished_at,
+                       COUNT(p.id) as page_count, c.render_mode
+                FROM crawls c
+                LEFT JOIN pages p ON p.crawl_id = c.id
+                WHERE c.root_url = ?
+                  AND c.started_at < (SELECT started_at FROM crawls WHERE id = ?)
+                GROUP BY c.id
+                ORDER BY c.started_at DESC
+                LIMIT 1
+                "#,
+            )
+            .bind(root_url)
+            .bind(id)
+            .fetch_optional(pool)
+            .await?
+        }
+        None => {
+            sqlx::query_as::<_, (i64, String, i64, Option<i64>, i64, String)>(
+                r#"
+                SELECT c.id, c.root_url, c.started_at, c.finished_at,
+                       COUNT(p.id) as page_count, c.render_mode
+                FROM crawls c
+                LEFT JOIN pages p ON p.crawl_id = c.id
+                WHERE c.root_url = ?
+                GROUP BY c.id
+                ORDER BY c.started_at DESC
+                LIMIT 1 OFFSET 1
+                "#,
+            )
+            .bind(root_url)
+            .fetch_optional(pool)
+            .await?
+        }
+    };
+
+    Ok(row.map(
+        |(id, root_url, started_at, finished_at, page_count, render_mode)| CrawlRow {
+            id,
+            root_url,
+            started_at,
+            finished_at,
+            page_count,
+            render_mode,
+        },
+    ))
+}
+
 pub async fn load_pages_for_crawl(
     pool: &SqlitePool,
     crawl_id: i64,

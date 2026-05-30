@@ -219,7 +219,27 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("dir_indexable", "Indexable", 80., None),
             col("dir_non_indexable", "Non-Idx", 80., None),
         ],
+        ResultTab::Changes => vec![
+            col("change_url", "Address", 420., Some(ColumnFixed::Left)),
+            col("change_kind", "Change", 100., None),
+            col("change_status", "Status", 120., None),
+            col("change_detail", "Detail", 400., None),
+        ],
     }
+}
+
+/// Returns the columns for a tab, adding the comparison columns (`Prev`/`Δ`) to
+/// the Overview tab when a baseline crawl is active.
+pub(super) fn columns_for_tab_with_baseline(tab: ResultTab, has_baseline: bool) -> Vec<Column> {
+    let mut cols = columns_for_tab(tab);
+    if tab == ResultTab::Overview
+        && has_baseline
+        && let Some(pos) = cols.iter().position(|c| c.key.as_ref() == "count")
+    {
+        cols.insert(pos + 1, col("count_prev", "Prev", 70., None));
+        cols.insert(pos + 2, col("count_delta", "Δ", 70., None));
+    }
+    cols
 }
 
 pub(super) fn primary_field_key(tab: ResultTab) -> Option<&'static str> {
@@ -383,6 +403,7 @@ pub(super) fn is_mono_column(key: &str) -> bool {
                 | "last_modified"
                 | "redirect_url"
                 | "dir_path"
+                | "change_url"
         )
 }
 

@@ -60,6 +60,12 @@ pub fn tone_tag(tone: Tone) -> Tag {
     Tag::custom(bg, fg, border).small()
 }
 
+/// The bright foreground color of a tone, for use as plain colored text instead
+/// of a full chip with background and border.
+pub fn tone_text_color(tone: Tone) -> Hsla {
+    tone_colors(tone).1
+}
+
 pub fn status_code_tone(code: u16) -> Tone {
     match code {
         200..=299 => Tone::Ok,

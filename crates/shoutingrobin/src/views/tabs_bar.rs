@@ -26,11 +26,13 @@ pub enum ResultTab {
     Directives,
     Overview,
     Links,
+    Changes,
 }
 
 impl ResultTab {
     pub const ALL: &'static [ResultTab] = &[
         ResultTab::Overview,
+        ResultTab::Changes,
         ResultTab::Internal,
         ResultTab::External,
         ResultTab::ResponseCodes,
@@ -78,6 +80,7 @@ impl ResultTab {
             ResultTab::Directives => "Directives".into(),
             ResultTab::Overview => "Overview".into(),
             ResultTab::Links => "Links".into(),
+            ResultTab::Changes => "Changes".into(),
         }
     }
 
@@ -93,6 +96,7 @@ impl ResultTab {
             ResultTab::Security => Some(Icon::ShieldCheck),
             ResultTab::Overview => Some(Icon::CircleAlert),
             ResultTab::Links => Some(Icon::Link),
+            ResultTab::Changes => Some(Icon::ArrowUpDown),
             _ => None,
         }
     }

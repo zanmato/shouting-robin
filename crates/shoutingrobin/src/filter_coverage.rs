@@ -1122,7 +1122,10 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         | F::LinkExternal
         | F::DepthShallow
         | F::DepthMedium
-        | F::DepthDeep => same_as_all(),
+        | F::DepthDeep
+        | F::ChangeAdded
+        | F::ChangeRemoved
+        | F::ChangeChanged => same_as_all(),
 
         F::ReadabilityDifficult => both(
             &[

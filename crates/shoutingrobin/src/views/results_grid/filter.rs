@@ -200,6 +200,12 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::DepthMedium,
             IssueFilter::DepthDeep,
         ],
+        ResultTab::Changes => &[
+            IssueFilter::All,
+            IssueFilter::ChangeAdded,
+            IssueFilter::ChangeRemoved,
+            IssueFilter::ChangeChanged,
+        ],
     }
 }
 
@@ -812,7 +818,7 @@ pub(super) fn flat_row_matches_filter(
             };
             link_row_matches_filter(link, page, filter, all_pages)
         }
-        FlatRow::Hreflang { .. } | FlatRow::IssuesRow { .. } => true,
+        FlatRow::Hreflang { .. } | FlatRow::IssuesRow { .. } | FlatRow::ChangeRow { .. } => true,
         FlatRow::DirectoryAggregate { depth, .. } => match filter {
             IssueFilter::DepthShallow => *depth <= 1,
             IssueFilter::DepthMedium => *depth >= 2 && *depth <= 3,

@@ -87,6 +87,35 @@ impl ResultsGrid {
         cx.notify();
     }
 
+    pub fn set_baseline(
+        &mut self,
+        pages: Vec<PageRecord>,
+        started_at: i64,
+        cx: &mut Context<Self>,
+    ) {
+        self.state.update(cx, |state, cx| {
+            state.delegate_mut().set_baseline(pages, started_at);
+            state.refresh(cx);
+        });
+        cx.notify();
+    }
+
+    pub fn clear_baseline(&mut self, cx: &mut Context<Self>) {
+        self.state.update(cx, |state, cx| {
+            state.delegate_mut().clear_baseline();
+            state.refresh(cx);
+        });
+        cx.notify();
+    }
+
+    pub fn has_baseline(&self, cx: &App) -> bool {
+        self.state.read(cx).delegate().has_baseline()
+    }
+
+    pub fn baseline_started_at(&self, cx: &App) -> Option<i64> {
+        self.state.read(cx).delegate().baseline_started_at()
+    }
+
     pub fn record_at(&self, index: usize, cx: &App) -> Option<PageRecord> {
         self.state.read(cx).delegate().record_at(index).cloned()
     }

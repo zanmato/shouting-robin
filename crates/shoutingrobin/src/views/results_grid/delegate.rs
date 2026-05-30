@@ -5,26 +5,47 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div,
 };
 use gpui_component::{
-    ActiveTheme, Icon as UiIcon, Sizable,
+    ActiveTheme, Icon as UiIcon, Sizable, StyledExt as _,
     table::{ColumnSort, TableDelegate, TableState},
 };
 
 use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::PageRecord;
 use crate::ui::icon::Icon;
-use crate::ui::tag::{Tone, tone_tag};
+use crate::ui::tag::{Tone, tone_tag, tone_text_color};
 use crate::views::ResultTab;
 
 use super::cell::{cell_text, flat_cell_text, render_cell_tag, url_to_path};
 use super::columns::{
-    build_occurrence_counts, columns_for_tab, compare_numeric, is_mono_column, is_numeric_column,
+    build_occurrence_counts, columns_for_tab_with_baseline, compare_numeric, is_mono_column,
+    is_numeric_column,
 };
 use super::data_build::{
-    build_directory_aggregates, build_issues_entries, build_issues_rows, dir_format_size,
-    flat_row_item_count, flat_row_variant,
+    build_change_entries, build_directory_aggregates, build_issues_entries, build_issues_rows,
+    dir_format_size, flat_row_item_count, flat_row_variant,
 };
 use super::filter::{filter_for_tab, filters_for_tab, flat_row_matches_filter};
-use super::types::{FlatRow, IssueFilter, IssuePriority, IssueType, TabCounts, tab_is_flattened};
+use super::types::{
+    ChangeEntry, ChangeKind, FlatRow, IssueFilter, IssuePriority, IssueType, TabCounts,
+    tab_is_flattened,
+};
+
+fn format_delta(delta: i64) -> String {
+    match delta.cmp(&0) {
+        std::cmp::Ordering::Greater => format!("+{delta}"),
+        _ => delta.to_string(),
+    }
+}
+
+/// Colors an issue-count delta: a rising issue count is bad (red), a falling one
+/// is good (green), unchanged is neutral.
+fn delta_tone(delta: i64) -> Tone {
+    match delta.cmp(&0) {
+        std::cmp::Ordering::Greater => Tone::Err,
+        std::cmp::Ordering::Less => Tone::Ok,
+        std::cmp::Ordering::Equal => Tone::Neutral,
+    }
+}
 
 pub struct ResultsDelegate {
     pub(super) all_pages: Vec<PageRecord>,
@@ -36,6 +57,9 @@ pub struct ResultsDelegate {
     issue_filter: IssueFilter,
     pub(super) root_origin: Option<String>,
     root_url: Option<String>,
+    baseline_pages: Option<Vec<PageRecord>>,
+    baseline_started_at: Option<i64>,
+    baseline_issue_counts: HashMap<String, (usize, f32)>,
 }
 
 impl ResultsDelegate {
@@ -46,19 +70,61 @@ impl ResultsDelegate {
             filtered_indices: Vec::new(),
             flat_rows: Vec::new(),
             occurrence_counts: HashMap::new(),
-            columns: columns_for_tab(tab),
+            columns: columns_for_tab_with_baseline(tab, false),
             active_tab: tab,
             issue_filter: IssueFilter::All,
             root_origin: None,
             root_url: None,
+            baseline_pages: None,
+            baseline_started_at: None,
+            baseline_issue_counts: HashMap::new(),
         }
+    }
+
+    fn rebuild_columns(&mut self) {
+        self.columns =
+            columns_for_tab_with_baseline(self.active_tab, self.baseline_pages.is_some());
     }
 
     pub fn switch_tab(&mut self, tab: ResultTab) {
         self.active_tab = tab;
         self.issue_filter = IssueFilter::All;
-        self.columns = columns_for_tab(tab);
+        self.rebuild_columns();
         self.rebuild_filter();
+    }
+
+    pub fn set_baseline(&mut self, pages: Vec<PageRecord>, started_at: i64) {
+        self.baseline_issue_counts = build_issues_entries(&pages)
+            .into_iter()
+            .map(|entry| (entry.name, (entry.count, entry.pct)))
+            .collect();
+        self.baseline_pages = Some(pages);
+        self.baseline_started_at = Some(started_at);
+        self.rebuild_columns();
+        self.rebuild_filter();
+    }
+
+    pub fn clear_baseline(&mut self) {
+        self.baseline_pages = None;
+        self.baseline_started_at = None;
+        self.baseline_issue_counts.clear();
+        self.rebuild_columns();
+        self.rebuild_filter();
+    }
+
+    pub fn has_baseline(&self) -> bool {
+        self.baseline_pages.is_some()
+    }
+
+    pub fn baseline_started_at(&self) -> Option<i64> {
+        self.baseline_started_at
+    }
+
+    fn change_entries(&self) -> Vec<ChangeEntry> {
+        match &self.baseline_pages {
+            Some(baseline) => build_change_entries(&self.all_pages, baseline),
+            None => Vec::new(),
+        }
     }
 
     pub fn set_issue_filter(&mut self, filter: IssueFilter) {
@@ -89,19 +155,34 @@ impl ResultsDelegate {
         self.occurrence_counts.clear();
         self.root_origin = None;
         self.root_url = None;
+        self.baseline_pages = None;
+        self.baseline_started_at = None;
+        self.baseline_issue_counts.clear();
+        self.rebuild_columns();
     }
 
     pub fn record_at(&self, index: usize) -> Option<&PageRecord> {
         if tab_is_flattened(self.active_tab) {
-            let page_index = match self.flat_rows.get(index)? {
+            match self.flat_rows.get(index)? {
                 FlatRow::Image { page, .. }
                 | FlatRow::A11yIssue { page, .. }
                 | FlatRow::Hreflang { page, .. }
                 | FlatRow::SdItem { page, .. }
-                | FlatRow::LinkRow { page, .. } => *page,
-                FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => return None,
-            };
-            self.all_pages.get(page_index)
+                | FlatRow::LinkRow { page, .. } => self.all_pages.get(*page),
+                FlatRow::ChangeRow { index } => {
+                    let entries = self.change_entries();
+                    let entry = entries.get(*index)?;
+                    let url = entry.url.clone();
+                    match entry.kind {
+                        ChangeKind::Removed => self
+                            .baseline_pages
+                            .as_ref()
+                            .and_then(|baseline| baseline.iter().find(|p| p.url == url)),
+                        _ => self.all_pages.iter().find(|p| p.url == url),
+                    }
+                }
+                FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => None,
+            }
         } else {
             self.filtered_indices
                 .get(index)
@@ -213,6 +294,19 @@ impl ResultsDelegate {
                 .count();
         }
 
+        if tab == ResultTab::Changes {
+            let entries = self.change_entries();
+            return entries
+                .iter()
+                .filter(|entry| match filter {
+                    IssueFilter::ChangeAdded => entry.kind == ChangeKind::Added,
+                    IssueFilter::ChangeRemoved => entry.kind == ChangeKind::Removed,
+                    IssueFilter::ChangeChanged => entry.kind == ChangeKind::Changed,
+                    _ => true,
+                })
+                .count();
+        }
+
         let indices = filter_for_tab(tab, filter, &self.all_pages, occ_counts);
 
         if tab_is_flattened(tab) {
@@ -268,6 +362,14 @@ impl ResultsDelegate {
         }
         if self.active_tab == ResultTab::Overview {
             self.flat_rows = build_issues_rows(&self.all_pages);
+            self.filter_flat_rows();
+            return;
+        }
+        if self.active_tab == ResultTab::Changes {
+            let count = self.change_entries().len();
+            self.flat_rows = (0..count)
+                .map(|index| FlatRow::ChangeRow { index })
+                .collect();
             self.filter_flat_rows();
             return;
         }
@@ -341,6 +443,24 @@ impl ResultsDelegate {
             });
             return;
         }
+        if self.active_tab == ResultTab::Changes {
+            let entries = self.change_entries();
+            self.flat_rows.retain(|row| {
+                let FlatRow::ChangeRow { index } = row else {
+                    return true;
+                };
+                let Some(entry) = entries.get(*index) else {
+                    return false;
+                };
+                match self.issue_filter {
+                    IssueFilter::ChangeAdded => entry.kind == ChangeKind::Added,
+                    IssueFilter::ChangeRemoved => entry.kind == ChangeKind::Removed,
+                    IssueFilter::ChangeChanged => entry.kind == ChangeKind::Changed,
+                    _ => true,
+                }
+            });
+            return;
+        }
         if self.active_tab == ResultTab::SiteStructure {
             self.flat_rows.retain(|row| {
                 let FlatRow::DirectoryAggregate { depth, .. } = row else {
@@ -362,7 +482,9 @@ impl ResultsDelegate {
                 | FlatRow::Hreflang { page, .. }
                 | FlatRow::SdItem { page, .. }
                 | FlatRow::LinkRow { page, .. } => *page,
-                FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => return true,
+                FlatRow::IssuesRow { .. }
+                | FlatRow::ChangeRow { .. }
+                | FlatRow::DirectoryAggregate { .. } => return true,
             };
             let Some(page) = self.all_pages.get(page_index) else {
                 return false;
@@ -438,6 +560,32 @@ impl ResultsDelegate {
                     "priority" => entry.priority.label().to_string(),
                     "count" => entry.count.to_string(),
                     "pct" => format!("{:.1}%", entry.pct),
+                    "count_prev" => self
+                        .baseline_issue_counts
+                        .get(&entry.name)
+                        .map(|(count, _)| count.to_string())
+                        .unwrap_or_else(|| "-".into()),
+                    "count_delta" => {
+                        let previous = self
+                            .baseline_issue_counts
+                            .get(&entry.name)
+                            .map(|(count, _)| *count)
+                            .unwrap_or(0);
+                        format_delta(entry.count as i64 - previous as i64)
+                    }
+                    _ => String::new(),
+                }
+            }
+            FlatRow::ChangeRow { index } => {
+                let entries = self.change_entries();
+                let Some(entry) = entries.get(*index) else {
+                    return String::new();
+                };
+                match col_key {
+                    "change_url" => url_to_path(&entry.url, self.root_origin.as_deref()).into(),
+                    "change_kind" => entry.kind.label().to_string(),
+                    "change_status" => entry.status_text(),
+                    "change_detail" => entry.detail_text(),
                     _ => String::new(),
                 }
             }
@@ -559,12 +707,20 @@ impl TableDelegate for ResultsDelegate {
                     let Some(entry) = entries.get(*index) else {
                         return cell;
                     };
+                    let previous = self.baseline_issue_counts.get(&entry.name).map(|(c, _)| *c);
+                    let delta = entry.count as i64 - previous.unwrap_or(0) as i64;
                     let text = match key.as_ref() {
                         "issue_name" => SharedString::from(entry.name.clone()),
                         "issue_type" => SharedString::from(entry.issue_type.label()),
                         "priority" => SharedString::from(entry.priority.label()),
                         "count" => SharedString::from(entry.count.to_string()),
                         "pct" => SharedString::from(format!("{:.1}%", entry.pct)),
+                        "count_prev" => SharedString::from(
+                            previous
+                                .map(|c| c.to_string())
+                                .unwrap_or_else(|| "-".into()),
+                        ),
+                        "count_delta" => SharedString::from(format_delta(delta)),
                         "description" => SharedString::from(entry.description.clone()),
                         "hint" => SharedString::from(entry.hint.clone()),
                         _ => SharedString::default(),
@@ -580,6 +736,27 @@ impl TableDelegate for ResultsDelegate {
                             };
                             cell.child(tone_tag(tone).child(text))
                         }
+                        "count_delta" => cell
+                            .text_color(tone_text_color(delta_tone(delta)))
+                            .font_semibold()
+                            .child(text),
+                        _ => cell.child(text),
+                    }
+                }
+                FlatRow::ChangeRow { index } => {
+                    let entries = self.change_entries();
+                    let Some(entry) = entries.get(*index) else {
+                        return cell;
+                    };
+                    let text = match key.as_ref() {
+                        "change_url" => url_to_path(&entry.url, self.root_origin.as_deref()),
+                        "change_kind" => SharedString::from(entry.kind.label()),
+                        "change_status" => SharedString::from(entry.status_text()),
+                        "change_detail" => SharedString::from(entry.detail_text()),
+                        _ => SharedString::default(),
+                    };
+                    match key.as_ref() {
+                        "change_kind" => cell.child(tone_tag(entry.kind.tone()).child(text)),
                         _ => cell.child(text),
                     }
                 }
@@ -703,6 +880,7 @@ impl TableDelegate for ResultsDelegate {
                         | FlatRow::Hreflang { page, .. }
                         | FlatRow::SdItem { page, .. } => *page,
                         FlatRow::IssuesRow { .. }
+                        | FlatRow::ChangeRow { .. }
                         | FlatRow::LinkRow { .. }
                         | FlatRow::DirectoryAggregate { .. } => unreachable!(),
                     };
@@ -755,6 +933,13 @@ impl TableDelegate for ResultsDelegate {
         let root_origin = self.root_origin.clone();
 
         if tab_is_flattened(self.active_tab) {
+            // Precompute outside the closure to avoid borrowing all of `self`
+            // (a method call) while `self.flat_rows` is borrowed mutably.
+            let change_entries = if self.active_tab == ResultTab::Changes {
+                self.change_entries()
+            } else {
+                Vec::new()
+            };
             self.flat_rows.sort_by(|a, b| {
                 if let (FlatRow::IssuesRow { index: a_idx }, FlatRow::IssuesRow { index: b_idx }) =
                     (a, b)
@@ -773,7 +958,54 @@ impl TableDelegate for ResultsDelegate {
                             "issue_type" => ae.issue_type.cmp(&be.issue_type),
                             "description" => ae.description.cmp(&be.description),
                             "hint" => ae.hint.cmp(&be.hint),
+                            "count_prev" => {
+                                let ap = self
+                                    .baseline_issue_counts
+                                    .get(&ae.name)
+                                    .map(|(c, _)| *c)
+                                    .unwrap_or(0);
+                                let bp = self
+                                    .baseline_issue_counts
+                                    .get(&be.name)
+                                    .map(|(c, _)| *c)
+                                    .unwrap_or(0);
+                                ap.cmp(&bp)
+                            }
+                            "count_delta" => {
+                                let ad = ae.count as i64
+                                    - self
+                                        .baseline_issue_counts
+                                        .get(&ae.name)
+                                        .map(|(c, _)| *c as i64)
+                                        .unwrap_or(0);
+                                let bd = be.count as i64
+                                    - self
+                                        .baseline_issue_counts
+                                        .get(&be.name)
+                                        .map(|(c, _)| *c as i64)
+                                        .unwrap_or(0);
+                                ad.cmp(&bd)
+                            }
                             _ => ae.name.cmp(&be.name),
+                        },
+                        _ => std::cmp::Ordering::Equal,
+                    };
+                    return match sort {
+                        ColumnSort::Descending => ordering.reverse(),
+                        _ => ordering,
+                    };
+                }
+                if let (FlatRow::ChangeRow { index: a_idx }, FlatRow::ChangeRow { index: b_idx }) =
+                    (a, b)
+                {
+                    let a_entry = change_entries.get(*a_idx);
+                    let b_entry = change_entries.get(*b_idx);
+                    let ordering = match (a_entry, b_entry) {
+                        (Some(ae), Some(be)) => match col_key.as_ref() {
+                            "change_kind" => ae.kind.cmp(&be.kind),
+                            "change_status" => ae.status_after.cmp(&be.status_after),
+                            "change_detail" => ae.changes.len().cmp(&be.changes.len()),
+                            _ => ae.url.cmp(&be.url),
                         },
                         _ => std::cmp::Ordering::Equal,
                     };
@@ -819,7 +1051,9 @@ impl TableDelegate for ResultsDelegate {
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. }
                     | FlatRow::LinkRow { page, .. } => *page,
-                    FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => 0,
+                    FlatRow::IssuesRow { .. }
+                    | FlatRow::ChangeRow { .. }
+                    | FlatRow::DirectoryAggregate { .. } => 0,
                 };
 
                 let b_page = match b {
@@ -828,7 +1062,9 @@ impl TableDelegate for ResultsDelegate {
                     | FlatRow::Hreflang { page, .. }
                     | FlatRow::SdItem { page, .. }
                     | FlatRow::LinkRow { page, .. } => *page,
-                    FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => 0,
+                    FlatRow::IssuesRow { .. }
+                    | FlatRow::ChangeRow { .. }
+                    | FlatRow::DirectoryAggregate { .. } => 0,
                 };
                 let a_record = &self.all_pages[a_page];
                 let b_record = &self.all_pages[b_page];
