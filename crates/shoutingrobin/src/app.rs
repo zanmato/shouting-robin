@@ -433,7 +433,7 @@ impl ShoutingRobinApp {
     fn on_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
         let settings_view = cx.new(SettingsView::new);
         window.open_dialog(cx, move |dialog, _window, _cx| {
-            dialog.title("Settings").w(gpui::px(850.)).child(
+            dialog.title("Settings").w(gpui::px(960.)).child(
                 div()
                     .id("settings-body")
                     .h(gpui::px(600.))
