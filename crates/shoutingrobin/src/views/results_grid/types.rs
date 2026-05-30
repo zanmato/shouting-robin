@@ -83,6 +83,7 @@ pub enum IssueFilter {
     Css,
     JavaScript,
     Pdf,
+    FetchXhr,
     OtherResource,
     Status2xx,
     Status3xx,
@@ -202,6 +203,7 @@ impl IssueFilter {
             IssueFilter::Css => "CSS",
             IssueFilter::JavaScript => "JavaScript",
             IssueFilter::Pdf => "PDF",
+            IssueFilter::FetchXhr => "Fetch/XHR",
             IssueFilter::OtherResource => "Other",
             IssueFilter::Status2xx => "2xx",
             IssueFilter::Status3xx => "3xx",
@@ -314,6 +316,7 @@ impl IssueFilter {
             | Self::Css
             | Self::JavaScript
             | Self::Pdf
+            | Self::FetchXhr
             | Self::OtherResource
             | Self::Status2xx
             | Self::Status3xx

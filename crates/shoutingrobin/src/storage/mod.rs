@@ -82,6 +82,18 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../../migrations/0019_links_csr_only.sql"),
     ),
     ("0020_fcp", include_str!("../../migrations/0020_fcp.sql")),
+    (
+        "0021_is_resource",
+        include_str!("../../migrations/0021_is_resource.sql"),
+    ),
+    (
+        "0022_resource_initiator",
+        include_str!("../../migrations/0022_resource_initiator.sql"),
+    ),
+    (
+        "0023_is_page",
+        include_str!("../../migrations/0023_is_page.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -191,8 +203,8 @@ pub async fn insert_page(
             title_pixel_width, meta_description_pixel_width,
             ssr_word_count, ssr_h1, ssr_content_missing,
             sentence_count, syllable_count, flesch_reading_ease, readability,
-            blocked_by_robots
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            blocked_by_robots, is_resource, resource_initiator, is_page
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
@@ -237,6 +249,9 @@ pub async fn insert_page(
     .bind(record.flesch_reading_ease.map(|f| f as f64))
     .bind(record.readability.as_deref())
     .bind(record.blocked_by_robots.map(|b| b as i64))
+    .bind(record.is_resource as i64)
+    .bind(record.resource_initiator.as_deref())
+    .bind(record.is_page as i64)
     .execute(pool)
     .await?;
 
@@ -741,6 +756,17 @@ pub async fn load_pages_for_crawl(
     .fetch_all(pool)
     .await?;
 
+    let resource_rows = sqlx::query_as::<_, (String, i64, Option<String>, i64)>(
+        r#"
+        SELECT url, is_resource, resource_initiator, is_page
+        FROM pages WHERE crawl_id = ?
+        ORDER BY id
+        "#,
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+
     let outlink_rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, i64)>(
         r#"
         SELECT src_url, dst_url, anchor, rel, csr_only
@@ -1095,6 +1121,14 @@ pub async fn load_pages_for_crawl(
         .filter_map(|(url, robots)| robots.map(|r| (url, r)))
         .collect();
 
+    let resource_meta_by_url: std::collections::HashMap<String, (bool, Option<String>, bool)> =
+        resource_rows
+            .into_iter()
+            .map(|(url, is_resource, initiator, is_page)| {
+                (url, (is_resource != 0, initiator, is_page != 0))
+            })
+            .collect();
+
     let mut outlinks_by_url: std::collections::HashMap<String, Vec<Outlink>> =
         std::collections::HashMap::new();
     for (src_url, dst_url, anchor, rel, csr_only) in outlink_rows {
@@ -1216,6 +1250,10 @@ pub async fn load_pages_for_crawl(
                 ),
             )| {
                 let is_internal = crate::crawl::engine::is_same_domain(root_url, &url);
+                let (is_resource, resource_initiator, is_page) = resource_meta_by_url
+                    .get(&url)
+                    .cloned()
+                    .unwrap_or((false, None, true));
                 let images = images_by_url.remove(&url).unwrap_or_default();
                 let hreflang_tags: Vec<(String, String)> = hreflang_tags_json
                     .as_deref()
@@ -1278,6 +1316,9 @@ pub async fn load_pages_for_crawl(
                     word_count: word_count.map(|w| w as u32),
                     depth: depth.unwrap_or(0) as u32,
                     is_internal,
+                    is_page,
+                    is_resource,
+                    resource_initiator,
                     indexability,
                     response_time: std::time::Duration::from_millis(
                         response_time_ms.unwrap_or(0) as u64

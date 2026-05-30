@@ -820,10 +820,16 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         url,
         status: Some(200),
         is_internal: true,
+        is_page: true,
         ..Default::default()
     };
+    // Subresources harvested from resource timings: their content type is the
+    // basis for the Internal tab's resource-type filters, but they are not
+    // navigated documents, so they must not surface in document tabs.
     let with_ct = |path: &str, ct: &str| PageRecord {
         content_type: Some(ct.to_string()),
+        is_page: false,
+        is_resource: true,
         ..internal(format!("{base}{path}"))
     };
     let with_headers = |path: &str, headers: &[(&str, &str)]| PageRecord {
@@ -850,6 +856,14 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         with_ct("/syn-img", "image/png"),
         with_ct("/syn-pdf", "application/pdf"),
         with_ct("/syn-other", "application/json"),
+        // A Fetch/XHR request harvested from resource timings: no usable
+        // content type, identified solely by its initiator.
+        PageRecord {
+            is_page: false,
+            is_resource: true,
+            resource_initiator: Some("fetch".to_string()),
+            ..internal(format!("{base}/syn-xhr"))
+        },
         PageRecord {
             status: Some(301),
             ..internal(format!("{base}/syn-3xx"))
@@ -990,7 +1004,8 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::Css => both(&["/syn-css"], &["/"]),
         F::JavaScript => both(&["/syn-js"], &["/"]),
         F::Pdf => both(&["/syn-pdf"], &["/"]),
-        F::OtherResource => both(&["/syn-other"], &["/"]),
+        F::OtherResource => both(&["/syn-other"], &["/", "/syn-xhr"]),
+        F::FetchXhr => both(&["/syn-xhr"], &["/", "/syn-other"]),
 
         // Response codes
         F::Status2xx => both(&["/"], &["/not-found"]),

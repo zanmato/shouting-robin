@@ -307,6 +307,7 @@ impl CrawlEngine {
                         status: Some(page.status_code.as_u16()),
                         size_bytes: html_bytes.len() as u64,
                         response_time: page.get_duration_elapsed(),
+                        is_page: true,
                         ..Default::default()
                     };
                     if let Some(ref headers) = page.headers
@@ -358,6 +359,15 @@ impl CrawlEngine {
                             html_len = html.len(),
                             "received html for analysis"
                         );
+                        // In Chrome render mode with request interception, spider
+                        // can hand us the response headers of an arbitrary
+                        // subresource rather than the main document, so the
+                        // Content-Type above is unreliable (e.g. a fully-rendered
+                        // page reported as application/json or text/css). When the
+                        // body is actually HTML, trust the body over that header.
+                        if looks_like_html(html) {
+                            record.content_type = Some("text/html".to_string());
+                        }
                         crate::crawl::analyzers::analyze_html(
                             &mut record,
                             html,
@@ -450,13 +460,21 @@ impl CrawlEngine {
                         {
                             continue;
                         }
-                        let content_type = content_type_from_url(&resource.url).or_else(|| {
-                            match resource.initiator.as_str() {
+                        let ext_content_type = content_type_from_url(&resource.url);
+                        // `<link>`-initiated entries without a recognizable asset
+                        // extension are route prefetches/preloads (common in SPAs),
+                        // not real subresources. We already crawl those routes as
+                        // their own pages, so harvesting them here would duplicate
+                        // them and, lacking a real content type, mislabel them.
+                        if resource.initiator == "link" && ext_content_type.is_none() {
+                            continue;
+                        }
+                        let content_type =
+                            ext_content_type.or_else(|| match resource.initiator.as_str() {
                                 "script" => Some("text/javascript".to_string()),
-                                "css" | "link" => Some("text/css".to_string()),
+                                "css" => Some("text/css".to_string()),
                                 _ => None,
-                            }
-                        });
+                            });
                         let mut resource_record = PageRecord {
                             url: resource.url.clone(),
                             status: (resource.status > 0).then_some(resource.status),
@@ -464,6 +482,9 @@ impl CrawlEngine {
                             content_type,
                             response_time: Duration::from_millis(resource.duration),
                             is_internal: is_same_domain(&root_for_pump, &resource.url),
+                            is_resource: true,
+                            resource_initiator: (!resource.initiator.is_empty())
+                                .then(|| resource.initiator.clone()),
                             ..Default::default()
                         };
                         if let Some(sm_url) = sitemap_for_pump.get(&resource.url) {
@@ -877,6 +898,20 @@ const METRICS_AUTOMATION_JS: &str = r#"
 /// Maps a URL's file extension to a MIME type. Used as a fallback for
 /// subresources that spider fetches without response headers, so the Internal
 /// tab can still categorize them by content type.
+/// Heuristic body sniff: does this look like an HTML document? Used to recover
+/// the correct content type for navigated pages when Chrome's request
+/// interception reports a subresource's headers for the document. Checks the
+/// leading bytes (after any BOM/whitespace) for the doctype or an `<html>` tag.
+fn looks_like_html(body: &str) -> bool {
+    let head = body
+        .trim_start_matches('\u{feff}')
+        .trim_start()
+        .get(..512)
+        .unwrap_or(body)
+        .to_ascii_lowercase();
+    head.contains("<!doctype html") || head.contains("<html")
+}
+
 fn content_type_from_url(url: &str) -> Option<String> {
     let path = url::Url::parse(url)
         .ok()

@@ -19,6 +19,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::JavaScript,
             IssueFilter::Images,
             IssueFilter::Pdf,
+            IssueFilter::FetchXhr,
             IssueFilter::OtherResource,
             IssueFilter::NonIndexable,
         ],
@@ -221,6 +222,27 @@ pub fn matching_urls(tab: ResultTab, filter: IssueFilter, pages: &[PageRecord]) 
         .collect()
 }
 
+/// True when a record is a Fetch/XHR request harvested from the page's
+/// resource timings, identified by its Resource Timing API `initiatorType`.
+/// These carry no usable content type, so they are grouped on their own rather
+/// than scattered across the resource-type filters.
+fn is_fetch_xhr(page: &PageRecord) -> bool {
+    matches!(
+        page.resource_initiator.as_deref(),
+        Some("fetch") | Some("xmlhttprequest")
+    )
+}
+
+/// True when a record is a navigated, parsed document (from spider's page
+/// callback) rather than a harvested subresource (CSS/JS/image/font/XHR).
+/// Document-derived tabs key off this instead of `content_type`: spider can
+/// report a misleading `Content-Type` for the document itself (e.g. SPAs
+/// serving `application/javascript` for the request it actually issued), which
+/// would otherwise hide real pages from these tabs.
+fn is_page_document(page: &PageRecord) -> bool {
+    page.is_page && !page.is_resource
+}
+
 pub(super) fn filter_for_tab(
     tab: ResultTab,
     issue_filter: IssueFilter,
@@ -228,8 +250,21 @@ pub(super) fn filter_for_tab(
     occurrence_counts: &HashMap<String, usize>,
 ) -> Vec<usize> {
     let mut indices: Vec<usize> = match tab {
-        ResultTab::Internal
-        | ResultTab::PageTitles
+        // Tabs that list every internal URL, including subresources. The
+        // Internal tab has its own resource-type filters, while URL-quality
+        // and site-structure checks apply equally to assets.
+        ResultTab::Internal | ResultTab::Security | ResultTab::Url | ResultTab::SiteStructure => {
+            pages
+                .iter()
+                .enumerate()
+                .filter(|(_, p)| p.is_internal)
+                .map(|(i, _)| i)
+                .collect()
+        }
+        // Tabs whose data is parsed from the navigated document. Harvested
+        // subresources never carry these fields, so they are excluded rather
+        // than shown as empty rows.
+        ResultTab::PageTitles
         | ResultTab::MetaDesc
         | ResultTab::H1
         | ResultTab::H2
@@ -238,13 +273,10 @@ pub(super) fn filter_for_tab(
         | ResultTab::StructuredData
         | ResultTab::Hreflang
         | ResultTab::Accessibility
-        | ResultTab::Security
-        | ResultTab::Url
-        | ResultTab::Directives
-        | ResultTab::SiteStructure => pages
+        | ResultTab::Directives => pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.is_internal)
+            .filter(|(_, p)| p.is_internal && is_page_document(p))
             .map(|(i, _)| i)
             .collect(),
         // External URLs and resources (images/scripts/styles on other origins)
@@ -256,18 +288,13 @@ pub(super) fn filter_for_tab(
             .filter(|(_, p)| !p.is_internal)
             .map(|(i, _)| i)
             .collect(),
-        // Performance metrics only exist for navigated HTML documents; assets
-        // (CSS/JS/images, whether internal or external) never carry web vitals,
-        // so they are excluded here rather than shown with empty metric columns.
+        // Performance metrics only exist for navigated documents; harvested
+        // subresources (CSS/JS/images) never carry web vitals, so they are
+        // excluded here rather than shown with empty metric columns.
         ResultTab::Performance => pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| {
-                p.is_internal
-                    && p.content_type
-                        .as_deref()
-                        .is_none_or(|ct| ct.starts_with("text/html"))
-            })
+            .filter(|(_, p)| p.is_internal && is_page_document(p))
             .map(|(i, _)| i)
             .collect(),
         ResultTab::Images => pages
@@ -357,13 +384,16 @@ pub(super) fn filter_for_tab(
                     .as_deref()
                     .is_some_and(|ct| ct.contains("pdf"))
             }),
+            IssueFilter::FetchXhr => indices.retain(|&idx| is_fetch_xhr(&pages[idx])),
             IssueFilter::OtherResource => indices.retain(|&idx| {
-                let ct = pages[idx].content_type.as_deref().unwrap_or("");
+                let page = &pages[idx];
+                let ct = page.content_type.as_deref().unwrap_or("");
                 !ct.starts_with("text/html")
                     && !ct.starts_with("image/")
                     && !ct.contains("css")
                     && !ct.contains("javascript")
                     && !ct.contains("pdf")
+                    && !is_fetch_xhr(page)
             }),
             IssueFilter::NonIndexable => indices.retain(|&idx| {
                 pages[idx]

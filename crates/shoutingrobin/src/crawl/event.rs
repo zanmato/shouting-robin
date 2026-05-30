@@ -16,6 +16,22 @@ pub struct PageRecord {
     pub word_count: Option<u32>,
     pub depth: u32,
     pub is_internal: bool,
+    /// True when this row came from spider's page callback, i.e. a navigated,
+    /// parsed document. Document-derived tabs (Page Titles, Meta Desc, H1, ...)
+    /// filter on this flag rather than on `content_type`, because spider can
+    /// report a misleading `Content-Type` for the document (e.g. SPAs serving
+    /// `application/javascript` for the request it actually issued).
+    pub is_page: bool,
+    /// True when this row is a subresource (CSS/JS/image/font/XHR) harvested
+    /// from the page's resource timings rather than a navigated, parsed
+    /// document. Its `content_type` is guessed from the URL/initiator and is
+    /// unreliable, so document-derived tabs filter on this flag, not the type.
+    pub is_resource: bool,
+    /// The Resource Timing API `initiatorType` for harvested resources (e.g.
+    /// "script", "css", "img", "fetch", "xmlhttprequest"). `None` for
+    /// navigated documents. Used to single out Fetch/XHR requests, which have
+    /// no usable content type.
+    pub resource_initiator: Option<String>,
     pub indexability: Option<String>,
     pub h1_count: u32,
     pub h2_count: u32,

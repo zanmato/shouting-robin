@@ -84,7 +84,7 @@ impl CrawlBar {
             url_input,
             running: false,
             has_results: false,
-            default_mode: RenderMode::Http,
+            default_mode: RenderMode::Chrome,
             advanced_open: false,
             headers_input,
             include_input,
