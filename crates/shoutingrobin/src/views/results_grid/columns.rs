@@ -128,7 +128,6 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("address", "Address", 380., Some(ColumnFixed::Left)),
             col("sd_format", "Format", 100., None),
             col("sd_type", "Type", 200., None),
-            col("sd_raw", "JSON", 350., None),
             col("sd_errors", "Errors", 70., None),
             col("sd_warnings", "Warnings", 80., None),
             col("indexability", "Indexability", 110., None),
@@ -399,7 +398,6 @@ pub(super) fn is_mono_column(key: &str) -> bool {
                 | "canonical"
                 | "a11y_target"
                 | "a11y_html"
-                | "sd_raw"
                 | "last_modified"
                 | "redirect_url"
                 | "dir_path"

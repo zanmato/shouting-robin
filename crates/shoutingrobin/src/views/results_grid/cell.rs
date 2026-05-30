@@ -187,14 +187,6 @@ fn sd_item_cell_text(
             SdFormat::Microdata => "Microdata",
         }),
         "sd_type" => SharedString::from(sd_item.type_name.clone()),
-        "sd_raw" => {
-            let truncated = if sd_item.raw_json.len() > 200 {
-                format!("{}...", &sd_item.raw_json[..200])
-            } else {
-                sd_item.raw_json.clone()
-            };
-            SharedString::from(truncated)
-        }
         "sd_errors" => SharedString::from(record.sd_errors.to_string()),
         "sd_warnings" => SharedString::from(record.sd_warnings.to_string()),
         "indexability" => {

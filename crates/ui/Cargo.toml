@@ -11,4 +11,6 @@ path = "src/ui.rs"
 [dependencies]
 gpui = { workspace = true }
 gpui-component = { workspace = true }
+ropey = "=2.0.0-beta.1"
+serde_json = { workspace = true }
 smallvec = "1"

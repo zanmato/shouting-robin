@@ -8,6 +8,7 @@ use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdSeverity};
 use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::results_grid::ssr_diff_label;
+use shoutingrobin_ui::JsonView;
 
 pub struct DetailsPanel {
     pub selected: Option<PageRecord>,
@@ -511,7 +512,7 @@ fn structured_data_section(
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
-    cx: &App,
+    _cx: &App,
 ) -> AnyElement {
     let sd_summary = if rec.sd_items.is_empty() {
         None
@@ -554,15 +555,7 @@ fn structured_data_section(
                     ),
                 )
                 .when(!item.raw_json.is_empty(), |el| {
-                    el.child(
-                        div()
-                            .text_xs()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_color(muted)
-                            .max_h(gpui::px(120.))
-                            .overflow_y_scrollbar()
-                            .child(SharedString::from(item.raw_json.clone())),
-                    )
+                    el.child(JsonView::new(item.raw_json.clone()))
                 }),
         );
     }
@@ -1281,7 +1274,12 @@ fn headers_section(
     Some(section(
         "HTTP Headers",
         None,
-        Some(SharedString::from(format!("{} headers", rec.headers.len())).into_any_element()),
+        Some(
+            div()
+                .text_xs()
+                .child(SharedString::from(format!("{} headers", rec.headers.len())))
+                .into_any_element(),
+        ),
         muted,
         border,
         headers_body.into_any_element(),
