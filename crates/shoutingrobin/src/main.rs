@@ -14,6 +14,7 @@ mod settings;
 mod storage;
 mod themes_manager;
 mod ui;
+mod update_manager;
 mod views;
 
 #[cfg(test)]
@@ -85,6 +86,10 @@ fn main() {
 
         cx.set_global(db);
         cx.set_global(CrawlEngine::new());
+
+        let update_manager = update_manager::UpdateManager::new(cx);
+        cx.set_global(update_manager);
+        update_manager::UpdateManager::start_polling(cx);
 
         let bounds = gpui::Bounds::centered(None, size(px(1280.), px(900.)), cx);
         let window_options = WindowOptions {

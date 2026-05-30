@@ -12,12 +12,14 @@ use gpui_component::{
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
     menu::AppMenuBar,
+    notification::{Notification, NotificationType},
     resizable::{ResizableState, h_resizable, resizable_panel},
 };
 use shoutingrobin_ui::{Tab, TabBar};
 
 use crate::crawl::{CrawlEngine, CrawlEvent, RenderMode};
 use crate::settings::view::SettingsView;
+use crate::update_manager::UpdateManager;
 use crate::views::{
     CrawlBar, CrawlsSidebar, DetailsPanel, ResultTab, ResultsGrid, StatusBar,
     crawl_bar::CrawlBarEvent,
@@ -187,6 +189,31 @@ impl ShoutingRobinApp {
 
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
+
+        // Show a success notification if we relaunched into a freshly applied update.
+        if UpdateManager::global(cx)
+            .just_updated_from
+            .read(cx)
+            .is_some()
+        {
+            let current = env!("CARGO_PKG_VERSION");
+            let app_entity = cx.entity().downgrade();
+            window.defer(cx, move |window, cx| {
+                if let Some(app_entity) = app_entity.upgrade() {
+                    window.push_notification(
+                        Notification::new()
+                            .message(format!("Updated to v{}, click to view changelog", current))
+                            .with_type(NotificationType::Success)
+                            .on_click(window.listener_for(&app_entity, move |_, _, _, cx| {
+                                let changelog_url =
+                                    UpdateManager::changelog_url(&format!("v{}", current));
+                                cx.open_url(&changelog_url);
+                            })),
+                        cx,
+                    );
+                }
+            });
+        }
 
         let mut app = Self {
             focus_handle,
@@ -444,6 +471,27 @@ impl ShoutingRobinApp {
     }
 }
 
+impl ShoutingRobinApp {
+    fn render_update_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let has_update = UpdateManager::global(cx).pending_update.read(cx).is_some();
+
+        if has_update {
+            div().child(
+                Button::new("update-available")
+                    .ghost()
+                    .compact()
+                    .small()
+                    .label("Update available, click to restart")
+                    .on_click(|_, _window, _cx| {
+                        UpdateManager::apply_pending_update();
+                    }),
+            )
+        } else {
+            div()
+        }
+    }
+}
+
 impl Focusable for ShoutingRobinApp {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()
@@ -606,7 +654,8 @@ impl Render for ShoutingRobinApp {
                                         .path("img/shouting-robin.svg"),
                                 )
                                 .child(self.app_menu_bar.clone()),
-                        ),
+                        )
+                        .child(self.render_update_button(cx)),
                 ),
             )
             .child(self.crawl_bar.clone())
