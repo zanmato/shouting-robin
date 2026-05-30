@@ -251,16 +251,14 @@ pub(super) fn filter_for_tab(
 ) -> Vec<usize> {
     let mut indices: Vec<usize> = match tab {
         // Tabs that list every internal URL, including subresources. The
-        // Internal tab has its own resource-type filters, while URL-quality
-        // and site-structure checks apply equally to assets.
-        ResultTab::Internal | ResultTab::Security | ResultTab::Url | ResultTab::SiteStructure => {
-            pages
-                .iter()
-                .enumerate()
-                .filter(|(_, p)| p.is_internal)
-                .map(|(i, _)| i)
-                .collect()
-        }
+        // Internal tab has its own resource-type filters; URL-quality checks
+        // apply equally to assets.
+        ResultTab::Internal | ResultTab::Security | ResultTab::Url => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.is_internal)
+            .map(|(i, _)| i)
+            .collect(),
         // Tabs whose data is parsed from the navigated document. Harvested
         // subresources never carry these fields, so they are excluded rather
         // than shown as empty rows.
@@ -307,6 +305,12 @@ pub(super) fn filter_for_tab(
             .iter()
             .enumerate()
             .filter(|(_, p)| p.is_internal && !p.outlinks.is_empty())
+            .map(|(i, _)| i)
+            .collect(),
+        ResultTab::Ecommerce | ResultTab::Sitemaps | ResultTab::SiteStructure => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.is_internal && is_page_document(p))
             .map(|(i, _)| i)
             .collect(),
         _ => (0..pages.len()).collect(),

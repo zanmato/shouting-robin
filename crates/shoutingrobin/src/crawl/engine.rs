@@ -470,8 +470,11 @@ impl CrawlEngine {
                         if resource.initiator == "link" && ext_content_type.is_none() {
                             continue;
                         }
-                        let content_type =
-                            ext_content_type.or_else(|| match resource.initiator.as_str() {
+                        let content_type = resource
+                            .content_type
+                            .clone()
+                            .or(ext_content_type)
+                            .or_else(|| match resource.initiator.as_str() {
                                 "script" => Some("text/javascript".to_string()),
                                 "css" => Some("text/css".to_string()),
                                 _ => None,
@@ -1108,6 +1111,8 @@ struct ResourceTiming {
     status: u16,
     #[serde(default)]
     duration: u64,
+    #[serde(default)]
+    content_type: Option<String>,
 }
 
 /// Reads `performance.getEntriesByType('resource')` from the rendered page.
@@ -1130,7 +1135,8 @@ async fn collect_resource_timings(page: &spider::page::Page) -> Vec<ResourceTimi
                     type: e.initiatorType || '',
                     size: Math.round(e.transferSize || e.encodedBodySize || e.decodedBodySize || 0),
                     status: (typeof e.responseStatus === 'number') ? e.responseStatus : 0,
-                    duration: Math.round(e.duration || 0)
+                    duration: Math.round(e.duration || 0),
+                    content_type: e.contentType || null
                 });
             }
             return JSON.stringify(out);

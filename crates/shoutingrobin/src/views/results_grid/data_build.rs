@@ -780,7 +780,10 @@ pub(super) fn build_directory_aggregates(
 
     let mut dir_data: HashMap<String, DirAccumulator> = HashMap::new();
 
-    for page in pages.iter().filter(|p| p.is_internal) {
+    for page in pages
+        .iter()
+        .filter(|p| p.is_internal && p.is_page && !p.is_resource)
+    {
         let path = page.url.strip_prefix(origin).unwrap_or(&page.url);
         let dir_path = directory_path(path);
 

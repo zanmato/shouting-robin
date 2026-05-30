@@ -793,29 +793,7 @@ impl TableDelegate for ResultsDelegate {
                             };
                             cell.child(tone_tag(tone).child(text))
                         }
-                        "source" => {
-                            let url = record.url.clone();
-                            cell.child(
-                                div()
-                                    .group("url-cell")
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .child(text)
-                                    .child(
-                                        div().invisible().group_hover("url-cell", |s| s.visible()),
-                                    )
-                                    .child(
-                                        div()
-                                            .id(("open-src", row_ix))
-                                            .cursor_pointer()
-                                            .child(UiIcon::from(Icon::ExternalLink).xsmall())
-                                            .on_click(move |_, _window, cx| {
-                                                cx.open_url(&url);
-                                            }),
-                                    ),
-                            )
-                        }
+                        "source" => cell.child(text),
                         "destination" => {
                             let url = link.dst_url.clone();
                             cell.child(
