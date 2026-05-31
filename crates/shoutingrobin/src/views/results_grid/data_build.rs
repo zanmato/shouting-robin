@@ -90,11 +90,23 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
 
 pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     let internal: Vec<&PageRecord> = pages.iter().filter(|p| p.is_internal).collect();
+    // Page-content checks (titles, headings, canonicals, content quality, a11y,
+    // performance, hreflang) apply only to navigated HTML documents, never to
+    // harvested subresources or external-redirect stubs, which carry none of
+    // those fields and would otherwise be counted as e.g. missing titles. The
+    // matching drill-down filters use `is_page_document`, so these counts and
+    // their denominator must use the same population to reconcile on click-through.
+    let documents: Vec<&PageRecord> = internal
+        .iter()
+        .copied()
+        .filter(|p| p.is_page && !p.is_resource)
+        .collect();
     let total = internal.len().max(1) as f32;
+    let doc_total = documents.len().max(1) as f32;
     let all_total = pages.len().max(1) as f32;
     let mut entries = Vec::new();
 
-    let missing_title = internal
+    let missing_title = documents
         .iter()
         .filter(|p| p.title.as_deref().unwrap_or("").is_empty())
         .count();
@@ -104,7 +116,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: missing_title,
-            pct: missing_title as f32 / total * 100.0,
+            pct: missing_title as f32 / doc_total * 100.0,
             description: "Pages with an empty or missing <title> tag.".into(),
             hint: "Add a unique, descriptive title (30-60 chars) to each page.".into(),
         });
@@ -112,14 +124,14 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
 
     let duplicate_title = {
         let mut counts: HashMap<&str, usize> = HashMap::new();
-        for p in &internal {
+        for p in &documents {
             let val = p.title.as_deref().unwrap_or("");
             if val.is_empty() {
                 continue;
             }
             *counts.entry(val).or_insert(0) += 1;
         }
-        internal
+        documents
             .iter()
             .filter(|p| *counts.get(p.title.as_deref().unwrap_or("")).unwrap_or(&0) > 1)
             .count()
@@ -130,13 +142,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: duplicate_title,
-            pct: duplicate_title as f32 / total * 100.0,
+            pct: duplicate_title as f32 / doc_total * 100.0,
             description: "Multiple pages share the same title text.".into(),
             hint: "Give each page a unique title that reflects its content.".into(),
         });
     }
 
-    let over_title = internal
+    let over_title = documents
         .iter()
         .filter(|p| {
             p.title
@@ -150,14 +162,14 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Warning,
             priority: IssuePriority::Medium,
             count: over_title,
-            pct: over_title as f32 / total * 100.0,
+            pct: over_title as f32 / doc_total * 100.0,
             description: "Titles exceeding 60 characters may be truncated in search results."
                 .into(),
             hint: "Keep titles between 30 and 60 characters.".into(),
         });
     }
 
-    let missing_desc = internal
+    let missing_desc = documents
         .iter()
         .filter(|p| p.meta_description.as_deref().unwrap_or("").is_empty())
         .count();
@@ -167,7 +179,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: missing_desc,
-            pct: missing_desc as f32 / total * 100.0,
+            pct: missing_desc as f32 / doc_total * 100.0,
             description: "Pages with an empty or missing meta description.".into(),
             hint: "Write a compelling meta description (50-160 chars) for each page.".into(),
         });
@@ -175,14 +187,14 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
 
     let duplicate_desc = {
         let mut counts: HashMap<&str, usize> = HashMap::new();
-        for p in &internal {
+        for p in &documents {
             let val = p.meta_description.as_deref().unwrap_or("");
             if val.is_empty() {
                 continue;
             }
             *counts.entry(val).or_insert(0) += 1;
         }
-        internal
+        documents
             .iter()
             .filter(|p| {
                 *counts
@@ -198,13 +210,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::Medium,
             count: duplicate_desc,
-            pct: duplicate_desc as f32 / total * 100.0,
+            pct: duplicate_desc as f32 / doc_total * 100.0,
             description: "Multiple pages share the same meta description.".into(),
             hint: "Write a unique meta description for each page.".into(),
         });
     }
 
-    let missing_h1 = internal
+    let missing_h1 = documents
         .iter()
         .filter(|p| p.h1.as_deref().unwrap_or("").is_empty())
         .count();
@@ -214,7 +226,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: missing_h1,
-            pct: missing_h1 as f32 / total * 100.0,
+            pct: missing_h1 as f32 / doc_total * 100.0,
             description: "Pages with an empty or missing H1 heading.".into(),
             hint: "Add a single H1 heading that describes the page topic.".into(),
         });
@@ -222,14 +234,14 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
 
     let duplicate_h1 = {
         let mut counts: HashMap<&str, usize> = HashMap::new();
-        for p in &internal {
+        for p in &documents {
             let val = p.h1.as_deref().unwrap_or("");
             if val.is_empty() {
                 continue;
             }
             *counts.entry(val).or_insert(0) += 1;
         }
-        internal
+        documents
             .iter()
             .filter(|p| *counts.get(p.h1.as_deref().unwrap_or("")).unwrap_or(&0) > 1)
             .count()
@@ -240,7 +252,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Warning,
             priority: IssuePriority::Medium,
             count: duplicate_h1,
-            pct: duplicate_h1 as f32 / total * 100.0,
+            pct: duplicate_h1 as f32 / doc_total * 100.0,
             description: "Multiple pages share the same H1 heading text.".into(),
             hint: "Make each H1 unique to the page's primary topic.".into(),
         });
@@ -262,7 +274,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let missing_canonical = internal
+    let missing_canonical = documents
         .iter()
         .filter(|p| p.canonical.as_deref() == Some(""))
         .count();
@@ -272,7 +284,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Opportunity,
             priority: IssuePriority::Medium,
             count: missing_canonical,
-            pct: missing_canonical as f32 / total * 100.0,
+            pct: missing_canonical as f32 / doc_total * 100.0,
             description: "Pages without a self-referencing canonical link element.".into(),
             hint: "Add a canonical tag to every page to prevent duplicate content issues.".into(),
         });
@@ -308,7 +320,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let missing_alt: usize = internal
+    let missing_alt: usize = documents
         .iter()
         .flat_map(|p| p.images.iter())
         .filter(|img| !img.has_alt_attr || img.alt.as_deref().is_none_or(|a| a.is_empty()))
@@ -320,7 +332,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             priority: IssuePriority::Medium,
             count: missing_alt,
             pct: missing_alt as f32
-                / internal
+                / documents
                     .iter()
                     .map(|p| p.images.len())
                     .sum::<usize>()
@@ -331,21 +343,21 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let sd_errors = internal.iter().filter(|p| p.sd_errors > 0).count();
+    let sd_errors = documents.iter().filter(|p| p.sd_errors > 0).count();
     if sd_errors > 0 {
         entries.push(IssueEntry {
             name: "Structured Data Errors".into(),
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: sd_errors,
-            pct: sd_errors as f32 / total * 100.0,
+            pct: sd_errors as f32 / doc_total * 100.0,
             description: "Pages with invalid structured data that may prevent rich results.".into(),
             hint: "Fix JSON-LD or microdata syntax errors. Test with Google's Rich Results Test."
                 .into(),
         });
     }
 
-    let near_dups = internal
+    let near_dups = documents
         .iter()
         .filter(|p| p.near_duplicate_count.is_some_and(|c| c > 0))
         .count();
@@ -355,13 +367,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Opportunity,
             priority: IssuePriority::Medium,
             count: near_dups,
-            pct: near_dups as f32 / total * 100.0,
+            pct: near_dups as f32 / doc_total * 100.0,
             description: "Pages with highly similar content (90%+ match).".into(),
             hint: "Differentiate pages with unique content, merge thin variants, or use canonical tags.".into(),
         });
     }
 
-    let low_content = internal
+    let low_content = documents
         .iter()
         .filter(|p| p.word_count.is_some_and(|w| w > 0 && w < 100))
         .count();
@@ -371,13 +383,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Opportunity,
             priority: IssuePriority::Low,
             count: low_content,
-            pct: low_content as f32 / total * 100.0,
+            pct: low_content as f32 / doc_total * 100.0,
             description: "Pages with fewer than 100 words of body text.".into(),
             hint: "Add substantive content or consolidate thin pages.".into(),
         });
     }
 
-    let ssr_content_missing = internal
+    let ssr_content_missing = documents
         .iter()
         .filter(|p| p.ssr_content_missing == Some(true))
         .count();
@@ -387,7 +399,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: ssr_content_missing,
-            pct: ssr_content_missing as f32 / total * 100.0,
+            pct: ssr_content_missing as f32 / doc_total * 100.0,
             description: "The server-rendered HTML is missing content that only appears after \
                           client-side JavaScript runs."
                 .into(),
@@ -397,7 +409,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let blocked_by_robots = internal
+    let blocked_by_robots = documents
         .iter()
         .filter(|p| p.blocked_by_robots == Some(true))
         .count();
@@ -407,14 +419,14 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: blocked_by_robots,
-            pct: blocked_by_robots as f32 / total * 100.0,
+            pct: blocked_by_robots as f32 / doc_total * 100.0,
             description: "These internal URLs are disallowed by the site's robots.txt file.".into(),
             hint: "Review robots.txt rules to ensure important pages are not accidentally blocked."
                 .into(),
         });
     }
 
-    let readability_difficult = internal
+    let readability_difficult = documents
         .iter()
         .filter(|p| {
             p.flesch_reading_ease
@@ -427,7 +439,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Opportunity,
             priority: IssuePriority::Medium,
             count: readability_difficult,
-            pct: readability_difficult as f32 / total * 100.0,
+            pct: readability_difficult as f32 / doc_total * 100.0,
             description: "Pages with copy that is difficult to read (Flesch score 30-50), best \
                           understood by college graduates."
                 .into(),
@@ -437,7 +449,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let readability_very_difficult = internal
+    let readability_very_difficult = documents
         .iter()
         .filter(|p| p.flesch_reading_ease.is_some_and(|s| s < 30.0))
         .count();
@@ -447,7 +459,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: readability_very_difficult,
-            pct: readability_very_difficult as f32 / total * 100.0,
+            pct: readability_very_difficult as f32 / doc_total * 100.0,
             description: "Pages with copy that is very difficult to read (Flesch score below 30), \
                           best understood by university graduates."
                 .into(),
@@ -457,7 +469,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let slow_lcp = internal
+    let slow_lcp = documents
         .iter()
         .filter(|p| p.lcp_ms.is_some_and(|ms| ms > 4000))
         .count();
@@ -467,13 +479,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: slow_lcp,
-            pct: slow_lcp as f32 / total * 100.0,
+            pct: slow_lcp as f32 / doc_total * 100.0,
             description: "Pages with LCP over 4 seconds.".into(),
             hint: "Optimize images, eliminate render-blocking resources, improve server response time.".into(),
         });
     }
 
-    let slow_cls = internal
+    let slow_cls = documents
         .iter()
         .filter(|p| p.cls.is_some_and(|v| v > 0.25))
         .count();
@@ -483,24 +495,32 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::Medium,
             count: slow_cls,
-            pct: slow_cls as f32 / total * 100.0,
+            pct: slow_cls as f32 / doc_total * 100.0,
             description: "Pages with CLS above 0.25, causing visible layout shifts.".into(),
             hint: "Set explicit dimensions on images/videos, avoid inserting content above existing content.".into(),
         });
     }
 
-    let a11y_critical = internal
+    let a11y_critical = documents
         .iter()
         .flat_map(|p| p.a11y_issues.iter())
         .filter(|i| matches!(i.impact.as_str(), "critical" | "serious"))
         .count();
     if a11y_critical > 0 {
+        // count is a tally of individual violations, not pages, so the
+        // percentage must be relative to the total number of a11y issues
+        // (as with "Images Missing Alt Text"), otherwise it can exceed 100%.
+        let a11y_total = documents
+            .iter()
+            .map(|p| p.a11y_issues.len())
+            .sum::<usize>()
+            .max(1) as f32;
         entries.push(IssueEntry {
             name: "Accessibility Critical Issues".into(),
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: a11y_critical,
-            pct: a11y_critical as f32 / total * 100.0,
+            pct: a11y_critical as f32 / a11y_total * 100.0,
             description: "Critical or serious accessibility violations.".into(),
             hint: "Fix missing labels, ARIA roles, color contrast, and heading hierarchy.".into(),
         });
@@ -538,7 +558,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let hreflang_missing_return = internal
+    let hreflang_missing_return = documents
         .iter()
         .filter(|p| {
             p.hreflang_issues
@@ -552,13 +572,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: hreflang_missing_return,
-            pct: hreflang_missing_return as f32 / total * 100.0,
+            pct: hreflang_missing_return as f32 / doc_total * 100.0,
             description: "Pages with hreflang tags that are not reciprocated by the target URL.".into(),
             hint: "Ensure every hreflang link is bidirectional: if A links to B, B must link back to A.".into(),
         });
     }
 
-    let hreflang_invalid_lang = internal
+    let hreflang_invalid_lang = documents
         .iter()
         .filter(|p| {
             p.hreflang_issues
@@ -572,13 +592,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::Medium,
             count: hreflang_invalid_lang,
-            pct: hreflang_invalid_lang as f32 / total * 100.0,
+            pct: hreflang_invalid_lang as f32 / doc_total * 100.0,
             description: "Pages using hreflang codes that don't follow the BCP-47 standard.".into(),
             hint: "Use valid ISO 639-1 language codes (e.g. 'en', 'de') and optional region subtags (e.g. 'en-US').".into(),
         });
     }
 
-    let hreflang_missing_xdefault = internal
+    let hreflang_missing_xdefault = documents
         .iter()
         .filter(|p| {
             p.hreflang_issues
@@ -592,13 +612,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Warning,
             priority: IssuePriority::Medium,
             count: hreflang_missing_xdefault,
-            pct: hreflang_missing_xdefault as f32 / total * 100.0,
+            pct: hreflang_missing_xdefault as f32 / doc_total * 100.0,
             description: "Pages with hreflang but no x-default fallback tag.".into(),
             hint: "Add an hreflang x-default tag pointing to the default page for unmatched languages.".into(),
         });
     }
 
-    let hreflang_noncanonical = internal
+    let hreflang_noncanonical = documents
         .iter()
         .filter(|p| {
             p.hreflang_issues
@@ -612,7 +632,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: hreflang_noncanonical,
-            pct: hreflang_noncanonical as f32 / total * 100.0,
+            pct: hreflang_noncanonical as f32 / doc_total * 100.0,
             description:
                 "Hreflang URLs pointing to pages whose canonical differs from the hreflang target."
                     .into(),
