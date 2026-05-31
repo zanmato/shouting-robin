@@ -22,7 +22,10 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     record.h1_2 = select_nth_text(&doc, "h1", 1);
     record.h2_2 = select_nth_text(&doc, "h2", 1);
     record.canonical = select_attr(&doc, r#"link[rel="canonical"]"#, "href");
-    record.robots = select_attr(&doc, r#"meta[name="robots"]"#, "content");
+    // The robots meta name and its directives are case-insensitive per the
+    // HTML spec (e.g. `<meta name="ROBOTS" content="NOINDEX">`), so match the
+    // name with the CSS case-insensitive flag rather than the literal "robots".
+    record.robots = select_attr(&doc, r#"meta[name="robots" i]"#, "content");
     record.content_type = record
         .content_type
         .clone()
@@ -865,6 +868,19 @@ mod tests {
         assert_eq!(r.title_count, 1);
         assert_eq!(r.h1_count, 1);
         assert_eq!(r.h2_count, 1);
+    }
+
+    #[test]
+    fn robots_meta_is_case_insensitive() {
+        let mut r = analyze(
+            r#"<html><head><title>T</title>
+            <meta name="ROBOTS" content="NOINDEX">
+            </head><body><h1>H</h1></body></html>"#,
+        );
+        assert_eq!(r.robots.as_deref(), Some("NOINDEX"));
+        r.status = Some(200);
+        r.compute_indexability();
+        assert_eq!(r.indexability.as_deref(), Some("Non-Indexable"));
     }
 
     #[test]
