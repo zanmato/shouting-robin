@@ -333,7 +333,7 @@ pub fn page_paths(pages: &[shoutingrobin::crawl::event::PageRecord]) -> Vec<Stri
 pub fn ssr_diff_pct(record: &shoutingrobin::crawl::event::PageRecord) -> u32 {
     match (record.word_count, record.ssr_word_count) {
         (Some(csr), Some(ssr)) if csr > 0 => {
-            ((csr - ssr) as f64 / csr as f64 * 100.0).round() as u32
+            (csr.saturating_sub(ssr) as f64 / csr as f64 * 100.0).round() as u32
         }
         _ => 100,
     }
