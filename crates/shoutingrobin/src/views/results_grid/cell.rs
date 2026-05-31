@@ -658,7 +658,11 @@ pub(super) fn render_cell_tag(
 pub fn ssr_diff_label(record: &PageRecord) -> String {
     match (record.word_count, record.ssr_word_count) {
         (Some(csr), Some(ssr)) if csr > 0 => {
-            let diff_pct = ((csr - ssr) as f64 / csr as f64 * 100.0).round() as u32;
+            // SSR can legitimately exceed CSR (e.g. content stripped after
+            // hydration). There's no missing server content in that case, so
+            // clamp the diff at 0% rather than letting the subtraction wrap.
+            let missing = csr.saturating_sub(ssr);
+            let diff_pct = (missing as f64 / csr as f64 * 100.0).round() as u32;
             format!("{diff_pct}%")
         }
         _ => "-".into(),
@@ -718,5 +722,11 @@ mod tests {
     fn ssr_diff_computes_large_difference() {
         let record = make_record(Some(500), Some(10));
         assert_eq!(ssr_diff_label(&record), "98%");
+    }
+
+    #[test]
+    fn ssr_diff_clamps_to_zero_when_ssr_exceeds_csr() {
+        let record = make_record(Some(378), Some(379));
+        assert_eq!(ssr_diff_label(&record), "0%");
     }
 }
