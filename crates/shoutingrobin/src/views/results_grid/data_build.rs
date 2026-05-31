@@ -64,6 +64,7 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Missing X-Content-Type" => {
             Some((ResultTab::Security, IssueFilter::MissingContentTypeOptions))
         }
+        "Mixed Content" => Some((ResultTab::Security, IssueFilter::MixedContent)),
         "Non-ASCII URLs" => Some((ResultTab::Url, IssueFilter::UrlNonAscii)),
         "Uppercase URLs" => Some((ResultTab::Url, IssueFilter::UrlUppercase)),
         "URLs with Underscores" => Some((ResultTab::Url, IssueFilter::UrlUnderscores)),
@@ -510,6 +511,23 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             pct: missing_hsts as f32 / total * 100.0,
             description: "Pages missing the Strict-Transport-Security header.".into(),
             hint: "Add the Strict-Transport-Security header to enforce HTTPS.".into(),
+        });
+    }
+
+    let mixed_content = internal.iter().filter(|p| p.has_mixed_content).count();
+    if mixed_content > 0 {
+        entries.push(IssueEntry {
+            name: "Mixed Content".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
+            count: mixed_content,
+            pct: mixed_content as f32 / total * 100.0,
+            description: "HTTPS pages that load scripts, styles, images or other \
+                          subresources over insecure HTTP."
+                .into(),
+            hint: "Serve every subresource over HTTPS. Browsers block or warn on \
+                   mixed content, which can break the page and weaken security."
+                .into(),
         });
     }
 

@@ -57,7 +57,46 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     extract_images(&doc, record);
     extract_anchors(&doc, record);
     extract_og_type(&doc, record);
+    extract_mixed_content(&doc, record);
     compute_ecommerce_audit(record);
+}
+
+/// Flags mixed content: an HTTPS page that pulls in a subresource over plain
+/// HTTP (script, stylesheet, image, iframe, media, …). Browsers block active
+/// mixed content and warn on passive, so it undermines the page's security.
+/// Protocol-relative (`//host/...`) URLs inherit HTTPS and are not flagged.
+fn extract_mixed_content(doc: &Html, record: &mut PageRecord) {
+    if !record.url.starts_with("https://") {
+        return;
+    }
+    const SUBRESOURCES: &[(&str, &str)] = &[
+        ("script[src]", "src"),
+        ("img[src]", "src"),
+        ("iframe[src]", "src"),
+        ("audio[src]", "src"),
+        ("video[src]", "src"),
+        ("source[src]", "src"),
+        ("track[src]", "src"),
+        ("embed[src]", "src"),
+        ("object[data]", "data"),
+        (r#"link[rel="stylesheet" i][href]"#, "href"),
+    ];
+    for (selector, attr) in SUBRESOURCES {
+        let Ok(sel) = Selector::parse(selector) else {
+            continue;
+        };
+        for el in doc.select(&sel) {
+            if let Some(value) = el.value().attr(attr)
+                && value
+                    .trim_start()
+                    .to_ascii_lowercase()
+                    .starts_with("http://")
+            {
+                record.has_mixed_content = true;
+                return;
+            }
+        }
+    }
 }
 
 /// Compares the raw server-rendered HTML against the already-analyzed rendered
@@ -707,6 +746,47 @@ mod tests {
         let mut record = PageRecord::default();
         analyze_html(&mut record, html, selector);
         record
+    }
+
+    fn analyze_at(url: &str, html: &str) -> PageRecord {
+        let mut record = PageRecord {
+            url: url.to_string(),
+            ..Default::default()
+        };
+        analyze_html(&mut record, html, "");
+        record
+    }
+
+    #[test]
+    fn mixed_content_flagged_for_http_subresource_on_https_page() {
+        let r = analyze_at(
+            "https://example.test/page",
+            r#"<html><head><script src="http://cdn.example.test/a.js"></script></head>
+            <body><h1>H</h1></body></html>"#,
+        );
+        assert!(r.has_mixed_content);
+    }
+
+    #[test]
+    fn mixed_content_ignores_https_and_protocol_relative_subresources() {
+        let r = analyze_at(
+            "https://example.test/page",
+            r#"<html><head>
+            <link rel="stylesheet" href="https://cdn.example.test/a.css">
+            <script src="//cdn.example.test/a.js"></script>
+            </head><body><img src="/local.png"><h1>H</h1></body></html>"#,
+        );
+        assert!(!r.has_mixed_content);
+    }
+
+    #[test]
+    fn mixed_content_not_flagged_on_http_page() {
+        // An HTTP page loading HTTP resources is not "mixed" content.
+        let r = analyze_at(
+            "http://example.test/page",
+            r#"<html><body><img src="http://cdn.example.test/a.png"><h1>H</h1></body></html>"#,
+        );
+        assert!(!r.has_mixed_content);
     }
 
     #[test]

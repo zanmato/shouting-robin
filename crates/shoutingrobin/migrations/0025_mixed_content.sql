@@ -1,0 +1,1 @@
+ALTER TABLE pages ADD COLUMN has_mixed_content INTEGER NOT NULL DEFAULT 0;

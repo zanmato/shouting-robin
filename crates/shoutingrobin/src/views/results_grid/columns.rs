@@ -175,6 +175,7 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("sec_csp", "CSP", 70., None),
             col("sec_frame_guard", "X-Frame", 80., None),
             col("sec_content_type_opts", "X-Content-Type", 110., None),
+            col("sec_mixed_content", "Mixed Content", 110., None),
         ],
         ResultTab::Url => vec![
             col("address", "Address", 450., Some(ColumnFixed::Left)),
@@ -386,6 +387,7 @@ pub(super) fn is_tag_column(key: &str) -> bool {
             | "sec_csp"
             | "sec_frame_guard"
             | "sec_content_type_opts"
+            | "sec_mixed_content"
     )
 }
 

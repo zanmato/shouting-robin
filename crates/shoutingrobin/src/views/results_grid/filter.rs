@@ -158,6 +158,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::MissingCsp,
             IssueFilter::MissingFrameGuard,
             IssueFilter::MissingContentTypeOptions,
+            IssueFilter::MixedContent,
         ],
         ResultTab::Url => &[
             IssueFilter::All,
@@ -724,6 +725,7 @@ pub(super) fn filter_for_tab(
             IssueFilter::MissingContentTypeOptions => {
                 indices.retain(|&idx| !header_exists(&pages[idx].headers, "x-content-type-options"))
             }
+            IssueFilter::MixedContent => indices.retain(|&idx| pages[idx].has_mixed_content),
             IssueFilter::UrlNonAscii => indices.retain(|&idx| !pages[idx].url.is_ascii()),
             IssueFilter::UrlUppercase => {
                 indices.retain(|&idx| pages[idx].url.chars().any(|c| c.is_ascii_uppercase()))

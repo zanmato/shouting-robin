@@ -98,6 +98,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0024_drop_readability",
         include_str!("../../migrations/0024_drop_readability.sql"),
     ),
+    (
+        "0025_mixed_content",
+        include_str!("../../migrations/0025_mixed_content.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -206,8 +210,9 @@ pub async fn insert_page(
             title_2, meta_description_2, h1_2, h2_2,
             title_pixel_width, meta_description_pixel_width,
             ssr_word_count, ssr_h1, ssr_content_missing,
-            blocked_by_robots, is_resource, resource_initiator, is_page
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            blocked_by_robots, is_resource, resource_initiator, is_page,
+            has_mixed_content
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
@@ -251,6 +256,7 @@ pub async fn insert_page(
     .bind(record.is_resource as i64)
     .bind(record.resource_initiator.as_deref())
     .bind(record.is_page as i64)
+    .bind(record.has_mixed_content as i64)
     .execute(pool)
     .await?;
 
@@ -755,9 +761,9 @@ pub async fn load_pages_for_crawl(
     .fetch_all(pool)
     .await?;
 
-    let resource_rows = sqlx::query_as::<_, (String, i64, Option<String>, i64)>(
+    let resource_rows = sqlx::query_as::<_, (String, i64, Option<String>, i64, i64)>(
         r#"
-        SELECT url, is_resource, resource_initiator, is_page
+        SELECT url, is_resource, resource_initiator, is_page, has_mixed_content
         FROM pages WHERE crawl_id = ?
         ORDER BY id
         "#,
@@ -1115,13 +1121,25 @@ pub async fn load_pages_for_crawl(
         .filter_map(|(url, robots)| robots.map(|r| (url, r)))
         .collect();
 
-    let resource_meta_by_url: std::collections::HashMap<String, (bool, Option<String>, bool)> =
-        resource_rows
-            .into_iter()
-            .map(|(url, is_resource, initiator, is_page)| {
-                (url, (is_resource != 0, initiator, is_page != 0))
-            })
-            .collect();
+    let resource_meta_by_url: std::collections::HashMap<
+        String,
+        (bool, Option<String>, bool, bool),
+    > = resource_rows
+        .into_iter()
+        .map(
+            |(url, is_resource, initiator, is_page, has_mixed_content)| {
+                (
+                    url,
+                    (
+                        is_resource != 0,
+                        initiator,
+                        is_page != 0,
+                        has_mixed_content != 0,
+                    ),
+                )
+            },
+        )
+        .collect();
 
     let mut outlinks_by_url: std::collections::HashMap<String, Vec<Outlink>> =
         std::collections::HashMap::new();
@@ -1232,10 +1250,11 @@ pub async fn load_pages_for_crawl(
                 ),
             )| {
                 let is_internal = crate::crawl::engine::is_same_domain(root_url, &url);
-                let (is_resource, resource_initiator, is_page) = resource_meta_by_url
-                    .get(&url)
-                    .cloned()
-                    .unwrap_or((false, None, true));
+                let (is_resource, resource_initiator, is_page, has_mixed_content) =
+                    resource_meta_by_url
+                        .get(&url)
+                        .cloned()
+                        .unwrap_or((false, None, true, false));
                 let images = images_by_url.remove(&url).unwrap_or_default();
                 let hreflang_tags: Vec<(String, String)> = hreflang_tags_json
                     .as_deref()
@@ -1301,6 +1320,7 @@ pub async fn load_pages_for_crawl(
                     is_page,
                     is_resource,
                     resource_initiator,
+                    has_mixed_content,
                     indexability,
                     response_time: std::time::Duration::from_millis(
                         response_time_ms.unwrap_or(0) as u64

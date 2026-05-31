@@ -80,6 +80,10 @@ pub struct PageRecord {
     pub ssr_h1: Option<String>,
     pub ssr_content_missing: Option<bool>,
     pub blocked_by_robots: Option<bool>,
+    /// True when an HTTPS page loads at least one subresource (script, style,
+    /// image, iframe, media, …) over plain HTTP. Browsers block or warn on such
+    /// mixed content, so it's a security issue worth flagging.
+    pub has_mixed_content: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -151,6 +151,7 @@ pub enum IssueFilter {
     MissingCsp,
     MissingFrameGuard,
     MissingContentTypeOptions,
+    MixedContent,
     UrlNonAscii,
     UrlUppercase,
     UrlUnderscores,
@@ -269,6 +270,7 @@ impl IssueFilter {
             IssueFilter::MissingCsp => "Missing CSP",
             IssueFilter::MissingFrameGuard => "Missing Frame Guard",
             IssueFilter::MissingContentTypeOptions => "Missing X-Content-Type",
+            IssueFilter::MixedContent => "Mixed Content",
             IssueFilter::UrlNonAscii => "Non-ASCII",
             IssueFilter::UrlUppercase => "Uppercase",
             IssueFilter::UrlUnderscores => "Underscores",
@@ -347,6 +349,7 @@ impl IssueFilter {
             | Self::SitemapOrphans
             | Self::RedirectLoop
             | Self::MissingHttps
+            | Self::MixedContent
             | Self::ExactDuplicates
             | Self::SsrContentMissing
             | Self::BlockedByRobots

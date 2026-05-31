@@ -480,6 +480,11 @@ pub(super) fn cell_text(
                 .map(|_| "Yes")
                 .unwrap_or("No"),
         ),
+        "sec_mixed_content" => SharedString::from(if record.has_mixed_content {
+            "Yes"
+        } else {
+            "No"
+        }),
         "last_modified" => {
             SharedString::from(header_value(&record.headers, "last-modified").unwrap_or("-"))
         }
@@ -626,6 +631,12 @@ pub(super) fn render_cell_tag(
                 _ => return None,
             }
         }
+        // Mixed content inverts the polarity: "Yes" means insecure subresources.
+        "sec_mixed_content" => match text.as_ref() {
+            "Yes" => Tone::Err,
+            "No" => Tone::Ok,
+            _ => return None,
+        },
         _ => return None,
     };
     Some(tone_tag(tone).child(text.clone()))

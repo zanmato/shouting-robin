@@ -917,6 +917,13 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             ],
         ),
         with_headers("/syn-xrobots", &[("x-robots-tag", "noindex")]),
+        // Mixed content (HTTPS page loading an HTTP subresource) cannot arise on
+        // the plain-HTTP coverage origin, so cover the Security/MixedContent
+        // filter synthetically.
+        PageRecord {
+            has_mixed_content: true,
+            ..internal(format!("{base}/syn-mixed"))
+        },
         // External resources/URLs (other origin) are recorded with
         // is_internal == false and surface on the External tab. A normalized
         // crawl of a single 127.0.0.1 origin produces none, so cover it here.
@@ -1106,6 +1113,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::MissingCsp => both(&["/"], &["/syn-secure"]),
         F::MissingFrameGuard => both(&["/"], &["/syn-secure"]),
         F::MissingContentTypeOptions => both(&["/"], &["/syn-secure"]),
+        F::MixedContent => both(&["/syn-mixed"], &["/"]),
 
         // URL hygiene
         F::UrlNonAscii => both(&["/café"], &["/"]),
