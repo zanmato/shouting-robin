@@ -74,8 +74,6 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::LowContent,
             IssueFilter::SsrContentMissing,
             IssueFilter::BlockedByRobots,
-            IssueFilter::ReadabilityDifficult,
-            IssueFilter::ReadabilityVeryDifficult,
         ],
         ResultTab::Images => &[
             IssueFilter::All,
@@ -244,7 +242,7 @@ fn is_page_document(page: &PageRecord) -> bool {
 }
 
 /// True when a page should be subject to on-page content issue flags
-/// (missing/duplicate title, meta, H1, canonical, thin content, readability,
+/// (missing/duplicate title, meta, H1, canonical, thin content,
 /// a11y, perf, hreflang, structured data). Redirect sources carry the target's
 /// body rather than their own, and non-indexable pages (noindex or error) are
 /// intentionally out of the index, so neither should be reported as having
@@ -291,8 +289,6 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
             | IssueFilter::LowContent
             | IssueFilter::SsrContentMissing
             | IssueFilter::BlockedByRobots
-            | IssueFilter::ReadabilityDifficult
-            | IssueFilter::ReadabilityVeryDifficult
             | IssueFilter::SlowLcp
             | IssueFilter::SlowCls
             | IssueFilter::MissingAltText
@@ -671,14 +667,6 @@ pub(super) fn filter_for_tab(
             }
             IssueFilter::BlockedByRobots => {
                 indices.retain(|&idx| pages[idx].blocked_by_robots == Some(true))
-            }
-            IssueFilter::ReadabilityDifficult => indices.retain(|&idx| {
-                pages[idx]
-                    .flesch_reading_ease
-                    .is_some_and(|s| (30.0..50.0).contains(&s))
-            }),
-            IssueFilter::ReadabilityVeryDifficult => {
-                indices.retain(|&idx| pages[idx].flesch_reading_ease.is_some_and(|s| s < 30.0))
             }
             IssueFilter::SlowLcp => {
                 indices.retain(|&idx| pages[idx].lcp_ms.is_some_and(|ms| ms > 4000))

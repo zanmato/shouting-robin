@@ -80,10 +80,6 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Hreflang Non-Canonical Targets" => {
             Some((ResultTab::Hreflang, IssueFilter::HreflangNonCanonical))
         }
-        "Readability Difficult" => Some((ResultTab::Content, IssueFilter::ReadabilityDifficult)),
-        "Readability Very Difficult" => {
-            Some((ResultTab::Content, IssueFilter::ReadabilityVeryDifficult))
-        }
         _ => None,
     }
 }
@@ -424,49 +420,6 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             pct: blocked_by_robots as f32 / doc_total * 100.0,
             description: "These internal URLs are disallowed by the site's robots.txt file.".into(),
             hint: "Review robots.txt rules to ensure important pages are not accidentally blocked."
-                .into(),
-        });
-    }
-
-    let readability_difficult = documents
-        .iter()
-        .filter(|p| {
-            p.flesch_reading_ease
-                .is_some_and(|s| (30.0..50.0).contains(&s))
-        })
-        .count();
-    if readability_difficult > 0 {
-        entries.push(IssueEntry {
-            name: "Readability Difficult".into(),
-            issue_type: IssueType::Opportunity,
-            priority: IssuePriority::Medium,
-            count: readability_difficult,
-            pct: readability_difficult as f32 / doc_total * 100.0,
-            description: "Pages with copy that is difficult to read (Flesch score 30-50), best \
-                          understood by college graduates."
-                .into(),
-            hint: "Use shorter sentences and simpler words to improve readability for your \
-                   target audience."
-                .into(),
-        });
-    }
-
-    let readability_very_difficult = documents
-        .iter()
-        .filter(|p| p.flesch_reading_ease.is_some_and(|s| s < 30.0))
-        .count();
-    if readability_very_difficult > 0 {
-        entries.push(IssueEntry {
-            name: "Readability Very Difficult".into(),
-            issue_type: IssueType::Issue,
-            priority: IssuePriority::High,
-            count: readability_very_difficult,
-            pct: readability_very_difficult as f32 / doc_total * 100.0,
-            description: "Pages with copy that is very difficult to read (Flesch score below 30), \
-                          best understood by university graduates."
-                .into(),
-            hint: "Simplify vocabulary and break up long sentences to make content more \
-                   accessible."
                 .into(),
         });
     }

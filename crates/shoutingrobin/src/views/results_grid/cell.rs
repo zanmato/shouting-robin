@@ -455,23 +455,6 @@ pub(super) fn cell_text(
         }
         "indexability_status" => SharedString::from(compute_indexability_status(record)),
         "content_hash" => SharedString::from(record.content_hash.as_deref().unwrap_or("-")),
-        "avg_words_per_sentence" => {
-            SharedString::from(match (record.word_count, record.sentence_count) {
-                (Some(words), Some(sentences)) if sentences > 0 => {
-                    format!("{:.1}", words as f32 / sentences as f32)
-                }
-                _ => "-".to_string(),
-            })
-        }
-        "reading_ease" => SharedString::from(
-            record
-                .flesch_reading_ease
-                .map(|s| format!("{s:.1}"))
-                .unwrap_or_else(|| "-".into()),
-        ),
-        "readability" => {
-            SharedString::from(record.readability.as_deref().unwrap_or("-").to_string())
-        }
         "sec_https" => SharedString::from(if record.url.starts_with("https://") {
             "Yes"
         } else {
@@ -643,13 +626,6 @@ pub(super) fn render_cell_tag(
                 _ => return None,
             }
         }
-        "readability" => match text.as_ref() {
-            "Very Easy" | "Easy" | "Fairly Easy" => Tone::Ok,
-            "Standard" => Tone::Neutral,
-            "Fairly Difficult" => Tone::Warn,
-            "Difficult" | "Very Difficult" => Tone::Err,
-            _ => return None,
-        },
         _ => return None,
     };
     Some(tone_tag(tone).child(text.clone()))

@@ -1141,38 +1141,6 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         | F::ChangeAdded
         | F::ChangeRemoved
         | F::ChangeChanged => same_as_all(),
-
-        F::ReadabilityDifficult => both(
-            &[
-                "/multiple-all",
-                "/directive-none",
-                "/exact-dup-a",
-                "/exact-dup-b",
-                "/y",
-                "/under_score",
-            ],
-            // noindex pages are no longer flagged for content issues, so the
-            // noindex `/robots-meta` page must not surface under a content
-            // filter like readability.
-            &["/robots-meta"],
-        ),
-        F::ReadabilityVeryDifficult => both(
-            &[
-                "/",
-                "/long-all",
-                "/near-dup-a",
-                "/near-dup-b",
-                "/large",
-                "/images",
-                "/links",
-                "/canonical-self",
-                "/canonical-other",
-                "/sd-article",
-                "/sd-organization",
-                "/sd-microdata",
-            ],
-            &[],
-        ),
     }
 }
 

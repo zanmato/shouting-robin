@@ -94,6 +94,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0023_is_page",
         include_str!("../../migrations/0023_is_page.sql"),
     ),
+    (
+        "0024_drop_readability",
+        include_str!("../../migrations/0024_drop_readability.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -202,9 +206,8 @@ pub async fn insert_page(
             title_2, meta_description_2, h1_2, h2_2,
             title_pixel_width, meta_description_pixel_width,
             ssr_word_count, ssr_h1, ssr_content_missing,
-            sentence_count, syllable_count, flesch_reading_ease, readability,
             blocked_by_robots, is_resource, resource_initiator, is_page
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
@@ -244,10 +247,6 @@ pub async fn insert_page(
     .bind(record.ssr_word_count.map(|w| w as i64))
     .bind(record.ssr_h1.as_deref())
     .bind(record.ssr_content_missing.map(|b| b as i64))
-    .bind(record.sentence_count.map(|s| s as i64))
-    .bind(record.syllable_count.map(|s| s as i64))
-    .bind(record.flesch_reading_ease.map(|f| f as f64))
-    .bind(record.readability.as_deref())
     .bind(record.blocked_by_robots.map(|b| b as i64))
     .bind(record.is_resource as i64)
     .bind(record.resource_initiator.as_deref())
@@ -803,17 +802,12 @@ pub async fn load_pages_for_crawl(
             Option<String>,
             Option<i64>,
             Option<i64>,
-            Option<i64>,
-            Option<f64>,
-            Option<String>,
-            Option<i64>,
         ),
     >(
         r#"
         SELECT url, title_2, meta_description_2, h1_2, h2_2,
                title_pixel_width, meta_description_pixel_width,
                ssr_word_count, ssr_h1, ssr_content_missing,
-               sentence_count, syllable_count, flesch_reading_ease, readability,
                blocked_by_robots
         FROM pages WHERE crawl_id = ?
         ORDER BY id
@@ -1157,10 +1151,6 @@ pub async fn load_pages_for_crawl(
         ssr_word_count: Option<u32>,
         ssr_h1: Option<String>,
         ssr_content_missing: Option<bool>,
-        sentence_count: Option<u32>,
-        syllable_count: Option<u32>,
-        flesch_reading_ease: Option<f32>,
-        readability: Option<String>,
         blocked_by_robots: Option<bool>,
     }
     let secondary_by_url: std::collections::HashMap<String, SecondaryData> = secondary_rows
@@ -1177,10 +1167,6 @@ pub async fn load_pages_for_crawl(
                 ssr_word_count,
                 ssr_h1,
                 ssr_content_missing,
-                sentence_count,
-                syllable_count,
-                flesch_reading_ease,
-                readability,
                 blocked_by_robots,
             )| {
                 (
@@ -1195,10 +1181,6 @@ pub async fn load_pages_for_crawl(
                         ssr_word_count: ssr_word_count.map(|w| w as u32),
                         ssr_h1,
                         ssr_content_missing: ssr_content_missing.map(|b| b != 0),
-                        sentence_count: sentence_count.map(|s| s as u32),
-                        syllable_count: syllable_count.map(|s| s as u32),
-                        flesch_reading_ease: flesch_reading_ease.map(|f| f as f32),
-                        readability,
                         blocked_by_robots: blocked_by_robots.map(|b| b != 0),
                     },
                 )
@@ -1366,10 +1348,6 @@ pub async fn load_pages_for_crawl(
                     ssr_word_count: page_secondary.and_then(|s| s.ssr_word_count),
                     ssr_h1: page_secondary.and_then(|s| s.ssr_h1.clone()),
                     ssr_content_missing: page_secondary.and_then(|s| s.ssr_content_missing),
-                    sentence_count: page_secondary.and_then(|s| s.sentence_count),
-                    syllable_count: page_secondary.and_then(|s| s.syllable_count),
-                    flesch_reading_ease: page_secondary.and_then(|s| s.flesch_reading_ease),
-                    readability: page_secondary.and_then(|s| s.readability.clone()),
                     blocked_by_robots: page_secondary.and_then(|s| s.blocked_by_robots),
                     link_score: page_link_score,
                     backlinks: page_backlinks,

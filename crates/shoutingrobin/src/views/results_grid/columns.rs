@@ -94,9 +94,6 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("status_code", "Code", 70., None),
             col("content_hash", "Hash", 100., None),
             col("words", "Words", 80., None),
-            col("avg_words_per_sentence", "Avg W/S", 80., None),
-            col("reading_ease", "Reading Ease", 100., None),
-            col("readability", "Readability", 120., None),
             col("closest_similarity", "Closest Sim.", 90., None),
             col("near_duplicate_count", "Near Dups", 80., None),
             col("ssr_words", "SSR Words", 90., None),
@@ -364,8 +361,6 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "dir_avg_words"
             | "dir_indexable"
             | "dir_non_indexable"
-            | "avg_words_per_sentence"
-            | "reading_ease"
             | "ssr_words"
             | "ssr_diff"
     )
@@ -391,7 +386,6 @@ pub(super) fn is_tag_column(key: &str) -> bool {
             | "sec_csp"
             | "sec_frame_guard"
             | "sec_content_type_opts"
-            | "readability"
     )
 }
 
