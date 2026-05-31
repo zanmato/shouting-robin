@@ -86,19 +86,17 @@ impl Render for CrawlsSidebar {
                         let is_selected = self.selected_id == Some(crawl.id);
                         let relative = relative_time(now, crawl.started_at);
                         let running = crawl.finished_at.is_none();
-                        let is_chrome = crawl.render_mode == "chrome";
-                        let mode_tag = if is_chrome {
-                            tone_tag(Tone::Accent)
-                                .rounded_full()
-                                .child(SharedString::from("Chrome"))
-                                .into_any_element()
+                        let mode_text = if crawl.render_mode == "chrome" {
+                            "Chrome"
                         } else {
-                            div()
-                                .text_xs()
-                                .text_color(theme.muted_foreground)
-                                .child(SharedString::from("HTTP"))
-                                .into_any_element()
+                            "HTTP"
                         };
+                        let mode_tag = div()
+                            .text_xs()
+                            .text_color(theme.muted_foreground)
+                            .child(SharedString::from(mode_text))
+                            .into_any_element();
+
                         let count_tag = if running {
                             tone_tag(Tone::Warn)
                                 .rounded_full()
