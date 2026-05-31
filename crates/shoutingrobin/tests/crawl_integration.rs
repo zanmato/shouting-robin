@@ -136,6 +136,28 @@ fn test_http_crawl() {
         "external page should reference external image"
     );
 
+    // External bail: external-link.html links off-domain to books.toscrape.com.
+    // We capture it as an outlink but must never crawl or analyze the external
+    // host as a page of its own. Asserting on this also keeps the test offline.
+    let external_link =
+        find_page(&pages, "/external-link.html").expect("external-link page should be crawled");
+    assert!(
+        external_link
+            .outlinks
+            .iter()
+            .any(|l| l.dst_url.contains("books.toscrape.com")),
+        "external-link page should record the off-domain link as an outlink"
+    );
+    assert!(
+        !pages.iter().any(|p| p.url.contains("books.toscrape.com")),
+        "off-domain host must not be crawled as its own page, found: {:?}",
+        pages
+            .iter()
+            .map(|p| p.url.as_str())
+            .filter(|u| u.contains("books.toscrape.com"))
+            .collect::<Vec<_>>()
+    );
+
     // Performance / a11y / SSR: all None or zero in HTTP mode
     for page in &pages {
         assert_eq!(

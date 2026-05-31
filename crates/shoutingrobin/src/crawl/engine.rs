@@ -348,11 +348,26 @@ impl CrawlEngine {
                     }
                     let original_url = page.get_url();
                     let final_url = page.get_url_final();
-                    if original_url != final_url {
+                    let redirected = original_url != final_url;
+                    if redirected {
                         record.redirect_url = Some(final_url.to_string());
                         record.redirect_status = Some(301);
                     }
-                    if !html_bytes.is_empty()
+                    // The body we hold belongs to whatever URL spider ultimately
+                    // landed on, not necessarily this row's URL. Two cases must
+                    // skip SEO analysis:
+                    //   * a redirect (e.g. `/` -> `/home`): the body is the
+                    //     target's, which is crawled and analyzed as its own row,
+                    //     so analyzing it here too double-counts its title/H1 and
+                    //     manufactures duplicate-content warnings;
+                    //   * an off-domain landing (e.g. `/app/ios` -> App Store):
+                    //     it isn't our site to audit.
+                    // We still emit the row so the redirect itself is visible.
+                    let analyzed_url = final_url;
+                    let analyzed_external = !is_same_domain(&root_for_pump, analyzed_url);
+                    let skip_analysis = redirected || analyzed_external;
+                    if !skip_analysis
+                        && !html_bytes.is_empty()
                         && let Ok(html) = std::str::from_utf8(html_bytes)
                     {
                         tracing::debug!(
@@ -378,12 +393,17 @@ impl CrawlEngine {
 
                     let mut resource_timings: Vec<ResourceTiming> = Vec::new();
                     if chrome_mode {
-                        if page.get_chrome_page().is_some() {
+                        if skip_analysis {
+                            // Redirect source or off-domain landing: don't measure
+                            // web vitals, scan a11y, or harvest its subresources.
+                            page.close_page().await;
+                        } else if page.get_chrome_page().is_some() {
                             collect_performance_metrics(&page, &mut record).await;
                             if let Some(axe_js) = axe_js.as_deref() {
                                 collect_a11y_violations(&page, &mut record, axe_js).await;
                             }
                             resource_timings = collect_resource_timings(&page).await;
+                            page.close_page().await;
                         } else {
                             tracing::warn!(
                                 url = %record.url,
@@ -400,12 +420,10 @@ impl CrawlEngine {
 
                     // The SSR diff needs the raw server HTML, not chrome. Run it
                     // after releasing the chrome tab and advancing the guard so
-                    // it never holds spider back or keeps a tab open.
-                    if let Some(client) = ssr_client.as_ref() {
-                        let ssr_url = record
-                            .redirect_url
-                            .clone()
-                            .unwrap_or_else(|| record.url.clone());
+                    // it never holds spider back or keeps a tab open. Skipped for
+                    // redirects and off-domain landings, which carry no analysis.
+                    if !skip_analysis && let Some(client) = ssr_client.as_ref() {
+                        let ssr_url = record.url.clone();
                         fetch_and_analyze_ssr(
                             client,
                             &ssr_url,
