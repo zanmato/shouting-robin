@@ -348,7 +348,12 @@ impl CrawlEngine {
                     }
                     let original_url = page.get_url();
                     let final_url = page.get_url_final();
-                    let redirected = original_url != final_url;
+                    // Only treat this as a redirect when spider reports a
+                    // genuinely different, non-empty final URL. In Chrome mode
+                    // get_url_final() can come back empty or normalized even when
+                    // nothing redirected; mistaking that for a redirect would
+                    // wrongly skip analysis of a perfectly normal page.
+                    let redirected = !final_url.is_empty() && final_url != original_url;
                     if redirected {
                         record.redirect_url = Some(final_url.to_string());
                         record.redirect_status = Some(301);
@@ -363,7 +368,13 @@ impl CrawlEngine {
                     //   * an off-domain landing (e.g. `/app/ios` -> App Store):
                     //     it isn't our site to audit.
                     // We still emit the row so the redirect itself is visible.
-                    let analyzed_url = final_url;
+                    // When there's no redirect, audit the row's own URL rather
+                    // than a possibly-empty final URL.
+                    let analyzed_url = if redirected {
+                        final_url
+                    } else {
+                        record.url.as_str()
+                    };
                     let analyzed_external = !is_same_domain(&root_for_pump, analyzed_url);
                     let skip_analysis = redirected || analyzed_external;
                     if !skip_analysis

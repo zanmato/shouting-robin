@@ -91,15 +91,17 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
 pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     let internal: Vec<&PageRecord> = pages.iter().filter(|p| p.is_internal).collect();
     // Page-content checks (titles, headings, canonicals, content quality, a11y,
-    // performance, hreflang) apply only to navigated HTML documents, never to
-    // harvested subresources or external-redirect stubs, which carry none of
-    // those fields and would otherwise be counted as e.g. missing titles. The
-    // matching drill-down filters use `is_page_document`, so these counts and
-    // their denominator must use the same population to reconcile on click-through.
+    // performance, hreflang) apply only to pages eligible to rank: navigated
+    // HTML documents that aren't redirect sources (whose body is the target's)
+    // or non-indexable (noindex/error, intentionally out of the index). Counting
+    // subresources, redirects, or noindex pages here would flag e.g. missing
+    // titles on pages that legitimately have none. The matching drill-down
+    // filters gate on the same `is_content_eligible`, so the counts and their
+    // denominator reconcile on click-through.
     let documents: Vec<&PageRecord> = internal
         .iter()
         .copied()
-        .filter(|p| p.is_page && !p.is_resource)
+        .filter(|p| super::filter::is_content_eligible(p))
         .collect();
     let total = internal.len().max(1) as f32;
     let doc_total = documents.len().max(1) as f32;
@@ -868,6 +870,7 @@ mod tests {
         PageRecord {
             url: url.into(),
             is_internal: true,
+            is_page: true,
             h1: h1.map(|s| s.to_string()),
             ..Default::default()
         }

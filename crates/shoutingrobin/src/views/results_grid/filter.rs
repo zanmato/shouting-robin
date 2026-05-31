@@ -243,6 +243,64 @@ fn is_page_document(page: &PageRecord) -> bool {
     page.is_page && !page.is_resource
 }
 
+/// True when a page should be subject to on-page content issue flags
+/// (missing/duplicate title, meta, H1, canonical, thin content, readability,
+/// a11y, perf, hreflang, structured data). Redirect sources carry the target's
+/// body rather than their own, and non-indexable pages (noindex or error) are
+/// intentionally out of the index, so neither should be reported as having
+/// content problems. The overview tallies, the duplicate occurrence counts, and
+/// the drill-down issue filters all gate on this so the numbers reconcile.
+pub(crate) fn is_content_eligible(page: &PageRecord) -> bool {
+    is_page_document(page) && page.redirect_url.is_none() && !is_noindex(page)
+}
+
+/// True when the page carries a `noindex` robots directive (meta or
+/// X-Robots-Tag header). We key content-issue eligibility off this rather than
+/// the computed `indexability`, because that field also flips to Non-Indexable
+/// on error statuses, and in Chrome mode the document status is unreliable (a
+/// sub-resource's 404 can leak onto a perfectly good page).
+fn is_noindex(page: &PageRecord) -> bool {
+    let mentions_noindex = |value: &str| value.to_ascii_lowercase().contains("noindex");
+    page.robots.as_deref().is_some_and(mentions_noindex)
+        || header_value(&page.headers, "x-robots-tag").is_some_and(mentions_noindex)
+}
+
+/// The issue filters that represent an on-page content problem (as opposed to
+/// neutral listing filters like content-type or status buckets). When one of
+/// these is active, ineligible pages are filtered out so a noindex or
+/// redirected page is never reported as the source of a content issue.
+fn is_content_issue_filter(filter: IssueFilter) -> bool {
+    matches!(
+        filter,
+        IssueFilter::Missing
+            | IssueFilter::Duplicate
+            | IssueFilter::OverLength
+            | IssueFilter::UnderLength
+            | IssueFilter::Multiple
+            | IssueFilter::SameAsH1
+            | IssueFilter::MissingCanonical
+            | IssueFilter::MissingHreflang
+            | IssueFilter::HreflangMissingReturnTag
+            | IssueFilter::HreflangInvalidLang
+            | IssueFilter::HreflangMissingXDefault
+            | IssueFilter::HreflangNonCanonical
+            | IssueFilter::MissingStructuredData
+            | IssueFilter::SdErrors
+            | IssueFilter::SdWarnings
+            | IssueFilter::NearDuplicates
+            | IssueFilter::LowContent
+            | IssueFilter::SsrContentMissing
+            | IssueFilter::BlockedByRobots
+            | IssueFilter::ReadabilityDifficult
+            | IssueFilter::ReadabilityVeryDifficult
+            | IssueFilter::SlowLcp
+            | IssueFilter::SlowCls
+            | IssueFilter::MissingAltText
+            | IssueFilter::MissingAltAttribute
+            | IssueFilter::MissingSizeAttributes
+    )
+}
+
 pub(super) fn filter_for_tab(
     tab: ResultTab,
     issue_filter: IssueFilter,
@@ -788,6 +846,13 @@ pub(super) fn filter_for_tab(
                 }
             }
             _ => {}
+        }
+
+        // A noindex or redirected page is never the source of a content issue,
+        // so drop it from these filters. This keeps the drill-down row set in
+        // step with the overview tallies, which gate on the same predicate.
+        if is_content_issue_filter(issue_filter) {
+            indices.retain(|&idx| is_content_eligible(&pages[idx]));
         }
     }
 

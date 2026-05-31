@@ -299,6 +299,12 @@ pub(super) fn build_occurrence_counts(
     };
     let mut counts: HashMap<String, usize> = HashMap::new();
     for page in pages {
+        // Only count pages eligible for content-issue flags, so a noindex or
+        // redirected page sharing a title/H1 with a real page doesn't inflate
+        // the duplicate count and mislabel the indexable page as duplicated.
+        if !super::filter::is_content_eligible(page) {
+            continue;
+        }
         let val = field_value(page, key).unwrap_or("");
         if val.is_empty() {
             continue;
