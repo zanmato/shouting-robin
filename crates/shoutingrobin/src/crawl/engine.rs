@@ -179,9 +179,7 @@ impl CrawlEngine {
             }
 
             match render_mode {
-                RenderMode::Http => {
-                    website.with_disable_chrome(true);
-                }
+                RenderMode::Http => {}
                 RenderMode::Chrome => {
                     let mut automation_map =
                         spider::features::chrome_common::AutomationScriptsMap::default();
@@ -551,8 +549,16 @@ impl CrawlEngine {
                 total
             });
 
+            // Chrome mode renders each page in a browser; Http mode forces
+            // spider's plain-HTTP path (crawl_raw), which also keeps the
+            // sitemap pass off Chrome.
+            let use_chrome = matches!(render_mode, RenderMode::Chrome);
             let crawl = tokio::spawn(async move {
-                website.crawl().await;
+                if use_chrome {
+                    website.crawl().await;
+                } else {
+                    website.crawl_raw().await;
+                }
                 website.unsubscribe();
             });
 
