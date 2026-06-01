@@ -3567,7 +3567,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.61.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -7164,7 +7164,7 @@ dependencies = [
 [[package]]
 name = "spider"
 version = "2.51.207"
-source = "git+https://github.com/zanmato/spider?branch=shouting-robin#f6ec7775fc9b743f18d0eee3e1f46f6e7c8b337c"
+source = "git+https://github.com/spider-rs/spider#6d496c0a81d04a5ec73bc6bc4437ac67310b9f24"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -7216,7 +7216,7 @@ dependencies = [
 [[package]]
 name = "spider_agent_types"
 version = "2.51.207"
-source = "git+https://github.com/zanmato/spider?branch=shouting-robin#f6ec7775fc9b743f18d0eee3e1f46f6e7c8b337c"
+source = "git+https://github.com/spider-rs/spider#6d496c0a81d04a5ec73bc6bc4437ac67310b9f24"
 dependencies = [
  "aho-corasick",
  "llm_models_spider",
@@ -9345,7 +9345,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
