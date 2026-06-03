@@ -91,7 +91,7 @@ fn or_dash(value: &Option<String>) -> SharedString {
 fn row(label: &str, value: impl IntoElement, muted: Hsla) -> AnyElement {
     div()
         .flex()
-        .flex_grow()
+        .flex_grow(1.0)
         .justify_between()
         .gap_3()
         .text_xs()
