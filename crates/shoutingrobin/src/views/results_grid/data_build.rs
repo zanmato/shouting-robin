@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::{HreflangIssue, PageRecord};
 use crate::views::ResultTab;
 
@@ -25,6 +26,83 @@ pub(super) fn flat_row_variant(tab: ResultTab, page: usize, item: usize) -> Flat
         ResultTab::Hreflang => FlatRow::Hreflang { page, item },
         ResultTab::StructuredData => FlatRow::SdItem { page, item },
         _ => FlatRow::Image { page, item },
+    }
+}
+
+/// Whether an Overview issue entry belongs to the given sub-filter. Shared by
+/// the row filtering and the counting engine so the two never diverge.
+pub(super) fn issue_entry_matches(entry: &IssueEntry, filter: IssueFilter) -> bool {
+    match filter {
+        IssueFilter::IssueTypeError => entry.issue_type == IssueType::Issue,
+        IssueFilter::IssueTypeOpportunity => entry.issue_type == IssueType::Opportunity,
+        IssueFilter::IssueTypeWarning => entry.issue_type == IssueType::Warning,
+        IssueFilter::PriorityHigh => entry.priority == IssuePriority::High,
+        IssueFilter::PriorityMedium => entry.priority == IssuePriority::Medium,
+        IssueFilter::PriorityLow => entry.priority == IssuePriority::Low,
+        _ => true,
+    }
+}
+
+/// Whether a Changes entry belongs to the given sub-filter. Shared by the row
+/// filtering and the counting engine.
+pub(super) fn change_entry_matches(entry: &ChangeEntry, filter: IssueFilter) -> bool {
+    match filter {
+        IssueFilter::ChangeAdded => entry.kind == ChangeKind::Added,
+        IssueFilter::ChangeRemoved => entry.kind == ChangeKind::Removed,
+        IssueFilter::ChangeChanged => entry.kind == ChangeKind::Changed,
+        _ => true,
+    }
+}
+
+/// Builds the full, unfiltered flat-row universe for a flattened tab from the
+/// given gated page indices. Factored out of `rebuild_flat_rows` so that the
+/// displayed grid and the counting engine share one row universe. `page_indices`
+/// is ignored for tabs whose rows are not page-scoped (Overview issues, Changes,
+/// directory aggregates).
+pub(super) fn build_rows_for_tab(
+    tab: ResultTab,
+    page_indices: &[usize],
+    pages: &[PageRecord],
+    change_entries: &[ChangeEntry],
+    root_origin: Option<&str>,
+) -> Vec<FlatRow> {
+    match tab {
+        ResultTab::Overview => build_issues_rows(pages),
+        ResultTab::Changes => (0..change_entries.len())
+            .map(|index| FlatRow::ChangeRow { index })
+            .collect(),
+        ResultTab::SiteStructure => build_directory_aggregates(pages, root_origin),
+        // The Links tab only lists internal outlinks; mirror that here so counts
+        // match what the grid shows.
+        ResultTab::Links => page_indices
+            .iter()
+            .flat_map(|&page_index| {
+                let Some(page) = pages.get(page_index) else {
+                    return Vec::<FlatRow>::new();
+                };
+                page.outlinks
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, link)| is_same_domain(&page.url, &link.dst_url))
+                    .map(|(item_index, _)| FlatRow::LinkRow {
+                        page: page_index,
+                        item: item_index,
+                    })
+                    .collect()
+            })
+            .collect(),
+        _ => page_indices
+            .iter()
+            .flat_map(|&page_index| {
+                let item_count = pages
+                    .get(page_index)
+                    .map(|page| flat_row_item_count(page, tab))
+                    .unwrap_or(0);
+                (0..item_count)
+                    .map(move |item_index| flat_row_variant(tab, page_index, item_index))
+                    .collect::<Vec<_>>()
+            })
+            .collect(),
     }
 }
 

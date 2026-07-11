@@ -570,8 +570,15 @@ impl ShoutingRobinApp {
                     .compact()
                     .small()
                     .label("Update available, click to restart")
-                    .on_click(|_, _window, _cx| {
-                        UpdateManager::apply_pending_update();
+                    .on_click(|_, window, cx| {
+                        if let Err(e) = UpdateManager::apply_pending_update() {
+                            window.push_notification(
+                                Notification::new()
+                                    .message(format!("Failed to apply update: {e}"))
+                                    .with_type(NotificationType::Error),
+                                cx,
+                            );
+                        }
                     }),
             )
         } else {
@@ -636,7 +643,7 @@ impl Render for ShoutingRobinApp {
             }))
             .track_scroll(&self.tabbar_scroll_handle);
 
-        let tab_counts = self.results_grid.read(cx).tab_counts(cx);
+        let tab_badges = self.results_grid.update(cx, |grid, cx| grid.tab_badges(cx));
 
         for tab in &visible_tabs {
             let tab = *tab;
@@ -644,7 +651,7 @@ impl Render for ShoutingRobinApp {
             if let Some(icon) = tab.icon() {
                 t = t.prefix(UiIcon::from(icon).xsmall());
             }
-            if let Some(counts) = tab_counts.get(&tab) {
+            if let Some(counts) = tab_badges.get(&tab) {
                 let (badge_count, tone) = if counts.errors > 0 {
                     (counts.errors, crate::ui::tag::Tone::Err)
                 } else if counts.warnings > 0 {
@@ -657,7 +664,7 @@ impl Render for ShoutingRobinApp {
                 if badge_count > 0 {
                     t = t.suffix(
                         div().flex().items_center().pl_1().child(
-                            crate::ui::tag::tone_tag(tone)
+                            crate::ui::tag::tone_tag(tone, cx)
                                 .rounded_full()
                                 .child(SharedString::from(badge_count.to_string())),
                         ),
@@ -686,10 +693,18 @@ impl Render for ShoutingRobinApp {
 
         let mut filter_left = div().flex().items_center().gap_1();
 
+        let active_filter_counts = self
+            .results_grid
+            .update(cx, |grid, cx| grid.active_filter_counts(cx));
+
         if show_issue_filter {
             for &filter in tab_filters {
                 let is_active = current_filter == filter;
-                let count = self.results_grid.read(cx).count_for_filter(filter, cx);
+                let count = active_filter_counts
+                    .iter()
+                    .find(|(f, _)| *f == filter)
+                    .map(|(_, c)| *c)
+                    .unwrap_or(0);
                 let mut btn = Button::new(SharedString::from(format!("filter-{:?}", filter)))
                     .label(SharedString::from(filter.label()))
                     .xsmall()
@@ -703,7 +718,7 @@ impl Render for ShoutingRobinApp {
                     }));
                 if count > 0 {
                     btn = btn.child(
-                        crate::ui::tag::tone_tag(filter.tone())
+                        crate::ui::tag::tone_tag(filter.tone(), cx)
                             .rounded_full()
                             .child(SharedString::from(count.to_string())),
                     );
@@ -732,7 +747,7 @@ impl Render for ShoutingRobinApp {
                     .text_color(cx.theme().muted_foreground)
                     .child(format!(
                         "Comparing to crawl from {}",
-                        relative_time(now, started_at)
+                        crate::views::relative_time(now, started_at)
                     )),
             );
         }
@@ -867,25 +882,6 @@ fn init_menus(cx: &mut App) {
     cx.set_menus(build_menu());
     let menu = build_menu().into_iter().map(|menu| menu.owned()).collect();
     GlobalState::global_mut(cx).set_app_menus(menu);
-}
-
-fn relative_time(now: i64, ts: i64) -> String {
-    let delta = now.saturating_sub(ts);
-    if delta < 60 {
-        return "just now".into();
-    }
-    if delta < 3600 {
-        return format!("{}m ago", delta / 60);
-    }
-    if delta < 86_400 {
-        return format!("{}h ago", delta / 3600);
-    }
-    if delta < 7 * 86_400 {
-        return format!("{}d ago", delta / 86_400);
-    }
-    chrono::DateTime::from_timestamp(ts, 0)
-        .map(|dt| dt.format("%b %-d").to_string())
-        .unwrap_or_else(|| "unknown".into())
 }
 
 fn init_keys(cx: &mut App) {

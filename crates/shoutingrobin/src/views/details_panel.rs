@@ -205,9 +205,10 @@ fn a11y_issue_row(
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
+    cx: &App,
 ) -> AnyElement {
-    let impact_tag =
-        tone_tag(a11y_impact_tone(&issue.impact)).child(SharedString::from(issue.impact.clone()));
+    let impact_tag = tone_tag(a11y_impact_tone(&issue.impact), cx)
+        .child(SharedString::from(issue.impact.clone()));
     let rule_name = SharedString::from(issue.rule.clone());
     let rule_el: AnyElement = match rule_description(&issue.rule) {
         Some(desc) => {
@@ -375,9 +376,9 @@ fn header_block(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
         .into_any_element()
 }
 
-fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
+fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App) -> AnyElement {
     let status_tag = match rec.status {
-        Some(c) => tone_tag(status_code_tone(c))
+        Some(c) => tone_tag(status_code_tone(c), cx)
             .child(SharedString::from(c.to_string()))
             .into_any_element(),
         None => div().text_color(muted).child("-").into_any_element(),
@@ -386,7 +387,7 @@ fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEl
     let indexability_tag = if indexability_value == "-" {
         div().text_color(muted).child("-").into_any_element()
     } else {
-        tone_tag(indexability_tone(&indexability_value))
+        tone_tag(indexability_tone(&indexability_value), cx)
             .child(SharedString::from(indexability_value.clone()))
             .into_any_element()
     };
@@ -543,12 +544,13 @@ fn structured_data_section(
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
+    cx: &App,
 ) -> AnyElement {
     let sd_summary = if rec.sd_items.is_empty() {
         None
     } else {
         Some(
-            tone_tag(Tone::Accent)
+            tone_tag(Tone::Accent, cx)
                 .child(SharedString::from(format!("{} types", rec.sd_items.len())))
                 .into_any_element(),
         )
@@ -565,11 +567,14 @@ fn structured_data_section(
             SdFormat::JsonLd => "JSON-LD",
             SdFormat::Microdata => "Microdata",
         };
-        let format_tag = tone_tag(if item.format == SdFormat::JsonLd {
-            Tone::Accent
-        } else {
-            Tone::Neutral
-        })
+        let format_tag = tone_tag(
+            if item.format == SdFormat::JsonLd {
+                Tone::Accent
+            } else {
+                Tone::Neutral
+            },
+            cx,
+        )
         .child(SharedString::from(format_label));
         sd_items_body = sd_items_body.child(
             div()
@@ -604,7 +609,7 @@ fn structured_data_section(
                         .flex()
                         .items_center()
                         .gap_1()
-                        .child(tone_tag(tone).child(SharedString::from(issue.code.clone())))
+                        .child(tone_tag(tone, cx).child(SharedString::from(issue.code.clone())))
                         .child(
                             div()
                                 .text_color(fg)
@@ -646,7 +651,7 @@ fn structured_data_section(
         .child(row(
             "Errors",
             if rec.sd_errors > 0 {
-                tone_tag(Tone::Err)
+                tone_tag(Tone::Err, cx)
                     .child(SharedString::from(rec.sd_errors.to_string()))
                     .into_any_element()
             } else {
@@ -657,7 +662,7 @@ fn structured_data_section(
         .child(row(
             "Warnings",
             if rec.sd_warnings > 0 {
-                tone_tag(Tone::Warn)
+                tone_tag(Tone::Warn, cx)
                     .child(SharedString::from(rec.sd_warnings.to_string()))
                     .into_any_element()
             } else {
@@ -687,6 +692,7 @@ fn accessibility_section(
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
+    cx: &App,
 ) -> AnyElement {
     let total_a11y = rec.a11y_errors + rec.a11y_warnings;
     let a11y_summary = if total_a11y == 0 {
@@ -698,7 +704,7 @@ fn accessibility_section(
             Tone::Warn
         };
         Some(
-            tone_tag(tone)
+            tone_tag(tone, cx)
                 .child(SharedString::from(format!("{} issues", total_a11y)))
                 .into_any_element(),
         )
@@ -710,7 +716,7 @@ fn accessibility_section(
         .child(row(
             "Errors",
             if rec.a11y_errors > 0 {
-                tone_tag(Tone::Err)
+                tone_tag(Tone::Err, cx)
                     .child(SharedString::from(rec.a11y_errors.to_string()))
                     .into_any_element()
             } else {
@@ -721,7 +727,7 @@ fn accessibility_section(
         .child(row(
             "Warnings",
             if rec.a11y_warnings > 0 {
-                tone_tag(Tone::Warn)
+                tone_tag(Tone::Warn, cx)
                     .child(SharedString::from(rec.a11y_warnings.to_string()))
                     .into_any_element()
             } else {
@@ -737,6 +743,7 @@ fn accessibility_section(
             muted,
             fg,
             border,
+            cx,
         ));
     }
     let a11y_body = a11y_body.into_any_element();
@@ -975,13 +982,13 @@ fn images_section(rec: &PageRecord, muted: Hsla, fg: Hsla, border: Hsla, cx: &Ap
             .count();
         if missing_alt > 0 {
             Some(
-                tone_tag(Tone::Warn)
+                tone_tag(Tone::Warn, cx)
                     .child(SharedString::from(format!("{} missing alt", missing_alt)))
                     .into_any_element(),
             )
         } else {
             Some(
-                tone_tag(Tone::Ok)
+                tone_tag(Tone::Ok, cx)
                     .child(SharedString::from(format!("{} images", rec.images.len())))
                     .into_any_element(),
             )
@@ -995,12 +1002,12 @@ fn images_section(rec: &PageRecord, muted: Hsla, fg: Hsla, border: Hsla, cx: &Ap
         for image in &rec.images {
             let alt_tag = if image.has_alt_attr {
                 if image.alt.as_deref().is_none_or(|a| a.is_empty()) {
-                    tone_tag(Tone::Warn).child(SharedString::from("empty"))
+                    tone_tag(Tone::Warn, cx).child(SharedString::from("empty"))
                 } else {
-                    tone_tag(Tone::Ok).child(SharedString::from("yes"))
+                    tone_tag(Tone::Ok, cx).child(SharedString::from("yes"))
                 }
             } else {
-                tone_tag(Tone::Err).child(SharedString::from("missing"))
+                tone_tag(Tone::Err, cx).child(SharedString::from("missing"))
             };
             images_body = images_body.child(
                 div()
@@ -1142,36 +1149,38 @@ fn inlinks_section(
     }
     let mut body = div().flex().flex_col().gap_0p5();
     for bl in &rec.backlinks {
-        body =
-            body.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_0p5()
-                    .pt_1()
-                    .border_t_1()
-                    .border_color(border)
-                    .child(
+        body = body.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .pt_1()
+                .border_t_1()
+                .border_color(border)
+                .child(
+                    div()
+                        .text_xs()
+                        .font_family(cx.theme().mono_font_family.clone())
+                        .text_color(fg)
+                        .child(SharedString::from(bl.source_url.clone())),
+                )
+                .child(
+                    div().text_xs().text_color(muted).child(SharedString::from(
+                        bl.anchor
+                            .as_deref()
+                            .map(|a| format!("Anchor: {a}"))
+                            .unwrap_or_else(|| "No anchor".into()),
+                    )),
+                )
+                .when_some(bl.rel.as_deref(), |el, rel| {
+                    el.child(
                         div()
                             .text_xs()
-                            .font_family(cx.theme().mono_font_family.clone())
-                            .text_color(fg)
-                            .child(SharedString::from(bl.source_url.clone())),
+                            .text_color(muted)
+                            .child(SharedString::from(format!("Rel: {rel}"))),
                     )
-                    .child(
-                        div().text_xs().text_color(muted).child(SharedString::from(
-                            bl.anchor
-                                .as_deref()
-                                .map(|a| format!("Anchor: {a}"))
-                                .unwrap_or_else(|| "No anchor".into()),
-                        )),
-                    )
-                    .when(bl.rel.as_deref().is_some(), |el| {
-                        el.child(div().text_xs().text_color(muted).child(SharedString::from(
-                            format!("Rel: {}", bl.rel.as_deref().unwrap()),
-                        )))
-                    }),
-            );
+                }),
+        );
     }
     Some(section(
         "Inlinks (From)",
@@ -1226,7 +1235,7 @@ fn outlinks_section(
                                 .child(SharedString::from(link.dst_url.clone())),
                         )
                         .when(is_nofollow, |el| {
-                            el.child(tone_tag(Tone::Warn).child(SharedString::from("nofollow")))
+                            el.child(tone_tag(Tone::Warn, cx).child(SharedString::from("nofollow")))
                         }),
                 )
                 .child(
@@ -1347,7 +1356,7 @@ impl Render for DetailsPanel {
                 .flex()
                 .flex_col()
                 .child(header_block(rec, muted, border))
-                .child(url_information_section(rec, muted, border))
+                .child(url_information_section(rec, muted, border, cx))
                 .child(page_content_section(rec, muted, border))
                 .child(structured_data_section(
                     rec,
@@ -1355,6 +1364,7 @@ impl Render for DetailsPanel {
                     muted,
                     fg,
                     border,
+                    cx,
                 ))
                 .child(accessibility_section(
                     rec,
@@ -1362,6 +1372,7 @@ impl Render for DetailsPanel {
                     muted,
                     fg,
                     border,
+                    cx,
                 ))
                 .child(vitals_section(rec, muted, border, panel2))
                 .child(link_metrics_section(rec, muted, fg, border, cx))

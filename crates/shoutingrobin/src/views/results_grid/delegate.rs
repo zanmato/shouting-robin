@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use gpui::{
     App, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
@@ -23,13 +23,12 @@ use super::columns::{
     is_numeric_column,
 };
 use super::data_build::{
-    build_change_entries, build_directory_aggregates, build_issues_entries, build_issues_rows,
-    dir_format_size, flat_row_item_count, flat_row_variant,
+    build_change_entries, build_issues_entries, build_rows_for_tab, change_entry_matches,
+    dir_format_size, issue_entry_matches,
 };
-use super::filter::{filter_for_tab, filters_for_tab, flat_row_matches_filter};
+use super::filter::{compute_tab_filter_counts, filter_for_tab, flat_row_matches_filter};
 use super::types::{
-    ChangeEntry, ChangeKind, FlatRow, IssueFilter, IssuePriority, IssueType, TabCounts,
-    tab_is_flattened,
+    ChangeEntry, ChangeKind, FlatRow, IssueFilter, TabFilterCounts, tab_is_flattened,
 };
 
 fn format_delta(delta: i64) -> String {
@@ -62,6 +61,10 @@ pub struct ResultsDelegate {
     baseline_pages: Option<Vec<PageRecord>>,
     baseline_started_at: Option<i64>,
     baseline_issue_counts: HashMap<String, (usize, f32)>,
+    /// Lazily computed per-tab badge and sub-filter counts, keyed by tab.
+    /// Invalidated whenever the underlying data changes (pages, baseline, root),
+    /// but not on tab/filter switches since the counts span all tabs.
+    counts_cache: Option<HashMap<ResultTab, TabFilterCounts>>,
 }
 
 impl ResultsDelegate {
@@ -80,7 +83,40 @@ impl ResultsDelegate {
             baseline_pages: None,
             baseline_started_at: None,
             baseline_issue_counts: HashMap::new(),
+            counts_cache: None,
         }
+    }
+
+    /// Drops the cached counts so the next `tab_filter_counts` call recomputes
+    /// them. Called from every mutation that changes the counted data.
+    fn invalidate_counts(&mut self) {
+        self.counts_cache = None;
+    }
+
+    /// Lazily computes and caches per-tab badge and sub-filter counts for every
+    /// tab. The badge and the sub-filter buttons both read from here so they can
+    /// never disagree.
+    pub fn tab_filter_counts(&mut self) -> &HashMap<ResultTab, TabFilterCounts> {
+        if self.counts_cache.is_none() {
+            let change_entries = self.change_entries();
+            let root_origin = self.root_origin.clone();
+            let mut counts = HashMap::with_capacity(ResultTab::ALL.len());
+            for &tab in ResultTab::ALL {
+                counts.insert(
+                    tab,
+                    compute_tab_filter_counts(
+                        tab,
+                        &self.all_pages,
+                        &change_entries,
+                        root_origin.as_deref(),
+                    ),
+                );
+            }
+            self.counts_cache = Some(counts);
+        }
+        self.counts_cache
+            .as_ref()
+            .expect("counts_cache populated above")
     }
 
     fn rebuild_columns(&mut self) {
@@ -102,6 +138,7 @@ impl ResultsDelegate {
             .collect();
         self.baseline_pages = Some(pages);
         self.baseline_started_at = Some(started_at);
+        self.invalidate_counts();
         self.rebuild_columns();
         self.rebuild_filter();
     }
@@ -110,6 +147,7 @@ impl ResultsDelegate {
         self.baseline_pages = None;
         self.baseline_started_at = None;
         self.baseline_issue_counts.clear();
+        self.invalidate_counts();
         self.rebuild_columns();
         self.rebuild_filter();
     }
@@ -139,6 +177,8 @@ impl ResultsDelegate {
         self.root_origin = url::Url::parse(root_url)
             .ok()
             .map(|u| u.origin().ascii_serialization());
+        // Directory aggregates on the Site Structure tab key off the origin.
+        self.invalidate_counts();
     }
 
     pub fn root_url(&self) -> Option<&str> {
@@ -147,6 +187,7 @@ impl ResultsDelegate {
 
     pub fn push(&mut self, record: PageRecord) {
         self.all_pages.push(record);
+        self.invalidate_counts();
         self.rebuild_filter();
     }
 
@@ -160,6 +201,7 @@ impl ResultsDelegate {
         self.baseline_pages = None;
         self.baseline_started_at = None;
         self.baseline_issue_counts.clear();
+        self.invalidate_counts();
         self.rebuild_columns();
     }
 
@@ -213,139 +255,6 @@ impl ResultsDelegate {
         &self.all_pages
     }
 
-    pub fn compute_tab_counts(&self) -> HashMap<ResultTab, TabCounts> {
-        let mut counts = HashMap::new();
-
-        for &tab in ResultTab::ALL {
-            let filters = filters_for_tab(tab);
-            let occ_counts = build_occurrence_counts(tab, &self.all_pages);
-            let total = self.count_filter_for_tab(tab, IssueFilter::All, &occ_counts);
-
-            if tab_is_flattened(tab) {
-                let mut error_count = 0usize;
-                let mut warn_count = 0usize;
-
-                for &filter in filters.iter().skip(1) {
-                    let count = self.count_filter_for_tab(tab, filter, &occ_counts);
-                    if count > 0 {
-                        match filter.tone() {
-                            Tone::Err => error_count += count,
-                            Tone::Warn => warn_count += count,
-                            _ => {}
-                        }
-                    }
-                }
-
-                counts.insert(
-                    tab,
-                    TabCounts {
-                        total,
-                        errors: error_count,
-                        warnings: warn_count,
-                    },
-                );
-            } else {
-                let mut error_indices = HashSet::new();
-                let mut warn_indices = HashSet::new();
-
-                for &filter in filters.iter().skip(1) {
-                    let matching = filter_for_tab(tab, filter, &self.all_pages, &occ_counts);
-                    match filter.tone() {
-                        Tone::Err => error_indices.extend(matching),
-                        Tone::Warn => warn_indices.extend(matching),
-                        _ => {}
-                    }
-                }
-
-                warn_indices.retain(|ix| !error_indices.contains(ix));
-
-                counts.insert(
-                    tab,
-                    TabCounts {
-                        total,
-                        errors: error_indices.len(),
-                        warnings: warn_indices.len(),
-                    },
-                );
-            }
-        }
-
-        counts
-    }
-
-    fn count_filter_for_tab(
-        &self,
-        tab: ResultTab,
-        filter: IssueFilter,
-        occ_counts: &HashMap<String, usize>,
-    ) -> usize {
-        if tab == ResultTab::Overview {
-            let entries = build_issues_entries(&self.all_pages);
-            return entries
-                .iter()
-                .filter(|entry| match filter {
-                    IssueFilter::All => true,
-                    IssueFilter::IssueTypeError => entry.issue_type == IssueType::Issue,
-                    IssueFilter::IssueTypeOpportunity => entry.issue_type == IssueType::Opportunity,
-                    IssueFilter::IssueTypeWarning => entry.issue_type == IssueType::Warning,
-                    IssueFilter::PriorityHigh => entry.priority == IssuePriority::High,
-                    IssueFilter::PriorityMedium => entry.priority == IssuePriority::Medium,
-                    IssueFilter::PriorityLow => entry.priority == IssuePriority::Low,
-                    _ => true,
-                })
-                .count();
-        }
-
-        if tab == ResultTab::Changes {
-            let entries = self.change_entries();
-            return entries
-                .iter()
-                .filter(|entry| match filter {
-                    IssueFilter::ChangeAdded => entry.kind == ChangeKind::Added,
-                    IssueFilter::ChangeRemoved => entry.kind == ChangeKind::Removed,
-                    IssueFilter::ChangeChanged => entry.kind == ChangeKind::Changed,
-                    _ => true,
-                })
-                .count();
-        }
-
-        let indices = filter_for_tab(tab, filter, &self.all_pages, occ_counts);
-
-        if tab_is_flattened(tab) {
-            if filter == IssueFilter::All {
-                indices
-                    .iter()
-                    .map(|&page_ix| {
-                        self.all_pages
-                            .get(page_ix)
-                            .map(|p| flat_row_item_count(p, tab))
-                            .unwrap_or(0)
-                    })
-                    .sum::<usize>()
-            } else {
-                indices
-                    .iter()
-                    .map(|&page_ix| {
-                        self.all_pages
-                            .get(page_ix)
-                            .map(|p| {
-                                let item_count = flat_row_item_count(p, tab);
-                                (0..item_count)
-                                    .filter(|item| {
-                                        let row = flat_row_variant(tab, page_ix, *item);
-                                        flat_row_matches_filter(&row, p, filter, &self.all_pages)
-                                    })
-                                    .count()
-                            })
-                            .unwrap_or(0)
-                    })
-                    .sum::<usize>()
-            }
-        } else {
-            indices.len()
-        }
-    }
-
     fn rebuild_filter(&mut self) {
         self.occurrence_counts = build_occurrence_counts(self.active_tab, &self.all_pages);
         self.filtered_indices = filter_for_tab(
@@ -362,61 +271,14 @@ impl ResultsDelegate {
             self.flat_rows.clear();
             return;
         }
-        if self.active_tab == ResultTab::Overview {
-            self.flat_rows = build_issues_rows(&self.all_pages);
-            self.filter_flat_rows();
-            return;
-        }
-        if self.active_tab == ResultTab::Changes {
-            let count = self.change_entries().len();
-            self.flat_rows = (0..count)
-                .map(|index| FlatRow::ChangeRow { index })
-                .collect();
-            self.filter_flat_rows();
-            return;
-        }
-        if self.active_tab == ResultTab::SiteStructure {
-            self.flat_rows =
-                build_directory_aggregates(&self.all_pages, self.root_origin.as_deref());
-            self.filter_flat_rows();
-            return;
-        }
-        if self.active_tab == ResultTab::Links {
-            self.flat_rows = self
-                .filtered_indices
-                .iter()
-                .flat_map(|&page_index| {
-                    let Some(page) = self.all_pages.get(page_index) else {
-                        return Vec::<FlatRow>::new();
-                    };
-                    page.outlinks
-                        .iter()
-                        .enumerate()
-                        .filter(|(_, link)| is_same_domain(&page.url, &link.dst_url))
-                        .map(|(item_index, _)| FlatRow::LinkRow {
-                            page: page_index,
-                            item: item_index,
-                        })
-                        .collect()
-                })
-                .collect();
-            self.filter_flat_rows();
-            return;
-        }
-        let active_tab = self.active_tab;
-        let all_pages = &self.all_pages;
-        self.flat_rows = self
-            .filtered_indices
-            .iter()
-            .flat_map(|&page_index| {
-                let item_count = all_pages
-                    .get(page_index)
-                    .map(|page| flat_row_item_count(page, active_tab))
-                    .unwrap_or(0);
-                (0..item_count)
-                    .map(move |item_index| flat_row_variant(active_tab, page_index, item_index))
-            })
-            .collect();
+        let change_entries = self.change_entries();
+        self.flat_rows = build_rows_for_tab(
+            self.active_tab,
+            &self.filtered_indices,
+            &self.all_pages,
+            &change_entries,
+            self.root_origin.as_deref(),
+        );
         self.filter_flat_rows();
     }
 
@@ -426,6 +288,7 @@ impl ResultsDelegate {
         }
         if self.active_tab == ResultTab::Overview {
             let entries = build_issues_entries(&self.all_pages);
+            let filter = self.issue_filter;
             self.flat_rows.retain(|row| {
                 let FlatRow::IssuesRow { index } = row else {
                     return true;
@@ -433,20 +296,13 @@ impl ResultsDelegate {
                 let Some(entry) = entries.get(*index) else {
                     return false;
                 };
-                match self.issue_filter {
-                    IssueFilter::IssueTypeError => entry.issue_type == IssueType::Issue,
-                    IssueFilter::IssueTypeOpportunity => entry.issue_type == IssueType::Opportunity,
-                    IssueFilter::IssueTypeWarning => entry.issue_type == IssueType::Warning,
-                    IssueFilter::PriorityHigh => entry.priority == IssuePriority::High,
-                    IssueFilter::PriorityMedium => entry.priority == IssuePriority::Medium,
-                    IssueFilter::PriorityLow => entry.priority == IssuePriority::Low,
-                    _ => true,
-                }
+                issue_entry_matches(entry, filter)
             });
             return;
         }
         if self.active_tab == ResultTab::Changes {
             let entries = self.change_entries();
+            let filter = self.issue_filter;
             self.flat_rows.retain(|row| {
                 let FlatRow::ChangeRow { index } = row else {
                     return true;
@@ -454,12 +310,7 @@ impl ResultsDelegate {
                 let Some(entry) = entries.get(*index) else {
                     return false;
                 };
-                match self.issue_filter {
-                    IssueFilter::ChangeAdded => entry.kind == ChangeKind::Added,
-                    IssueFilter::ChangeRemoved => entry.kind == ChangeKind::Removed,
-                    IssueFilter::ChangeChanged => entry.kind == ChangeKind::Changed,
-                    _ => true,
-                }
+                change_entry_matches(entry, filter)
             });
             return;
         }
@@ -493,10 +344,6 @@ impl ResultsDelegate {
             };
             flat_row_matches_filter(row, page, self.issue_filter, &self.all_pages)
         });
-    }
-
-    pub fn count_for_filter(&self, filter: IssueFilter) -> usize {
-        self.count_filter_for_tab(self.active_tab, filter, &self.occurrence_counts)
     }
 
     pub fn export_csv(&self) -> Result<String, csv::Error> {
@@ -728,18 +575,20 @@ impl TableDelegate for ResultsDelegate {
                         _ => SharedString::default(),
                     };
                     match key.as_ref() {
-                        "issue_type" => cell.child(tone_tag(entry.issue_type.tone()).child(text)),
-                        "priority" => cell.child(tone_tag(entry.priority.tone()).child(text)),
+                        "issue_type" => {
+                            cell.child(tone_tag(entry.issue_type.tone(), cx).child(text))
+                        }
+                        "priority" => cell.child(tone_tag(entry.priority.tone(), cx).child(text)),
                         "count" => {
                             let tone = if entry.count > 0 {
                                 Tone::Warn
                             } else {
                                 Tone::Ok
                             };
-                            cell.child(tone_tag(tone).child(text))
+                            cell.child(tone_tag(tone, cx).child(text))
                         }
                         "count_delta" => cell
-                            .text_color(tone_text_color(delta_tone(delta)))
+                            .text_color(tone_text_color(delta_tone(delta), cx))
                             .font_semibold()
                             .child(text),
                         _ => cell.child(text),
@@ -758,7 +607,7 @@ impl TableDelegate for ResultsDelegate {
                         _ => SharedString::default(),
                     };
                     match key.as_ref() {
-                        "change_kind" => cell.child(tone_tag(entry.kind.tone()).child(text)),
+                        "change_kind" => cell.child(tone_tag(entry.kind.tone(), cx).child(text)),
                         _ => cell.child(text),
                     }
                 }
@@ -791,7 +640,7 @@ impl TableDelegate for ResultsDelegate {
                             } else {
                                 Tone::Warn
                             };
-                            cell.child(tone_tag(tone).child(text))
+                            cell.child(tone_tag(tone, cx).child(text))
                         }
                         "source" => cell.child(text),
                         "destination" => {
@@ -844,7 +693,7 @@ impl TableDelegate for ResultsDelegate {
                     };
                     match key.as_ref() {
                         "dir_non_indexable" if *non_indexable > 0 => {
-                            cell.child(tone_tag(Tone::Warn).child(text))
+                            cell.child(tone_tag(Tone::Warn, cx).child(text))
                         }
                         _ => cell.child(text),
                     }
@@ -866,7 +715,7 @@ impl TableDelegate for ResultsDelegate {
                         } else {
                             cell.child(text)
                         }
-                    } else if let Some(tag) = render_cell_tag(record, &key, &text) {
+                    } else if let Some(tag) = render_cell_tag(record, &key, &text, cx) {
                         cell.child(tag)
                     } else {
                         cell.child(text)
@@ -887,7 +736,7 @@ impl TableDelegate for ResultsDelegate {
                         return cell;
                     };
                     let text = flat_cell_text(record, row, &key, self.root_origin.as_deref());
-                    if let Some(tag) = render_cell_tag(record, &key, &text) {
+                    if let Some(tag) = render_cell_tag(record, &key, &text, cx) {
                         cell.child(tag)
                     } else {
                         cell.child(text)
@@ -909,7 +758,7 @@ impl TableDelegate for ResultsDelegate {
                 self.active_tab,
                 self.root_origin.as_deref(),
             );
-            if let Some(tag) = render_cell_tag(record, &key, &text) {
+            if let Some(tag) = render_cell_tag(record, &key, &text, cx) {
                 cell.child(tag)
             } else {
                 cell.child(text)
@@ -927,6 +776,13 @@ impl TableDelegate for ResultsDelegate {
         let Some(col) = self.columns.get(col_ix) else {
             return;
         };
+        // Default means "no sort": restore the tab's natural row order rather
+        // than re-sorting ascending, which would differ from what a fresh
+        // filter rebuild produces.
+        if sort == ColumnSort::Default {
+            self.rebuild_filter();
+            return;
+        }
         let col_key = col.key.to_string();
         let numeric = is_numeric_column(&col_key);
         let root_origin = self.root_origin.clone();
@@ -1112,5 +968,76 @@ impl TableDelegate for ResultsDelegate {
                 }
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod cache_tests {
+    use super::*;
+    use crate::crawl::event::PageRecord;
+
+    fn internal_page(url: &str) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            ..Default::default()
+        }
+    }
+
+    fn internal_total(delegate: &mut ResultsDelegate) -> usize {
+        delegate
+            .tab_filter_counts()
+            .get(&ResultTab::Internal)
+            .map(|counts| counts.badge.total)
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn counts_cache_invalidates_on_push_and_clear() {
+        let mut delegate = ResultsDelegate::new();
+        assert_eq!(internal_total(&mut delegate), 0);
+
+        // A first push must be reflected even though the cache was already
+        // populated by the read above.
+        delegate.push(internal_page("https://a.test/one"));
+        assert_eq!(internal_total(&mut delegate), 1);
+
+        delegate.push(internal_page("https://a.test/two"));
+        assert_eq!(internal_total(&mut delegate), 2);
+
+        delegate.clear();
+        assert_eq!(internal_total(&mut delegate), 0);
+    }
+
+    #[test]
+    fn counts_cache_invalidates_on_baseline_changes() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.push(internal_page("https://a.test/current"));
+
+        let baseline = vec![
+            internal_page("https://a.test/current"),
+            internal_page("https://a.test/removed"),
+        ];
+        delegate.set_baseline(baseline, 0);
+        let changes_total = delegate
+            .tab_filter_counts()
+            .get(&ResultTab::Changes)
+            .map(|counts| counts.badge.total)
+            .unwrap_or_default();
+        // The removed page is a change entry, so the Changes tab is non-empty.
+        assert!(
+            changes_total > 0,
+            "baseline diff should produce change rows"
+        );
+
+        delegate.clear_baseline();
+        let after = delegate
+            .tab_filter_counts()
+            .get(&ResultTab::Changes)
+            .map(|counts| counts.badge.total)
+            .unwrap_or_default();
+        assert_eq!(after, 0, "clearing the baseline must drop change rows");
     }
 }

@@ -239,6 +239,42 @@ fn test_http_crawl() {
 }
 
 #[test]
+fn test_slashless_start_url_is_not_a_redirect() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    // No trailing slash: Chrome normalizes this to `...:<port>/` when it
+    // navigates, and the pump must not mistake that normalization for a
+    // redirect. A false redirect would skip analysis of the start page
+    // entirely, leaving its outlinks/title/H1 empty.
+    let root_url = format!("http://127.0.0.1:{port}");
+
+    let pages = crawl_test_site(&root_url);
+
+    server.kill();
+
+    let root = pages
+        .iter()
+        .find(|p| p.url == root_url || path_of(&p.url) == "/")
+        .unwrap_or_else(|| {
+            panic!(
+                "start page should be crawled, got pages: {:?}",
+                page_paths(&pages)
+            )
+        });
+
+    assert!(
+        root.redirect_url.is_none(),
+        "start page must not be treated as a redirect (redirect_url = {:?})",
+        root.redirect_url
+    );
+    assert!(
+        !root.outlinks.is_empty(),
+        "start page should have outlinks after analysis, got {}",
+        root.outlinks.len()
+    );
+}
+
+#[test]
 fn test_chrome_crawl() {
     let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
     if !chrome_available() {

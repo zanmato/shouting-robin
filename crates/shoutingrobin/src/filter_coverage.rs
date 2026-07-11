@@ -32,7 +32,9 @@ use crate::crawl::CrawlConfig;
 use crate::crawl::event::{A11yIssue, CrawlEvent, PageRecord};
 use crate::crawl::render_mode::RenderMode;
 use crate::views::ResultTab;
-use crate::views::results_grid::{IssueFilter, filters_for_tab, matching_urls};
+use crate::views::results_grid::{
+    IssueFilter, filters_for_tab, matching_urls, tab_filter_counts_for_test, tab_is_flattened,
+};
 
 const LONG_PATH: &str = "/this-is-a-very-long-url-path-segment-that-keeps-going-and-going-and-going-well-past-one-hundred-and-fifteen-characters-total-x";
 
@@ -1174,6 +1176,9 @@ fn run_coverage(render_mode: RenderMode) {
     let (handle, port, stop) = spawn_site();
     let base = format!("http://127.0.0.1:{port}");
     let root_url = format!("{base}/");
+    let root_origin = url::Url::parse(&root_url)
+        .ok()
+        .map(|u| u.origin().ascii_serialization());
 
     let timeout = match render_mode {
         RenderMode::Http => Duration::from_secs(60),
@@ -1239,6 +1244,43 @@ fn run_coverage(render_mode: RenderMode) {
                 if matched.contains(*forbid) {
                     failures.push(format!(
                         "{tab:?}/{filter:?}: expected NOT to match {forbid:?}, but it did"
+                    ));
+                }
+            }
+        }
+
+        // The badge must be a pure function of the same
+        // per-filter data the sub-filter buttons render, so it can never claim
+        // more issues than the tab holds or disagree with the `All` count.
+        let counts = tab_filter_counts_for_test(tab, &pages, root_origin.as_deref());
+        let all_count = counts
+            .filter_counts
+            .iter()
+            .find(|(f, _)| *f == IssueFilter::All)
+            .map(|(_, c)| *c)
+            .unwrap_or(0);
+        if all_count != counts.badge.total {
+            failures.push(format!(
+                "{tab:?}: All count {all_count} != badge.total {}",
+                counts.badge.total
+            ));
+        }
+        if counts.badge.errors + counts.badge.warnings > counts.badge.total {
+            failures.push(format!(
+                "{tab:?}: errors {} + warnings {} exceed total {}",
+                counts.badge.errors, counts.badge.warnings, counts.badge.total
+            ));
+        }
+        // On page-listing tabs the per-filter count is exactly the number of
+        // pages the filter selects, so it must equal what `matching_urls`
+        // returns. Flattened tabs (and Overview/Changes) count rows or entries
+        // rather than pages, so that equality does not apply to them.
+        if !tab_is_flattened(tab) {
+            for &(filter, count) in &counts.filter_counts {
+                let expected = matching_urls(tab, filter, &pages).len();
+                if count != expected {
+                    failures.push(format!(
+                        "{tab:?}/{filter:?}: filter count {count} != matching_urls {expected}"
                     ));
                 }
             }

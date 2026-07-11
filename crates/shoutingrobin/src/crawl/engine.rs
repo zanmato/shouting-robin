@@ -79,22 +79,28 @@ impl CrawlEngine {
             let crawl_id = match storage::create_crawl(&pool, &root_url, mode_str).await {
                 Ok(id) => id,
                 Err(e) => {
-                    let _ = tx
+                    if let Err(send_err) = tx
                         .send_async(CrawlEvent::Error {
                             url: root_url.clone(),
                             message: format!("Failed to create crawl: {e}"),
                         })
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(error=%send_err, "failed to send crawl error event");
+                    }
                     return;
                 }
             };
 
-            let _ = tx
+            if let Err(e) = tx
                 .send_async(CrawlEvent::Started {
                     crawl_id,
                     root_url: root_url.clone(),
                 })
-                .await;
+                .await
+            {
+                tracing::warn!(error=%e, "failed to send started event");
+            }
 
             let sitemap_entries = if config.follow_sitemaps {
                 let sitemap_urls = crate::crawl::sitemap::discover_sitemaps(&root_url).await;
@@ -225,12 +231,15 @@ impl CrawlEngine {
             }
 
             if website.build().is_err() {
-                let _ = tx
+                if let Err(e) = tx
                     .send_async(CrawlEvent::Error {
                         url: root_url.clone(),
                         message: "Failed to parse root URL".into(),
                     })
-                    .await;
+                    .await
+                {
+                    tracing::warn!(error=%e, "failed to send root URL error event");
+                }
                 return;
             }
 
@@ -337,10 +346,21 @@ impl CrawlEngine {
                         record.headers = headers
                             .iter()
                             .filter_map(|(name, value)| {
-                                value
-                                    .to_str()
-                                    .ok()
-                                    .map(|v| (name.to_string(), v.to_string()))
+                                value.to_str().ok().map(|v| {
+                                    // Chrome's CDP wraps every header value in JSON
+                                    // quotes; strip a single surrounding pair so
+                                    // they display cleanly. Only one layer is
+                                    // removed so legitimately quoted values (e.g. an
+                                    // ETag) keep their inner quotes.
+                                    let trimmed = if chrome_mode {
+                                        v.strip_prefix('"')
+                                            .and_then(|s| s.strip_suffix('"'))
+                                            .unwrap_or(v)
+                                    } else {
+                                        v
+                                    };
+                                    (name.to_string(), trimmed.to_string())
+                                })
                             })
                             .collect();
                     }
@@ -350,11 +370,23 @@ impl CrawlEngine {
                     // genuinely different, non-empty final URL. In Chrome mode
                     // get_url_final() can come back empty or normalized even when
                     // nothing redirected; mistaking that for a redirect would
-                    // wrongly skip analysis of a perfectly normal page.
-                    let redirected = !final_url.is_empty() && final_url != original_url;
+                    // wrongly skip analysis of a perfectly normal page. Compare
+                    // by parsed URL so a trailing-slash normalization (Chrome
+                    // turns `https://example.com` into `https://example.com/`)
+                    // is not mistaken for a redirect, which would drop the start
+                    // page's outlinks/title/H1 entirely.
+                    let redirected =
+                        !final_url.is_empty() && !urls_equivalent(original_url, final_url);
                     if redirected {
                         record.redirect_url = Some(final_url.to_string());
                         record.redirect_status = Some(301);
+                        // A redirect response has no document of its own. Any
+                        // content type inferred above belongs to the target, or
+                        // (under Chrome interception) to an unrelated subresource
+                        // whose headers spider handed us, so it would mislabel the
+                        // redirect (e.g. `/` -> `/sv` shown as text/css). Leave it
+                        // blank rather than showing a bogus mime type.
+                        record.content_type = None;
                     }
                     // The body we hold belongs to whatever URL spider ultimately
                     // landed on, not necessarily this row's URL. Two cases must
@@ -420,7 +452,6 @@ impl CrawlEngine {
                                  (check /tmp/chromiumoxide-runner/SingletonLock or chrome config)"
                             );
                         }
-                        page.close_page().await;
                     }
 
                     if let Some(guard) = subscribe_guard.as_mut() {
@@ -537,13 +568,15 @@ impl CrawlEngine {
                         }
                     }
 
-                    if total.is_multiple_of(10) {
-                        let _ = tx_pages
+                    if total.is_multiple_of(10)
+                        && let Err(e) = tx_pages
                             .send_async(CrawlEvent::Progress {
                                 crawled: total,
                                 queued: 0,
                             })
-                            .await;
+                            .await
+                    {
+                        tracing::warn!(error=%e, "failed to send progress event");
                     }
                 }
                 total
@@ -595,7 +628,9 @@ impl CrawlEngine {
                         is_internal: is_same_domain(&root_url, &orphan.page_url),
                         ..Default::default()
                     };
-                    let _ = tx.send_async(CrawlEvent::Page(Box::new(record))).await;
+                    if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+                        tracing::warn!(error=%e, "failed to send sitemap orphan page event");
+                    }
                 }
                 if !orphans.is_empty() {
                     tracing::info!(count = orphans.len(), "found sitemap orphan URLs");
@@ -614,7 +649,9 @@ impl CrawlEngine {
                             blocked_by_robots: Some(true),
                             ..Default::default()
                         };
-                        let _ = tx.send_async(CrawlEvent::Page(Box::new(record))).await;
+                        if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+                            tracing::warn!(error=%e, "failed to send blocked URL page event");
+                        }
                     }
                 }
                 if !blocked.is_empty() {
@@ -622,7 +659,9 @@ impl CrawlEngine {
                 }
             }
 
-            let _ = tx.send_async(CrawlEvent::Finished { total }).await;
+            if let Err(e) = tx.send_async(CrawlEvent::Finished { total }).await {
+                tracing::warn!(error=%e, "failed to send finished event");
+            }
         };
 
         (cancel, fut)
@@ -991,6 +1030,19 @@ pub fn is_same_domain(root: &str, url: &str) -> bool {
         return false;
     };
     root_parsed.host_str() == url_parsed.host_str()
+}
+
+/// True when two URL strings resolve to the same URL after normalization.
+/// `url::Url::parse` fills an empty path with `/`, so `https://example.com`
+/// and `https://example.com/` compare equal. Genuine host/path/scheme
+/// differences still compare unequal. Falls back to a plain string comparison
+/// if either side fails to parse, preserving the prior behavior for malformed
+/// inputs.
+fn urls_equivalent(a: &str, b: &str) -> bool {
+    match (url::Url::parse(a), url::Url::parse(b)) {
+        (Ok(a_parsed), Ok(b_parsed)) => a_parsed == b_parsed,
+        _ => a == b,
+    }
 }
 
 fn build_ssr_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Error> {

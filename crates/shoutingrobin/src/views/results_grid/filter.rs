@@ -1,14 +1,21 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::{A11yIssue, HreflangIssue, ImageRef, PageRecord, SdFormat, SdItem};
+use crate::ui::tag::Tone;
 use crate::views::ResultTab;
 
 use super::columns::{
-    field_count, field_value, header_exists, header_value, length_thresholds,
-    pixel_width_thresholds, primary_field_key,
+    build_occurrence_counts, field_count, field_value, header_exists, header_value,
+    length_thresholds, pixel_width_thresholds, primary_field_key,
 };
-use super::types::IssueFilter;
+use super::data_build::{
+    build_issues_entries, build_rows_for_tab, change_entry_matches, issue_entry_matches,
+};
+use super::types::{
+    ChangeEntry, FlatRow, IssueFilter, TabCounts, TabFilterCounts, flat_row_page_index,
+    tab_is_flattened,
+};
 
 pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
     match tab {
@@ -219,6 +226,148 @@ pub fn matching_urls(tab: ResultTab, filter: IssueFilter, pages: &[PageRecord]) 
         .into_iter()
         .map(|idx| pages[idx].url.clone())
         .collect()
+}
+
+/// Test-facing wrapper exposing the unified per-tab counts (badge plus every
+/// sub-filter count) so the filter-coverage suite can assert the tab-badge
+/// invariants against a realistic crawl. Mirrors the grid's own call with no
+/// change entries.
+#[cfg(test)]
+pub fn tab_filter_counts_for_test(
+    tab: ResultTab,
+    pages: &[PageRecord],
+    root_origin: Option<&str>,
+) -> TabFilterCounts {
+    compute_tab_filter_counts(tab, pages, &[], root_origin)
+}
+
+/// Counts every sub-filter for a tab and derives the tab badge from the same
+/// per-filter data, so the badge is always the union of what its sub-filter
+/// buttons show. Row identity for the tone union is: page index for page-listing
+/// tabs, entry index for Overview/Changes, and flat-row position for the other
+/// flattened tabs. Errors take precedence over warnings when a row matches both.
+pub(super) fn compute_tab_filter_counts(
+    tab: ResultTab,
+    pages: &[PageRecord],
+    change_entries: &[ChangeEntry],
+    root_origin: Option<&str>,
+) -> TabFilterCounts {
+    let filters = filters_for_tab(tab);
+    let occurrence_counts = build_occurrence_counts(tab, pages);
+
+    // Overview and Changes count discrete entries; their sub-filters are two
+    // overlapping partitions of the same entry set, so the tone union dedups by
+    // entry index rather than summing (which double-counts).
+    if tab == ResultTab::Overview {
+        let entries = build_issues_entries(pages);
+        return counts_from_sets(filters, entries.len(), |filter| {
+            (0..entries.len())
+                .filter(|&i| issue_entry_matches(&entries[i], filter))
+                .collect()
+        });
+    }
+    if tab == ResultTab::Changes {
+        return counts_from_sets(filters, change_entries.len(), |filter| {
+            (0..change_entries.len())
+                .filter(|&i| change_entry_matches(&change_entries[i], filter))
+                .collect()
+        });
+    }
+
+    if tab_is_flattened(tab) {
+        // Flattened item tabs (Images, Accessibility, Hreflang, Structured Data,
+        // Links, Site Structure): count over the flat-row universe so multi-item
+        // pages and rows matching several filters are deduped by row position.
+        let all_indices = filter_for_tab(tab, IssueFilter::All, pages, &occurrence_counts);
+        let universe = build_rows_for_tab(tab, &all_indices, pages, change_entries, root_origin);
+        counts_from_sets(filters, universe.len(), |filter| {
+            let allowed: HashSet<usize> = filter_for_tab(tab, filter, pages, &occurrence_counts)
+                .into_iter()
+                .collect();
+            universe
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| row_matches_filter(row, filter, &allowed, pages))
+                .map(|(position, _)| position)
+                .collect()
+        })
+    } else {
+        // Page-listing tabs: identity is the page index, so a page flagged by
+        // several filters is counted once per tone.
+        let total = filter_for_tab(tab, IssueFilter::All, pages, &occurrence_counts).len();
+        counts_from_sets(filters, total, |filter| {
+            filter_for_tab(tab, filter, pages, &occurrence_counts)
+                .into_iter()
+                .collect()
+        })
+    }
+}
+
+/// Whether a flat row survives a sub-filter, applying the same page gate and
+/// per-row predicate the display path uses. Directory aggregates have no page,
+/// so they skip the gate and are matched on depth directly, mirroring
+/// `filter_flat_rows`.
+fn row_matches_filter(
+    row: &FlatRow,
+    filter: IssueFilter,
+    allowed_pages: &HashSet<usize>,
+    pages: &[PageRecord],
+) -> bool {
+    match flat_row_page_index(row) {
+        Some(page_index) => {
+            allowed_pages.contains(&page_index)
+                && pages
+                    .get(page_index)
+                    .is_some_and(|page| flat_row_matches_filter(row, page, filter, pages))
+        }
+        None => match row {
+            FlatRow::DirectoryAggregate { depth, .. } => match filter {
+                IssueFilter::DepthShallow => *depth <= 1,
+                IssueFilter::DepthMedium => *depth >= 2 && *depth <= 3,
+                IssueFilter::DepthDeep => *depth >= 4,
+                _ => true,
+            },
+            _ => true,
+        },
+    }
+}
+
+/// Assembles a `TabFilterCounts` from a per-filter identity-set builder. `total`
+/// is the `All` count; each non-`All` filter's set feeds both its own count and
+/// the tone union that forms the tab badge (errors win ties with warnings).
+fn counts_from_sets(
+    filters: &[IssueFilter],
+    total: usize,
+    match_set: impl Fn(IssueFilter) -> HashSet<usize>,
+) -> TabFilterCounts {
+    let mut filter_counts = Vec::with_capacity(filters.len());
+    let mut error_ids: HashSet<usize> = HashSet::new();
+    let mut warn_ids: HashSet<usize> = HashSet::new();
+
+    for &filter in filters {
+        if filter == IssueFilter::All {
+            filter_counts.push((filter, total));
+            continue;
+        }
+        let ids = match_set(filter);
+        filter_counts.push((filter, ids.len()));
+        match filter.tone() {
+            Tone::Err => error_ids.extend(ids),
+            Tone::Warn => warn_ids.extend(ids),
+            _ => {}
+        }
+    }
+
+    warn_ids.retain(|id| !error_ids.contains(id));
+
+    TabFilterCounts {
+        filter_counts,
+        badge: TabCounts {
+            total,
+            errors: error_ids.len(),
+            warnings: warn_ids.len(),
+        },
+    }
 }
 
 /// True when a record is a Fetch/XHR request harvested from the page's
@@ -849,8 +998,6 @@ pub(super) fn filter_for_tab(
     indices
 }
 
-use super::types::FlatRow;
-
 fn link_row_matches_filter(
     link: &crate::crawl::event::Outlink,
     page: &PageRecord,
@@ -968,5 +1115,166 @@ fn sd_item_matches_filter(sd_item: &SdItem, page: &PageRecord, filter: IssueFilt
             sd_item.type_name == "Organization" || sd_item.type_name == "LocalBusiness"
         }
         _ => true,
+    }
+}
+
+#[cfg(test)]
+mod counting_tests {
+    use super::*;
+    use crate::crawl::event::{ImageRef, Outlink, PageRecord};
+
+    fn count_of(counts: &TabFilterCounts, filter: IssueFilter) -> usize {
+        counts
+            .filter_counts
+            .iter()
+            .find(|(f, _)| *f == filter)
+            .map(|(_, c)| *c)
+            .unwrap_or(0)
+    }
+
+    fn internal_page(url: &str) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn flattened_badge_dedups_rows_matching_multiple_filters() {
+        // One image trips both MissingAltAttribute and MissingSizeAttributes
+        // (both Warn); the badge must count that row once, not twice.
+        let mut page = internal_page("https://a.test/imgs");
+        page.images = vec![
+            ImageRef {
+                src: "/no-alt-no-size.png".into(),
+                alt: None,
+                width: None,
+                height: None,
+                has_alt_attr: false,
+            },
+            ImageRef {
+                src: "/fine.png".into(),
+                alt: Some("described".into()),
+                width: Some(10),
+                height: Some(10),
+                has_alt_attr: true,
+            },
+        ];
+        let pages = vec![page];
+
+        let counts = compute_tab_filter_counts(ResultTab::Images, &pages, &[], None);
+        assert_eq!(count_of(&counts, IssueFilter::All), 2);
+        assert_eq!(count_of(&counts, IssueFilter::MissingAltAttribute), 1);
+        assert_eq!(count_of(&counts, IssueFilter::MissingSizeAttributes), 1);
+        assert_eq!(counts.badge.total, 2);
+        assert_eq!(counts.badge.errors, 0);
+        // Deduped: the single offending image row counts once, not 1 + 1.
+        assert_eq!(counts.badge.warnings, 1);
+    }
+
+    #[test]
+    fn page_tab_badge_counts_distinct_pages() {
+        let pages = vec![
+            {
+                let mut p = internal_page("https://a.test/ok");
+                p.status = Some(200);
+                p
+            },
+            {
+                let mut p = internal_page("https://a.test/missing");
+                p.status = Some(404);
+                p
+            },
+            {
+                let mut p = internal_page("https://a.test/boom");
+                p.status = Some(500);
+                p
+            },
+        ];
+
+        let counts = compute_tab_filter_counts(ResultTab::ResponseCodes, &pages, &[], None);
+        assert_eq!(counts.badge.total, 3);
+        assert_eq!(count_of(&counts, IssueFilter::Status4xx), 1);
+        assert_eq!(count_of(&counts, IssueFilter::Status5xx), 1);
+        // 4xx and 5xx are both Err-toned; two distinct pages, deduped by index.
+        assert_eq!(counts.badge.errors, 2);
+    }
+
+    #[test]
+    fn links_tab_totals_are_nonzero() {
+        // Regression: the Links tab used to report a zero badge because its
+        // per-filter count went through `flat_row_item_count`, which returned 0
+        // for Links.
+        let mut source = internal_page("https://a.test/page");
+        source.outlinks = vec![
+            Outlink {
+                dst_url: "https://a.test/broken".into(),
+                anchor: Some("broken".into()),
+                rel: None,
+                csr_only: false,
+            },
+            Outlink {
+                dst_url: "https://a.test/fine".into(),
+                anchor: Some("fine".into()),
+                rel: None,
+                csr_only: false,
+            },
+        ];
+        let mut broken = internal_page("https://a.test/broken");
+        broken.status = Some(404);
+        let pages = vec![source, broken];
+
+        let counts = compute_tab_filter_counts(ResultTab::Links, &pages, &[], None);
+        assert_eq!(counts.badge.total, 2);
+        assert_eq!(count_of(&counts, IssueFilter::LinkBroken), 1);
+        assert_eq!(counts.badge.errors, 1);
+    }
+
+    #[test]
+    fn site_structure_totals_are_nonzero() {
+        // Regression: Site Structure directory aggregates also reported a zero
+        // badge total for the same reason as Links.
+        let origin = "https://a.test";
+        let pages = vec![
+            internal_page("https://a.test/"),
+            internal_page("https://a.test/blog/one"),
+            internal_page("https://a.test/blog/two"),
+        ];
+
+        let counts = compute_tab_filter_counts(ResultTab::SiteStructure, &pages, &[], Some(origin));
+        assert!(
+            counts.badge.total > 0,
+            "expected directory rows to be counted"
+        );
+        assert_eq!(count_of(&counts, IssueFilter::All), counts.badge.total);
+    }
+
+    #[test]
+    fn overview_badge_does_not_double_count_overlapping_partitions() {
+        // The Overview sub-filters are two overlapping partitions (issue type and
+        // priority) of the same entry set. The badge must union entry indices per
+        // tone rather than sum the two partitions, so it can never exceed the
+        // total entry count.
+        let mut missing_title = internal_page("https://a.test/no-title");
+        missing_title.title = None;
+        missing_title.h1 = None;
+        missing_title.meta_description = None;
+        let mut missing_meta = internal_page("https://a.test/no-meta");
+        missing_meta.title = Some("A perfectly reasonable title for the page".into());
+        missing_meta.meta_description = None;
+        let pages = vec![missing_title, missing_meta];
+
+        let counts = compute_tab_filter_counts(ResultTab::Overview, &pages, &[], None);
+        assert_eq!(count_of(&counts, IssueFilter::All), counts.badge.total);
+        assert!(
+            counts.badge.errors <= counts.badge.total,
+            "errors {} exceeded total {} (double count)",
+            counts.badge.errors,
+            counts.badge.total
+        );
+        assert!(counts.badge.errors + counts.badge.warnings <= counts.badge.total);
     }
 }

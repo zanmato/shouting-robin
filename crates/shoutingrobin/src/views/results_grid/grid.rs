@@ -124,12 +124,30 @@ impl ResultsGrid {
         self.state.read(cx).delegate().filtered_count()
     }
 
-    pub fn tab_counts(&self, cx: &App) -> HashMap<ResultTab, TabCounts> {
-        self.state.read(cx).delegate().compute_tab_counts()
+    /// Per-tab badge counts. Goes through `state.update` so the delegate's lazy
+    /// counts cache can fill on first access.
+    pub fn tab_badges(&self, cx: &mut App) -> HashMap<ResultTab, TabCounts> {
+        self.state.update(cx, |state, _cx| {
+            state
+                .delegate_mut()
+                .tab_filter_counts()
+                .iter()
+                .map(|(&tab, counts)| (tab, counts.badge.clone()))
+                .collect()
+        })
     }
 
-    pub fn count_for_filter(&self, filter: IssueFilter, cx: &App) -> usize {
-        self.state.read(cx).delegate().count_for_filter(filter)
+    /// The sub-filter counts for the active tab, in `filters_for_tab` order.
+    pub fn active_filter_counts(&self, cx: &mut App) -> Vec<(IssueFilter, usize)> {
+        self.state.update(cx, |state, _cx| {
+            let tab = state.delegate().active_tab;
+            state
+                .delegate_mut()
+                .tab_filter_counts()
+                .get(&tab)
+                .map(|counts| counts.filter_counts.clone())
+                .unwrap_or_default()
+        })
     }
 
     #[allow(dead_code)]

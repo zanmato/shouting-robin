@@ -149,7 +149,10 @@ impl SettingsView {
 
     fn save_setting_debounced(&mut self, key: String, value: String, cx: &mut Context<Self>) {
         let generation = {
-            let mut gens = self.save_generations.lock().unwrap();
+            let mut gens = self
+                .save_generations
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
             let generation = gens.entry(key.clone()).or_insert(0);
             *generation += 1;
             *generation
@@ -165,7 +168,7 @@ impl SettingsView {
                 .await;
 
             let current_gen = {
-                let gens = generations.lock().unwrap();
+                let gens = generations.lock().unwrap_or_else(|e| e.into_inner());
                 gens.get(&key_clone).copied().unwrap_or(0)
             };
 

@@ -61,6 +61,31 @@ pub struct TabCounts {
     pub warnings: usize,
 }
 
+/// Per-tab counting result shared by the tab badge and the sub-filter buttons,
+/// so a tab's badge is always a pure function of the same per-filter data that
+/// renders its sub-filter counts. `filter_counts` is in `filters_for_tab`
+/// order; `badge` is the aggregate shown on the tab.
+#[derive(Clone, Debug, Default)]
+pub struct TabFilterCounts {
+    pub filter_counts: Vec<(IssueFilter, usize)>,
+    pub badge: TabCounts,
+}
+
+/// The page index a flattened row belongs to, or `None` for rows that are not
+/// tied to a single page (issue/change entries and directory aggregates).
+pub(super) fn flat_row_page_index(row: &FlatRow) -> Option<usize> {
+    match row {
+        FlatRow::Image { page, .. }
+        | FlatRow::A11yIssue { page, .. }
+        | FlatRow::Hreflang { page, .. }
+        | FlatRow::SdItem { page, .. }
+        | FlatRow::LinkRow { page, .. } => Some(*page),
+        FlatRow::IssuesRow { .. }
+        | FlatRow::ChangeRow { .. }
+        | FlatRow::DirectoryAggregate { .. } => None,
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum ResultsGridEvent {
     Selected(usize),
@@ -335,12 +360,22 @@ impl IssueFilter {
             | Self::SdTypeBreadcrumb
             | Self::SdTypeOrganization
             | Self::DirectiveNone
-            | Self::IssueTypeWarning
-            | Self::PriorityLow
             | Self::LinkExternal
             | Self::DepthShallow
-            | Self::ChangeAdded
             | Self::DepthMedium => Tone::Neutral,
+
+            // Overview and Changes filters mirror the grid cells: delegate to the
+            // same tone the rendered chips use so the tab badge, the sub-filter
+            // button, and the cell can never disagree.
+            Self::IssueTypeError => IssueType::Issue.tone(),
+            Self::IssueTypeOpportunity => IssueType::Opportunity.tone(),
+            Self::IssueTypeWarning => IssueType::Warning.tone(),
+            Self::PriorityHigh => IssuePriority::High.tone(),
+            Self::PriorityMedium => IssuePriority::Medium.tone(),
+            Self::PriorityLow => IssuePriority::Low.tone(),
+            Self::ChangeAdded => ChangeKind::Added.tone(),
+            Self::ChangeRemoved => ChangeKind::Removed.tone(),
+            Self::ChangeChanged => ChangeKind::Changed.tone(),
 
             Self::Status4xx
             | Self::Status5xx
@@ -354,10 +389,7 @@ impl IssueFilter {
             | Self::SsrContentMissing
             | Self::BlockedByRobots
             | Self::DirectiveNoindex
-            | Self::LinkBroken
-            | Self::IssueTypeError
-            | Self::ChangeRemoved
-            | Self::PriorityHigh => Tone::Err,
+            | Self::LinkBroken => Tone::Err,
 
             Self::NonIndexable
             | Self::Missing
@@ -418,11 +450,8 @@ impl IssueFilter {
             | Self::DirectiveNosnippet
             | Self::OverPixelWidth
             | Self::UnderPixelWidth
-            | Self::IssueTypeOpportunity
-            | Self::PriorityMedium
             | Self::LinkRedirected
             | Self::LinkNofollow
-            | Self::ChangeChanged
             | Self::DepthDeep => Tone::Warn,
         }
     }

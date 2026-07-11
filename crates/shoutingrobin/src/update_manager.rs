@@ -1,4 +1,5 @@
 use crate::app_settings::AppSettings;
+use anyhow::Context as _;
 use gpui::{App, AppContext, Entity, Global};
 use semver::Version;
 use std::path::PathBuf;
@@ -28,14 +29,20 @@ impl Global for UpdateManager {}
 
 impl UpdateManager {
     pub fn new(cx: &mut App) -> Self {
-        // Check for marker file indicating we just updated
-        let marker_path = Self::updates_dir().join(".updated_from");
-        let just_updated_from = if marker_path.exists() {
-            let version = std::fs::read_to_string(&marker_path).ok();
-            if let Err(e) = std::fs::remove_file(&marker_path) {
-                tracing::warn!("Failed to remove update marker file: {}", e);
+        // Reading the just-updated marker is best-effort: if the local data
+        // directory can't be resolved we simply skip the post-update notice
+        // rather than panicking at startup.
+        let marker_path = Self::updates_dir().ok().map(|d| d.join(".updated_from"));
+        let just_updated_from = if let Some(marker_path) = marker_path {
+            if marker_path.exists() {
+                let version = std::fs::read_to_string(&marker_path).ok();
+                if let Err(e) = std::fs::remove_file(&marker_path) {
+                    tracing::warn!("Failed to remove update marker file: {}", e);
+                }
+                cx.new(|_cx| version)
+            } else {
+                cx.new(|_cx| None)
             }
-            cx.new(|_cx| version)
         } else {
             cx.new(|_cx| None)
         };
@@ -69,7 +76,9 @@ impl UpdateManager {
 
         cx.spawn(async move |cx| {
             // Check for staged update first
-            let staged_exists = Self::staged_binary_path().exists();
+            let staged_exists = Self::staged_binary_path()
+                .map(|p| p.exists())
+                .unwrap_or(false);
 
             if staged_exists {
                 // Already have staged update, just update UI
@@ -143,24 +152,24 @@ impl UpdateManager {
         .await
     }
 
-    fn updates_dir() -> PathBuf {
-        dirs::data_local_dir()
-            .expect("Failed to get data directory")
+    fn updates_dir() -> anyhow::Result<PathBuf> {
+        Ok(dirs::data_local_dir()
+            .context("Failed to get local data directory")?
             .join("shoutingrobin")
-            .join("updates")
+            .join("updates"))
     }
 
-    fn staged_binary_path() -> PathBuf {
+    fn staged_binary_path() -> anyhow::Result<PathBuf> {
         let name = if cfg!(target_os = "windows") {
             "shoutingrobin.exe"
         } else {
             "shoutingrobin"
         };
-        Self::updates_dir().join(name)
+        Ok(Self::updates_dir()?.join(name))
     }
 
     fn download_update_to_staging() -> anyhow::Result<()> {
-        std::fs::create_dir_all(Self::updates_dir())?;
+        std::fs::create_dir_all(Self::updates_dir()?)?;
 
         let mut builder = self_update::backends::github::Update::configure();
         builder
@@ -193,7 +202,7 @@ impl UpdateManager {
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("No asset found for target: {}", target))?;
 
-        let updates = Self::updates_dir();
+        let updates = Self::updates_dir()?;
         let tmp_archive_path = updates.join(&asset.name);
 
         // Download
@@ -218,7 +227,7 @@ impl UpdateManager {
         // binary lands nested inside the extracted .app bundle. Move it to the flat
         // staged location we relaunch from, then discard the leftover bundle dir.
         if cfg!(target_os = "macos") {
-            std::fs::rename(updates.join(bin_name), Self::staged_binary_path())?;
+            std::fs::rename(updates.join(bin_name), Self::staged_binary_path()?)?;
             let bundle = updates.join("Shouting Robin.app");
             if bundle.exists()
                 && let Err(e) = std::fs::remove_dir_all(&bundle)
@@ -247,33 +256,31 @@ impl UpdateManager {
         }
     }
 
-    pub fn apply_pending_update() {
-        let staged = Self::staged_binary_path();
+    pub fn apply_pending_update() -> anyhow::Result<()> {
+        let staged = Self::staged_binary_path()?;
         if !staged.exists() {
-            tracing::warn!("No staged update found at {:?}", staged);
-            return;
+            anyhow::bail!("No staged update found at {staged:?}");
         }
 
         // Store current version before replacing (for post-update notification)
         let current = env!("CARGO_PKG_VERSION").to_string();
-        if let Err(e) = std::fs::write(Self::updates_dir().join(".updated_from"), &current) {
+        if let Err(e) = std::fs::write(Self::updates_dir()?.join(".updated_from"), &current) {
             tracing::warn!("Failed to write update marker file: {}", e);
         }
 
         if let Err(e) = self_update::self_replace::self_replace(&staged) {
-            tracing::error!("Failed to apply update: {}", e);
-            return;
+            anyhow::bail!("Failed to apply update: {e}");
         }
 
         if let Err(e) = std::fs::remove_file(&staged) {
             tracing::warn!("Failed to remove staged update binary: {}", e);
         }
         tracing::info!("Update applied, restarting...");
-        Self::restart_app();
+        Self::restart_app()
     }
 
-    fn restart_app() {
-        let exe = std::env::current_exe().expect("Failed to get current exe path");
+    fn restart_app() -> anyhow::Result<()> {
+        let exe = std::env::current_exe().context("Failed to get current exe path")?;
 
         #[cfg(target_os = "macos")]
         {

@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-use gpui::{ParentElement, SharedString};
+use gpui::{App, ParentElement, SharedString};
 
+use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::{A11yIssue, ImageRef, PageRecord, SdFormat, SdItem};
 use crate::ui::tag::{Tone, count_tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::ResultTab;
@@ -82,9 +83,29 @@ pub(super) fn flat_cell_text(
                 }
             }
         }
-        FlatRow::IssuesRow { .. } | FlatRow::LinkRow { .. } | FlatRow::ChangeRow { .. } => {
-            SharedString::default()
+        // LinkRow mirrors exactly what render_td shows so sorting the Links tab
+        // compares the displayed text instead of always-equal defaults.
+        FlatRow::LinkRow { item, .. } => {
+            let Some(link) = record.outlinks.get(*item) else {
+                return SharedString::default();
+            };
+            match col_key {
+                "source" => url_to_path(&record.url, root_origin),
+                "destination" => url_to_path(&link.dst_url, root_origin),
+                "anchor" => SharedString::from(link.anchor.clone().unwrap_or_default()),
+                "rel" => SharedString::from(link.rel.clone().unwrap_or_default()),
+                "status_code" => SharedString::from("-"),
+                "link_type" => SharedString::from(if is_same_domain(&record.url, &link.dst_url) {
+                    "Internal"
+                } else {
+                    "External"
+                }),
+                _ => SharedString::default(),
+            }
         }
+        // IssuesRow and ChangeRow have dedicated sort branches in perform_sort,
+        // so they never reach this text-based path.
+        FlatRow::IssuesRow { .. } | FlatRow::ChangeRow { .. } => SharedString::default(),
         FlatRow::DirectoryAggregate {
             path,
             depth,
@@ -568,6 +589,7 @@ pub(super) fn render_cell_tag(
     record: &PageRecord,
     col_key: &str,
     text: &SharedString,
+    cx: &App,
 ) -> Option<gpui_component::tag::Tag> {
     let tone = match col_key {
         "status_code" => {
@@ -639,7 +661,7 @@ pub(super) fn render_cell_tag(
         },
         _ => return None,
     };
-    Some(tone_tag(tone).child(text.clone()))
+    Some(tone_tag(tone, cx).child(text.clone()))
 }
 
 pub fn ssr_diff_label(record: &PageRecord) -> String {

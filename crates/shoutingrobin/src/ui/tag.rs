@@ -1,5 +1,5 @@
-use gpui::{Hsla, hsla};
-use gpui_component::{Sizable as _, tag::Tag};
+use gpui::{App, Hsla, hsla};
+use gpui_component::{ActiveTheme as _, Sizable as _, tag::Tag};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -12,58 +12,94 @@ pub enum Tone {
     Neutral,
 }
 
-fn tone_colors(tone: Tone) -> (Hsla, Hsla, Hsla) {
-    // (background, foreground, border) — colors mirror the mockup palette:
-    // dark, low-opacity background with a bright foreground for readability.
-    match tone {
-        // green-500 / green-300
-        Tone::Ok => (
-            hsla(160. / 360., 0.84, 0.39, 0.20),
-            hsla(152. / 360., 0.76, 0.64, 1.0),
-            hsla(160. / 360., 0.84, 0.39, 0.35),
-        ),
-        // amber-500 / amber-300
-        Tone::Warn => (
-            hsla(38. / 360., 0.92, 0.50, 0.20),
-            hsla(43. / 360., 0.96, 0.66, 1.0),
-            hsla(38. / 360., 0.92, 0.50, 0.35),
-        ),
-        // red-500 / red-300
-        Tone::Err => (
-            hsla(0. / 360., 0.84, 0.60, 0.20),
-            hsla(0. / 360., 0.93, 0.78, 1.0),
-            hsla(0. / 360., 0.84, 0.60, 0.35),
-        ),
-        // sky-400 / sky-200
-        Tone::Info => (
-            hsla(199. / 360., 0.92, 0.60, 0.20),
-            hsla(201. / 360., 0.94, 0.86, 1.0),
-            hsla(199. / 360., 0.92, 0.60, 0.35),
-        ),
-        // orange-500 / orange-300
-        Tone::Accent => (
-            hsla(20. / 360., 0.94, 0.53, 0.30),
-            hsla(27. / 360., 0.96, 0.70, 1.0),
-            hsla(20. / 360., 0.94, 0.53, 0.45),
-        ),
-        // blue chip: blue-800 bg / blue-200 fg, like mockup's `bg-chip text-chipfg`
-        Tone::Neutral => (
-            hsla(225. / 360., 0.64, 0.33, 1.0),
-            hsla(213. / 360., 0.96, 0.87, 1.0),
-            hsla(225. / 360., 0.64, 0.33, 1.0),
-        ),
+/// Opaque (background, foreground, border) for a tone, pre-blended onto a solid
+/// base so the chip no longer disappears into a selected tab's background, and
+/// chosen for the active theme mode. Hues are kept stable across modes; only the
+/// lightness/saturation shifts, giving a dark subdued chip in dark mode and a
+/// pale solid tint with a dark foreground in light mode.
+fn tone_colors(tone: Tone, cx: &App) -> (Hsla, Hsla, Hsla) {
+    if cx.theme().mode.is_dark() {
+        // Dark mode: low-lightness, desaturated backgrounds with bright
+        // foregrounds (the subdued look the alpha-over-dark base had before).
+        match tone {
+            Tone::Ok => (
+                hsla(150. / 360., 0.30, 0.18, 1.0),
+                hsla(152. / 360., 0.50, 0.64, 1.0),
+                hsla(150. / 360., 0.30, 0.26, 1.0),
+            ),
+            Tone::Warn => (
+                hsla(38. / 360., 0.40, 0.20, 1.0),
+                hsla(43. / 360., 0.70, 0.66, 1.0),
+                hsla(38. / 360., 0.40, 0.28, 1.0),
+            ),
+            Tone::Err => (
+                hsla(0. / 360., 0.35, 0.20, 1.0),
+                hsla(0. / 360., 0.55, 0.72, 1.0),
+                hsla(0. / 360., 0.35, 0.28, 1.0),
+            ),
+            Tone::Info => (
+                hsla(199. / 360., 0.40, 0.20, 1.0),
+                hsla(201. / 360., 0.60, 0.80, 1.0),
+                hsla(199. / 360., 0.40, 0.28, 1.0),
+            ),
+            Tone::Accent => (
+                hsla(20. / 360., 0.45, 0.22, 1.0),
+                hsla(27. / 360., 0.70, 0.70, 1.0),
+                hsla(20. / 360., 0.45, 0.30, 1.0),
+            ),
+            Tone::Neutral => (
+                hsla(225. / 360., 0.40, 0.24, 1.0),
+                hsla(213. / 360., 0.50, 0.84, 1.0),
+                hsla(225. / 360., 0.40, 0.32, 1.0),
+            ),
+        }
+    } else {
+        // Light mode: pale solid tints with dark foregrounds.
+        match tone {
+            Tone::Ok => (
+                hsla(150. / 360., 0.50, 0.90, 1.0),
+                hsla(152. / 360., 0.55, 0.28, 1.0),
+                hsla(150. / 360., 0.45, 0.80, 1.0),
+            ),
+            Tone::Warn => (
+                hsla(38. / 360., 0.80, 0.92, 1.0),
+                hsla(35. / 360., 0.70, 0.32, 1.0),
+                hsla(38. / 360., 0.70, 0.84, 1.0),
+            ),
+            Tone::Err => (
+                hsla(0. / 360., 0.70, 0.92, 1.0),
+                hsla(0. / 360., 0.60, 0.38, 1.0),
+                hsla(0. / 360., 0.65, 0.84, 1.0),
+            ),
+            Tone::Info => (
+                hsla(199. / 360., 0.70, 0.90, 1.0),
+                hsla(201. / 360., 0.60, 0.34, 1.0),
+                hsla(199. / 360., 0.65, 0.82, 1.0),
+            ),
+            Tone::Accent => (
+                hsla(20. / 360., 0.80, 0.92, 1.0),
+                hsla(20. / 360., 0.70, 0.34, 1.0),
+                hsla(20. / 360., 0.75, 0.84, 1.0),
+            ),
+            Tone::Neutral => (
+                hsla(225. / 360., 0.45, 0.92, 1.0),
+                hsla(225. / 360., 0.40, 0.32, 1.0),
+                hsla(225. / 360., 0.40, 0.84, 1.0),
+            ),
+        }
     }
 }
 
-pub fn tone_tag(tone: Tone) -> Tag {
-    let (bg, fg, border) = tone_colors(tone);
+pub fn tone_tag(tone: Tone, cx: &App) -> Tag {
+    let (bg, fg, border) = tone_colors(tone, cx);
     Tag::custom(bg, fg, border).small()
 }
 
-/// The bright foreground color of a tone, for use as plain colored text instead
-/// of a full chip with background and border.
-pub fn tone_text_color(tone: Tone) -> Hsla {
-    tone_colors(tone).1
+/// The foreground color of a tone, for use as plain colored text instead of a
+/// full chip with background and border. Tracks the active theme mode so colored
+/// text stays readable in light mode too.
+pub fn tone_text_color(tone: Tone, cx: &App) -> Hsla {
+    tone_colors(tone, cx).1
 }
 
 pub fn status_code_tone(code: u16) -> Tone {

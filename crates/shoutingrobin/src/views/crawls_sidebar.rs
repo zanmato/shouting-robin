@@ -84,7 +84,7 @@ impl Render for CrawlsSidebar {
                     .py_1()
                     .children(self.crawls.iter().map(|crawl| {
                         let is_selected = self.selected_id == Some(crawl.id);
-                        let relative = relative_time(now, crawl.started_at);
+                        let relative = super::relative_time(now, crawl.started_at);
                         let running = crawl.finished_at.is_none();
                         let mode_text = if crawl.render_mode == "chrome" {
                             "Chrome"
@@ -98,12 +98,12 @@ impl Render for CrawlsSidebar {
                             .into_any_element();
 
                         let count_tag = if running {
-                            tone_tag(Tone::Warn)
+                            tone_tag(Tone::Warn, cx)
                                 .rounded_full()
                                 .child(SharedString::from("running"))
                                 .into_any_element()
                         } else {
-                            tone_tag(Tone::Neutral)
+                            tone_tag(Tone::Neutral, cx)
                                 .rounded_full()
                                 .child(SharedString::from(format!("{}", crawl.page_count)))
                                 .into_any_element()
@@ -197,23 +197,4 @@ impl Render for CrawlsSidebar {
                     })),
             )
     }
-}
-
-fn relative_time(now: i64, ts: i64) -> String {
-    let delta = now.saturating_sub(ts);
-    if delta < 60 {
-        return "just now".into();
-    }
-    if delta < 3600 {
-        return format!("{}m ago", delta / 60);
-    }
-    if delta < 86_400 {
-        return format!("{}h ago", delta / 3600);
-    }
-    if delta < 7 * 86_400 {
-        return format!("{}d ago", delta / 86_400);
-    }
-    chrono::DateTime::from_timestamp(ts, 0)
-        .map(|dt| dt.format("%b %-d").to_string())
-        .unwrap_or_else(|| "unknown".into())
 }
