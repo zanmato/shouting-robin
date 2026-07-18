@@ -103,6 +103,7 @@ fn main() {
                     y: px(6.0),
                 }),
             }),
+            app_owns_titlebar_drag: true,
             window_decorations: Some(gpui::WindowDecorations::Client),
             window_min_size: Some(size(px(900.), px(600.))),
             focus: true,
