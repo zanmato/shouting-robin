@@ -35,8 +35,6 @@ impl Render for StatusBar {
             .gap_4()
             .px_3()
             .h(gpui::px(28.))
-            .border_t_1()
-            .border_color(theme.border)
             .bg(theme.background)
             .text_xs()
             .text_color(theme.muted_foreground)

@@ -2,18 +2,30 @@ use gpui::prelude::FluentBuilder;
 use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div,
-    transparent_black,
 };
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
 use gpui_component::{ActiveTheme, IconName, StyledExt as _};
 
+use crate::crawl::RenderMode;
 use crate::storage::CrawlRow;
 use crate::ui::tag::{Tone, tone_tag};
 
 #[derive(Clone, Debug)]
 pub enum CrawlsSidebarEvent {
-    Selected { crawl_id: i64, root_url: String },
-    Deleted { crawl_id: i64, was_selected: bool },
+    Selected {
+        crawl_id: i64,
+        root_url: String,
+    },
+    Deleted {
+        crawl_id: i64,
+        was_selected: bool,
+    },
+    /// Run the same URL again with the settings the crawl was recorded with.
+    Recrawl {
+        crawl_id: i64,
+        root_url: String,
+        render_mode: RenderMode,
+    },
 }
 
 pub struct CrawlsSidebar {
@@ -63,17 +75,14 @@ impl Render for CrawlsSidebar {
             .flex()
             .flex_col()
             .h_full()
-            .bg(theme.background)
             .child(
                 div()
                     .px_3()
                     .py_2()
                     .text_xs()
-                    .font_semibold()
-                    .text_color(theme.muted_foreground)
-                    .border_b_1()
-                    .border_color(theme.border)
-                    .child("HISTORIC CRAWLS"),
+                    .font_bold()
+                    .text_color(theme.primary)
+                    .child("Historic Crawls"),
             )
             .child(
                 div()
@@ -115,14 +124,13 @@ impl Render for CrawlsSidebar {
                             .flex_row()
                             .items_center()
                             .gap_2()
-                            .px_3()
+                            // Inset and round the rows so a selected or hovered
+                            // first/last row can't square the sidebar card's
+                            // corners - GPUI's content mask is rectangular.
+                            .mx(gpui::px(4.))
+                            .rounded(theme.radius)
+                            .px_2()
                             .py_2()
-                            .border_l_2()
-                            .border_color(if is_selected {
-                                theme.primary
-                            } else {
-                                transparent_black()
-                            })
                             .when(is_selected, |el| el.bg(theme.accent))
                             .text_color(theme.foreground)
                             .cursor_pointer()
@@ -172,13 +180,36 @@ impl Render for CrawlsSidebar {
                             .context_menu({
                                 let crawl_id = crawl.id;
                                 let was_selected = is_selected;
+                                let crawl_root = crawl.root_url.clone();
+                                let render_mode = if crawl.render_mode == "chrome" {
+                                    RenderMode::Chrome
+                                } else {
+                                    RenderMode::Http
+                                };
                                 let sidebar = sidebar.clone();
                                 move |menu, window, _cx| {
+                                    let sidebar_for_delete = sidebar.clone();
+                                    let crawl_root = crawl_root.clone();
                                     menu.item(
+                                        PopupMenuItem::new("Recrawl")
+                                            .icon(crate::ui::icon::Icon::RefreshCw)
+                                            .on_click(window.listener_for(
+                                                &sidebar,
+                                                move |_this, _event, _window, cx| {
+                                                    cx.emit(CrawlsSidebarEvent::Recrawl {
+                                                        crawl_id,
+                                                        root_url: crawl_root.clone(),
+                                                        render_mode,
+                                                    });
+                                                },
+                                            )),
+                                    )
+                                    .separator()
+                                    .item(
                                         PopupMenuItem::new("Delete")
                                             .icon(IconName::Delete)
                                             .on_click(window.listener_for(
-                                                &sidebar,
+                                                &sidebar_for_delete,
                                                 move |this, _event, _window, cx| {
                                                     this.crawls.retain(|c| c.id != crawl_id);
                                                     if was_selected {

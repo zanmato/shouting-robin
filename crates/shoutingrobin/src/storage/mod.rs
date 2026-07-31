@@ -145,16 +145,52 @@ pub async fn create_crawl(
     pool: &SqlitePool,
     root_url: &str,
     render_mode: &str,
+    config: &crate::crawl::CrawlConfig,
 ) -> Result<i64, sqlx::Error> {
     let now = chrono::Utc::now().timestamp();
-    let result =
-        sqlx::query("INSERT INTO crawls (root_url, started_at, render_mode) VALUES (?, ?, ?)")
-            .bind(root_url)
-            .bind(now)
-            .bind(render_mode)
-            .execute(pool)
-            .await?;
+    // Stored so a crawl can be replayed later with the settings it actually ran
+    // with, rather than whatever the settings happen to be at replay time.
+    let config_json = match serde_json::to_string(config) {
+        Ok(json) => Some(json),
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to serialize crawl config, recrawl will fall back to current settings");
+            None
+        }
+    };
+    let result = sqlx::query(
+        "INSERT INTO crawls (root_url, started_at, render_mode, config_json) VALUES (?, ?, ?, ?)",
+    )
+    .bind(root_url)
+    .bind(now)
+    .bind(render_mode)
+    .bind(config_json)
+    .execute(pool)
+    .await?;
     Ok(result.last_insert_rowid())
+}
+
+/// The config a crawl ran with, if it was recorded. Crawls created before
+/// `config_json` was written back have `None` here.
+pub async fn load_crawl_config(
+    pool: &SqlitePool,
+    crawl_id: i64,
+) -> Result<Option<crate::crawl::CrawlConfig>, sqlx::Error> {
+    let row = sqlx::query_as::<_, (Option<String>,)>("SELECT config_json FROM crawls WHERE id = ?")
+        .bind(crawl_id)
+        .fetch_optional(pool)
+        .await?;
+
+    let Some((Some(json),)) = row else {
+        return Ok(None);
+    };
+
+    match serde_json::from_str(&json) {
+        Ok(config) => Ok(Some(config)),
+        Err(e) => {
+            tracing::warn!(error=%e, crawl_id, "stored crawl config could not be parsed");
+            Ok(None)
+        }
+    }
 }
 
 pub async fn finish_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {

@@ -13,8 +13,6 @@ use crate::crawl::{CrawlConfig, RenderMode};
 use crate::ui::icon::Icon;
 
 #[derive(Clone, Debug)]
-// Start inherently carries the full crawl config; Stop is empty. The size
-// gap is expected for a low-frequency event emitted once per crawl.
 #[allow(clippy::large_enum_variant)]
 pub enum CrawlBarEvent {
     Start {
@@ -96,7 +94,7 @@ impl CrawlBar {
         }
     }
 
-    fn build_config(&self, cx: &Context<Self>) -> CrawlConfig {
+    pub(crate) fn build_config(&self, cx: &Context<Self>) -> CrawlConfig {
         let user_agent = {
             let val = crate::app_settings::AppSettings::global(cx)
                 .settings
@@ -173,6 +171,45 @@ impl CrawlBar {
         self.default_mode = mode;
         self.running = true;
         cx.emit(CrawlBarEvent::Start { url, mode, config });
+        cx.notify();
+    }
+
+    /// Puts the bar into the state a recorded crawl ran with, so a recrawl shows
+    /// what is actually running rather than whatever was last typed. Does not
+    /// emit `Start` - the caller drives the crawl itself.
+    pub fn restore_from_config(
+        &mut self,
+        url: &str,
+        mode: RenderMode,
+        config: &CrawlConfig,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.url_input
+            .update(cx, |state, cx| state.set_value(url, window, cx));
+        self.headers_input.update(cx, |state, cx| {
+            let headers = config
+                .extra_headers
+                .iter()
+                .map(|(name, value)| format!("{name}: {value}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            state.set_value(headers, window, cx)
+        });
+        self.include_input.update(cx, |state, cx| {
+            state.set_value(config.include_patterns.join("\n"), window, cx)
+        });
+        self.exclude_input.update(cx, |state, cx| {
+            state.set_value(config.exclude_patterns.join("\n"), window, cx)
+        });
+        self.list_urls_input.update(cx, |state, cx| {
+            state.set_value(config.seed_urls.join("\n"), window, cx)
+        });
+
+        self.default_mode = mode;
+        self.crawl_subdomains = config.crawl_subdomains;
+        self.list_mode = config.list_mode;
+        self.running = true;
         cx.notify();
     }
 
@@ -289,8 +326,6 @@ impl Render for CrawlBar {
             .px_3()
             .pb_2()
             .pt_1()
-            .border_b_1()
-            .border_color(cx.theme().border)
             .bg(cx.theme().background)
             .child(
                 div()
@@ -411,8 +446,6 @@ impl Render for CrawlBar {
             .id("crawl-bar")
             .flex()
             .flex_col()
-            .border_b_1()
-            .border_color(cx.theme().border)
             .bg(cx.theme().background)
             .child(main_row)
             .when(advanced_open && !running, |el| el.child(advanced_panel))

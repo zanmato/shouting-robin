@@ -1338,7 +1338,6 @@ impl Render for DetailsPanel {
         let muted = theme.muted_foreground;
         let fg = theme.foreground;
         let border = theme.border;
-        let bg = theme.background;
         let panel2 = theme.secondary;
 
         let body = match &self.selected {
@@ -1396,7 +1395,7 @@ impl Render for DetailsPanel {
             .h_full()
             .border_l_1()
             .border_color(border)
-            .bg(bg)
+            .rounded_br(crate::app::PANEL_RADIUS)
             .child(body)
     }
 }

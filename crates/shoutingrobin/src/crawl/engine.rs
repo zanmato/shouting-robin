@@ -76,7 +76,7 @@ impl CrawlEngine {
             RenderMode::Chrome => "chrome",
         };
         let fut = async move {
-            let crawl_id = match storage::create_crawl(&pool, &root_url, mode_str).await {
+            let crawl_id = match storage::create_crawl(&pool, &root_url, mode_str, &config).await {
                 Ok(id) => id,
                 Err(e) => {
                     if let Err(send_err) = tx

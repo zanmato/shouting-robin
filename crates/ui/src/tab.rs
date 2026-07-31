@@ -1,7 +1,4 @@
-// Vendored from gpui-component (commit 41f5142) and patched: removed
-// `flex_wrap()` from `Tab::render` so prefix elements no longer wrap onto
-// a separate row when the TabBar overflows horizontally.
-
+// Vendored from gpui-component
 use std::rc::Rc;
 
 use gpui::prelude::FluentBuilder as _;
@@ -619,17 +616,21 @@ impl RenderOnce for Tab {
             .border_b(tab_style.borders.bottom)
             .border_color(tab_style.border_color)
             .rounded(radius)
-            .when(!self.selected && !self.disabled, |this| {
-                this.hover(|this| {
-                    this.text_color(hover_style.fg)
-                        .bg(hover_style.bg)
-                        .border_l(hover_style.borders.left)
-                        .border_r(hover_style.borders.right)
-                        .border_t(hover_style.borders.top)
-                        .border_b(hover_style.borders.bottom)
-                        .border_color(hover_style.border_color)
-                        .rounded(radius)
-                })
+            .hover(|this| {
+                // Always register the hover style: GPUI only refreshes the cached
+                // hover state while one is present. If the selected tab skipped it,
+                // the stale state would keep hover colors after unselecting.
+                if self.selected || self.disabled {
+                    return this;
+                }
+                this.text_color(hover_style.fg)
+                    .bg(hover_style.bg)
+                    .border_l(hover_style.borders.left)
+                    .border_r(hover_style.borders.right)
+                    .border_t(hover_style.borders.top)
+                    .border_b(hover_style.borders.bottom)
+                    .border_color(hover_style.border_color)
+                    .rounded(radius)
             })
             .when_some(self.prefix, |this, prefix| this.child(prefix))
             .child(
@@ -663,7 +664,7 @@ impl RenderOnce for Tab {
                     })
                     .bg(tab_style.inner_bg)
                     .rounded(inner_radius)
-                    .when(tab_style.shadow, |this| this.shadow_xs())
+                    .when(tab_style.shadow, |this| this.shadow_sm())
                     .hover(|this| this.bg(hover_style.inner_bg).rounded(inner_radius)),
             )
             .when_some(self.suffix, |this, suffix| this.child(suffix))
@@ -733,7 +734,7 @@ impl TabBar {
         let id = id.into();
         Self {
             id: id.clone(),
-            base: div().id(id).px(px(-1.)),
+            base: div().id(id),
             style: StyleRefinement::default(),
             children: SmallVec::new(),
             scroll_handle: None,
@@ -874,7 +875,7 @@ impl TabBar {
                         .h(inner_height)
                         .bg(cx.theme().background)
                         .rounded(inner_radius)
-                        .shadow_xs(),
+                        .shadow_sm(),
                 ),
                 TabVariant::Pill => el
                     .flex()
@@ -1056,6 +1057,10 @@ impl RenderOnce for TabBar {
             .relative()
             .flex()
             .items_center()
+            // Pull `Tab`'s own 1px border out of view at the bar's edges. The
+            // other variants paint their own background, and shifting that
+            // outwards would let it escape a rounded container.
+            .when(self.variant == TabVariant::Tab, |this| this.px(px(-1.)))
             .bg(bg)
             .text_color(cx.theme().tab_foreground)
             .when(
@@ -1136,7 +1141,7 @@ impl RenderOnce for TabBar {
                     Button::new("more")
                         .xsmall()
                         .ghost()
-                        .icon(IconName::ChevronDown)
+                        .dropdown_caret(true)
                         .dropdown_menu(move |mut this, _, _| {
                             this = this.scrollable(true);
                             for (ix, (label, icon, disabled)) in item_metas.iter().enumerate() {

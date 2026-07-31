@@ -60,6 +60,7 @@ pub enum Icon {
     Tags,
     Percent,
     Stop,
+    RefreshCw,
 }
 
 impl Icon {
@@ -122,6 +123,7 @@ impl Icon {
             Tags => "tags",
             Percent => "percent",
             Stop => "square-stop",
+            RefreshCw => "refresh-cw",
         }
     }
 }

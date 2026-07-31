@@ -522,7 +522,9 @@ impl TableDelegate for ResultsDelegate {
     ) -> impl IntoElement {
         let column = self.column(col_ix, cx);
         div()
+            .flex()
             .size_full()
+            .items_center()
             .text_xs()
             .text_color(cx.theme().muted_foreground)
             .child(column.name)
@@ -541,7 +543,10 @@ impl TableDelegate for ResultsDelegate {
             .map(|c| c.key.clone())
             .unwrap_or_default();
         let mono = is_mono_column(&key);
-        let mut cell = div().flex().items_center().text_xs();
+        // `h_full` is what makes `items_center` do anything: the table's own td
+        // wrapper is the element that carries the row height, so without it this
+        // div shrinks to its content and everything sits at the top of the cell.
+        let mut cell = div().flex().h_full().items_center().text_xs();
         if mono {
             cell = cell.font_family(cx.theme().mono_font_family.clone());
         }

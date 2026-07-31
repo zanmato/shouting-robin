@@ -11,11 +11,14 @@ use gpui_component::{
     ActiveTheme, Icon as UiIcon, Root, Sizable as _, TitleBar, WindowExt,
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
+    h_flex,
     menu::AppMenuBar,
     notification::{Notification, NotificationType},
-    resizable::{ResizableState, h_resizable, resizable_panel},
+    v_flex,
 };
 use shoutingrobin_ui::{Tab, TabBar};
+
+use crate::ui::resizable::{ResizableState, h_resizable, resizable_panel};
 
 use crate::crawl::{CrawlEngine, CrawlEvent, RenderMode};
 use crate::settings::view::SettingsView;
@@ -28,6 +31,22 @@ use crate::views::{
 };
 
 actions!(shoutingrobin_app, [Quit, OpenSettings]);
+
+/// Corner radius of the sidebar and main cards. Deliberately separate from
+/// `theme.radius`, which stays smaller for the controls inside the cards.
+pub(crate) const PANEL_RADIUS: gpui::Pixels = px(8.);
+
+/// Gutter between the cards and the window edges. Half of it sits on each side
+/// of the split, so the gap between the two cards is the same as the outer one.
+const PANEL_GAP: gpui::Pixels = px(6.);
+
+/// Padding inside a segmented trough, around its segments.
+const SEGMENT_TROUGH_PADDING: gpui::Pixels = px(3.);
+
+/// Vertical padding inside a single segment of a segmented trough. Content that
+/// replaces a trough in the same row carries this plus `SEGMENT_TROUGH_PADDING`,
+/// so the row keeps its height and the layout below it doesn't shift.
+const SEGMENT_PADDING_Y: gpui::Pixels = px(2.);
 
 pub struct ShoutingRobinApp {
     focus_handle: FocusHandle,
@@ -83,24 +102,12 @@ impl ShoutingRobinApp {
         );
         subscriptions.push(grid_sub);
 
-        let results_grid_clone = results_grid.clone();
         let status_bar_clone = status_bar.clone();
         let sub = cx.subscribe(
             &crawl_bar,
             move |this, _bar, event: &CrawlBarEvent, cx| match event {
                 CrawlBarEvent::Start { url, mode, config } => {
-                    results_grid_clone.update(cx, |g, cx| g.clear(cx));
-                    this.crawl_bar.update(cx, |bar, cx| {
-                        bar.has_results = false;
-                        cx.notify();
-                    });
-                    status_bar_clone.update(cx, |s, cx| {
-                        s.running = true;
-                        s.crawled = 0;
-                        s.errors = 0;
-                        s.queued = 0;
-                        cx.notify();
-                    });
+                    this.reset_for_new_crawl(cx);
                     this.start_crawl(url.clone(), *mode, config.clone(), cx);
                 }
                 CrawlBarEvent::Stop => {
@@ -116,9 +123,72 @@ impl ShoutingRobinApp {
 
         let sidebar_results_grid = results_grid.clone();
         let sidebar_crawl_bar = crawl_bar.clone();
-        let sidebar_sub = cx.subscribe(
+        let sidebar_sub = cx.subscribe_in(
             &sidebar,
-            move |_this, _sidebar, event: &CrawlsSidebarEvent, cx| match event {
+            window,
+            move |_this, _sidebar, event: &CrawlsSidebarEvent, window, cx| match event {
+                CrawlsSidebarEvent::Recrawl {
+                    crawl_id,
+                    root_url,
+                    render_mode,
+                } => {
+                    let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+                    let crawl_id = *crawl_id;
+                    let root_url = root_url.clone();
+                    let render_mode = *render_mode;
+                    cx.spawn_in(window, async move |this, cx| {
+                        let stored = match crate::storage::load_crawl_config(&pool, crawl_id).await {
+                            Ok(config) => config,
+                            Err(e) => {
+                                tracing::error!(error=%e, crawl_id, "failed to load crawl config");
+                                None
+                            }
+                        };
+
+                        let updated = this.update_in(cx, |this, window, cx| {
+                            let had_stored_config = stored.is_some();
+                            // Crawls recorded before the config was written back
+                            // have nothing to replay, so fall back to whatever the
+                            // crawl bar and settings currently say.
+                            let config = match stored {
+                                Some(config) => config,
+                                None => {
+                                    let current =
+                                        this.crawl_bar.update(cx, |bar, cx| bar.build_config(cx));
+                                    Self::resolve_config(current, cx)
+                                }
+                            };
+
+                            this.crawl_bar.update(cx, |bar, cx| {
+                                bar.restore_from_config(
+                                    &root_url,
+                                    render_mode,
+                                    &config,
+                                    window,
+                                    cx,
+                                );
+                            });
+                            this.reset_for_new_crawl(cx);
+                            this.spawn_crawl(root_url.clone(), render_mode, config, cx);
+
+                            if !had_stored_config {
+                                window.push_notification(
+                                    Notification::new()
+                                        .message(
+                                            "This crawl predates saved settings, using the current ones",
+                                        )
+                                        .with_type(NotificationType::Warning),
+                                    cx,
+                                );
+                            }
+                        });
+
+                        if let Err(e) = updated {
+                            tracing::error!(error=%e, crawl_id, "failed to start recrawl");
+                        }
+                    })
+                    .detach();
+                }
                 CrawlsSidebarEvent::Selected { crawl_id, root_url } => {
                     let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
                     let crawl_id = *crawl_id;
@@ -289,6 +359,8 @@ impl ShoutingRobinApp {
         .detach();
     }
 
+    /// Starts a crawl from the crawl bar, filling in the fields the bar leaves
+    /// unset from the app settings.
     fn start_crawl(
         &mut self,
         url: String,
@@ -296,10 +368,19 @@ impl ShoutingRobinApp {
         config: crate::crawl::CrawlConfig,
         cx: &mut Context<Self>,
     ) {
-        let (tx, rx) = crate::crawl::engine::channel();
-        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        let config = Self::resolve_config(config, cx);
+        self.spawn_crawl(url, mode, config, cx);
+    }
+
+    /// Fills in the config fields the crawl bar leaves at their defaults from the
+    /// app settings. A recrawl skips this: it replays the config the earlier
+    /// crawl was recorded with, which is already fully resolved.
+    fn resolve_config(
+        config: crate::crawl::CrawlConfig,
+        cx: &Context<Self>,
+    ) -> crate::crawl::CrawlConfig {
         let crawl_settings = &crate::app_settings::AppSettings::global(cx).settings.crawl;
-        let config = crate::crawl::CrawlConfig {
+        crate::crawl::CrawlConfig {
             max_pages: if config.max_pages > 0 {
                 config.max_pages
             } else {
@@ -334,7 +415,20 @@ impl ShoutingRobinApp {
                 }
             }),
             ..config
-        };
+        }
+    }
+
+    /// Hands a fully resolved config to the engine and starts pumping its events
+    /// into the UI.
+    fn spawn_crawl(
+        &mut self,
+        url: String,
+        mode: RenderMode,
+        config: crate::crawl::CrawlConfig,
+        cx: &mut Context<Self>,
+    ) {
+        let (tx, rx) = crate::crawl::engine::channel();
+        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
         let (cancel, fut) = {
             let engine = cx.global_mut::<CrawlEngine>();
             engine.start(url, tx, pool, mode, config)
@@ -342,6 +436,27 @@ impl ShoutingRobinApp {
         gpui_tokio::Tokio::spawn(cx, fut).detach();
         self._cancel = Some(cancel);
         self.spawn_event_pump(rx, cx);
+    }
+
+    /// Resets the results, status bar and crawl bar for a crawl that is about to
+    /// start. Shared by the crawl bar's own Start and by Recrawl.
+    fn reset_for_new_crawl(&mut self, cx: &mut Context<Self>) {
+        // Recrawl can be triggered from the context menu while a crawl is still
+        // in flight, and two crawls writing at once would interleave in the grid.
+        // A no-op when nothing is running.
+        self.stop_crawl(cx);
+        self.results_grid.update(cx, |grid, cx| grid.clear(cx));
+        self.crawl_bar.update(cx, |bar, cx| {
+            bar.has_results = false;
+            cx.notify();
+        });
+        self.status_bar.update(cx, |status, cx| {
+            status.running = true;
+            status.crawled = 0;
+            status.errors = 0;
+            status.queued = 0;
+            cx.notify();
+        });
     }
 
     fn stop_crawl(&mut self, cx: &mut Context<Self>) {
@@ -626,8 +741,7 @@ impl Render for ShoutingRobinApp {
             .unwrap_or(0);
 
         let mut tab_bar = TabBar::new("results-tabs")
-            .underline()
-            .pl_2()
+            .segmented()
             .selected_index(active_ix)
             .on_click(cx.listener({
                 let visible_tabs = visible_tabs.clone();
@@ -649,7 +763,14 @@ impl Render for ShoutingRobinApp {
             let tab = *tab;
             let mut t = Tab::new().label(tab.label());
             if let Some(icon) = tab.icon() {
-                t = t.prefix(UiIcon::from(icon).xsmall());
+                // Prefixes are rendered as a sibling of the padded label, so
+                // they need their own inset to line up with it.
+                t = t.prefix(
+                    h_flex()
+                        .items_center()
+                        .pl_2()
+                        .child(UiIcon::from(icon).xsmall()),
+                );
             }
             if let Some(counts) = tab_badges.get(&tab) {
                 let (badge_count, tone) = if counts.errors > 0 {
@@ -662,8 +783,12 @@ impl Render for ShoutingRobinApp {
                     (counts.total, crate::ui::tag::Tone::Neutral)
                 };
                 if badge_count > 0 {
+                    // The suffix is a sibling of the padded label, so the label's
+                    // own 12px right padding is the gap on the badge's left. Pull
+                    // some of that back and spend it on the right instead, so the
+                    // badge isn't flush against the next tab.
                     t = t.suffix(
-                        div().flex().items_center().pl_1().child(
+                        div().flex().items_center().ml(px(-4.)).pr_2().child(
                             crate::ui::tag::tone_tag(tone, cx)
                                 .rounded_full()
                                 .child(SharedString::from(badge_count.to_string())),
@@ -684,20 +809,30 @@ impl Render for ShoutingRobinApp {
             .flex()
             .items_center()
             .justify_between()
-            .px_2()
-            .py_1()
-            .min_h_7()
-            .border_b_1()
-            .border_color(cx.theme().border)
-            .bg(cx.theme().background);
+            .px(PANEL_GAP)
+            .pb(PANEL_GAP)
+            .gap_2();
 
-        let mut filter_left = div().flex().items_center().gap_1();
+        // `flex_1` + `min_w_0` so this side yields space to the export button
+        // instead of overlapping it when the tab list and the baseline note are
+        // both long.
+        let mut filter_left = h_flex().items_center().gap_2().flex_1().min_w_0();
 
         let active_filter_counts = self
             .results_grid
             .update(cx, |grid, cx| grid.active_filter_counts(cx));
 
         if show_issue_filter {
+            // Hand-rolled rather than a segmented `TabBar`, so each filter can
+            // carry its own count badge. The styling deliberately reuses the
+            // tokens `TabVariant::Segmented` uses, so it stays in step with the
+            // real tab bar above it when the theme changes.
+            let mut trough = h_flex()
+                .gap(px(2.))
+                .p(SEGMENT_TROUGH_PADDING)
+                .rounded(cx.theme().radius)
+                .bg(cx.theme().tab_bar_segmented);
+
             for &filter in tab_filters {
                 let is_active = current_filter == filter;
                 let count = active_filter_counts
@@ -705,29 +840,50 @@ impl Render for ShoutingRobinApp {
                     .find(|(f, _)| *f == filter)
                     .map(|(_, c)| *c)
                     .unwrap_or(0);
-                let mut btn = Button::new(SharedString::from(format!("filter-{:?}", filter)))
-                    .label(SharedString::from(filter.label()))
-                    .xsmall()
-                    .when(is_active, |btn| btn.primary())
-                    .when(!is_active, |btn| btn.ghost())
+                let segment = h_flex()
+                    .id(SharedString::from(format!("filter-{:?}", filter)))
+                    .items_center()
+                    .gap_1()
+                    .px_2()
+                    .py(SEGMENT_PADDING_Y)
+                    .rounded(cx.theme().radius)
+                    .text_xs()
+                    .cursor_pointer()
+                    .when(is_active, |el| {
+                        el.bg(cx.theme().background)
+                            .shadow_sm()
+                            .text_color(cx.theme().tab_active_foreground)
+                    })
+                    .when(!is_active, |el| {
+                        el.text_color(cx.theme().tab_foreground)
+                            .hover(|el| el.text_color(cx.theme().tab_active_foreground))
+                    })
+                    .child(SharedString::from(filter.label()))
+                    .when(count > 0, |el| {
+                        el.child(
+                            crate::ui::tag::tone_tag(filter.tone(), cx)
+                                .rounded_full()
+                                .child(SharedString::from(count.to_string())),
+                        )
+                    })
                     .on_click(cx.listener(move |this, _event, _window, cx| {
                         this.issue_filter = filter;
                         this.results_grid.update(cx, |grid, cx| {
                             grid.set_issue_filter(filter, cx);
                         });
                     }));
-                if count > 0 {
-                    btn = btn.child(
-                        crate::ui::tag::tone_tag(filter.tone(), cx)
-                            .rounded_full()
-                            .child(SharedString::from(count.to_string())),
-                    );
-                }
-                filter_left = filter_left.child(btn);
+                trough = trough.child(segment);
             }
+
+            filter_left = filter_left.child(trough);
         } else {
+            // No trough on this tab, so carry the trough's and a segment's
+            // vertical padding here instead, or the row shrinks and everything
+            // below it shifts up when switching tabs.
             filter_left = filter_left.child(
                 div()
+                    .my(SEGMENT_TROUGH_PADDING)
+                    .py(SEGMENT_PADDING_Y)
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
                     .child(format!(
@@ -742,7 +898,8 @@ impl Render for ShoutingRobinApp {
             let now = chrono::Utc::now().timestamp();
             filter_left = filter_left.child(
                 div()
-                    .pl_2()
+                    .min_w_0()
+                    .truncate()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
                     .child(format!(
@@ -758,7 +915,8 @@ impl Render for ShoutingRobinApp {
             filter_bar = filter_bar.child(
                 Button::new("export-csv")
                     .xsmall()
-                    .ghost()
+                    .outline()
+                    .flex_shrink_0()
                     .label("Export CSV")
                     .on_click(cx.listener(|this, _, _, cx| {
                         this.export_csv(cx);
@@ -801,47 +959,89 @@ impl Render for ShoutingRobinApp {
             )
             .child(self.crawl_bar.clone())
             .child(
-                div().flex().flex_1().min_h_0().child(
-                    h_resizable("sidebar-main")
-                        .with_state(&self.sidebar_state)
-                        .child(
-                            resizable_panel()
-                                .size(px(240.))
-                                .size_range(px(180.)..px(400.))
-                                .child(
-                                    div()
-                                        .size_full()
-                                        .overflow_hidden()
-                                        .border_r_1()
-                                        .border_color(cx.theme().border)
-                                        .child(self.sidebar.clone()),
-                                ),
-                        )
-                        .child(
-                            resizable_panel().child(
-                                div()
-                                    .flex()
-                                    .flex_col()
-                                    .size_full()
-                                    .overflow_hidden()
-                                    .child(tab_bar)
-                                    .child(filter_bar)
+                // Inset the cards from the window edges. The top inset is kept
+                // minimal so they sit close under the crawl bar.
+                div()
+                    .flex()
+                    .flex_1()
+                    .w_full()
+                    .min_h_0()
+                    .overflow_hidden()
+                    .px(PANEL_GAP)
+                    // The status bar centres its text in its own 28px height, so
+                    // a full gutter below the cards reads as too much space.
+                    .pb(PANEL_GAP / 2.)
+                    .pt(px(1.))
+                    .child(
+                        h_resizable("sidebar-main")
+                            .with_state(&self.sidebar_state)
+                            // The cards draw their own borders, so the handle
+                            // only needs to stay draggable - see the vendored
+                            // `ui::resizable`.
+                            .invisible_handles()
+                            .child(
+                                resizable_panel()
+                                    .size(px(240.))
+                                    .size_range(px(180.)..px(400.))
                                     .child(
-                                        div()
-                                            .flex()
+                                        div().size_full().pr(PANEL_GAP / 2.).child(
+                                            v_flex()
+                                                .size_full()
+                                                .overflow_hidden()
+                                                .bg(cx.theme().sidebar)
+                                                .rounded(PANEL_RADIUS)
+                                                .border_1()
+                                                .border_color(cx.theme().border)
+                                                .child(self.sidebar.clone()),
+                                        ),
+                                    ),
+                            )
+                            .child(
+                                resizable_panel().child(
+                                    div().size_full().pl(PANEL_GAP / 2.).child(
+                                        v_flex()
                                             .flex_1()
-                                            .min_h_0()
+                                            // Allow this flex item to shrink below
+                                            // its content width, or the tab bar
+                                            // never overflows and scrolls.
+                                            .min_w_0()
+                                            .h_full()
+                                            .overflow_hidden()
+                                            // The main card shares the shell
+                                            // colour, so the 1px border is what
+                                            // makes its rounded outline readable.
+                                            .bg(cx.theme().background)
+                                            .rounded(PANEL_RADIUS)
+                                            .border_1()
+                                            .border_color(cx.theme().border)
+                                            // The segmented trough paints its own
+                                            // background, so inset it rather than
+                                            // letting it square the top corners.
+                                            .child(div().p(PANEL_GAP).min_w_0().child(tab_bar))
+                                            .child(filter_bar)
                                             .child(
                                                 div()
+                                                    .flex()
                                                     .flex_1()
-                                                    .min_w_0()
-                                                    .child(self.results_grid.clone()),
-                                            )
-                                            .child(self.details_panel.clone()),
+                                                    .min_h_0()
+                                                    // One border on the shared
+                                                    // wrapper, so it runs across
+                                                    // the table and the details
+                                                    // panel without a seam.
+                                                    .border_t_1()
+                                                    .border_color(cx.theme().border)
+                                                    .child(
+                                                        div()
+                                                            .flex_1()
+                                                            .min_w_0()
+                                                            .child(self.results_grid.clone()),
+                                                    )
+                                                    .child(self.details_panel.clone()),
+                                            ),
                                     ),
+                                ),
                             ),
-                        ),
-                ),
+                    ),
             )
             .child(self.status_bar.clone())
             .children(sheet_layer)

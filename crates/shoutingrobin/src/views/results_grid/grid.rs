@@ -4,10 +4,7 @@ use gpui::{
     App, AppContext, Context, Entity, EventEmitter, IntoElement, ParentElement, Render, Styled,
     Subscription, Window, div,
 };
-use gpui_component::{
-    ActiveTheme,
-    table::{DataTable, TableEvent, TableState},
-};
+use gpui_component::table::{DataTable, TableEvent, TableState};
 
 use crate::crawl::event::PageRecord;
 use crate::views::ResultTab;
@@ -175,12 +172,12 @@ impl ResultsGrid {
 impl EventEmitter<ResultsGridEvent> for ResultsGrid {}
 
 impl Render for ResultsGrid {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         div()
             .flex_1()
             .size_full()
             .min_h_0()
-            .bg(cx.theme().background)
+            .rounded_bl(crate::app::PANEL_RADIUS)
             .child(DataTable::new(&self.state).bordered(false).stripe(true))
     }
 }
