@@ -438,6 +438,32 @@ pub(super) fn cell_text(
         } else {
             "0".into()
         }),
+        "unique_inlinks" => SharedString::from(record.unique_inlinks_count.to_string()),
+        "unique_outlinks" => {
+            let unique: std::collections::HashSet<&str> = record
+                .outlinks
+                .iter()
+                .map(|link| link.dst_url.as_str())
+                .collect();
+            SharedString::from(unique.len().to_string())
+        }
+        "external_outlinks" => {
+            let count = record
+                .outlinks
+                .iter()
+                .filter(|link| is_external_link(record, link))
+                .count();
+            SharedString::from(count.to_string())
+        }
+        "unique_external_outlinks" => {
+            let unique: std::collections::HashSet<&str> = record
+                .outlinks
+                .iter()
+                .filter(|link| is_external_link(record, link))
+                .map(|link| link.dst_url.as_str())
+                .collect();
+            SharedString::from(unique.len().to_string())
+        }
         "csr_inlinks" => SharedString::from(if record.csr_inlinks_count > 0 {
             record.csr_inlinks_count.to_string()
         } else {
@@ -676,6 +702,12 @@ pub fn ssr_diff_label(record: &PageRecord) -> String {
         }
         _ => "-".into(),
     }
+}
+
+/// A link is external when its destination sits on a different origin from the
+/// page carrying it, matching how the Links tab classifies link rows.
+fn is_external_link(record: &PageRecord, link: &crate::crawl::event::Outlink) -> bool {
+    !is_same_domain(&record.url, &link.dst_url)
 }
 
 #[cfg(test)]

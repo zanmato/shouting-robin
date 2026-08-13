@@ -1,6 +1,7 @@
 mod common;
 
 use common::*;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 #[test]
@@ -523,4 +524,56 @@ fn test_reload_after_finish_carries_post_crawl_analysis() {
         reloaded.iter().any(|p| p.link_score.is_some()),
         "reloaded records should carry the link scores the PageRank pass persisted"
     );
+}
+
+/// Inlink counts must reflect the whole link graph, not just the pages that
+/// happened to be crawled before a given page streamed through.
+#[test]
+fn test_inlink_counts_reflect_the_whole_link_graph() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+
+    let pages = crawl_test_site_reloaded(&root_url);
+
+    server.kill();
+
+    let mut total: HashMap<&str, u32> = HashMap::new();
+    let mut unique: HashMap<&str, HashSet<&str>> = HashMap::new();
+    for page in &pages {
+        for link in &page.outlinks {
+            *total.entry(link.dst_url.as_str()).or_default() += 1;
+            unique
+                .entry(link.dst_url.as_str())
+                .or_default()
+                .insert(page.url.as_str());
+        }
+    }
+
+    let home = find_page(&pages, "/index.html")
+        .or_else(|| find_page(&pages, &format!(":{port}/")))
+        .expect("home page should be crawled");
+    assert!(
+        home.inlinks_count > 1,
+        "home should be linked from more than one page, got {}",
+        home.inlinks_count
+    );
+
+    for page in &pages {
+        let expected_total = total.get(page.url.as_str()).copied().unwrap_or(0);
+        let expected_unique = unique
+            .get(page.url.as_str())
+            .map(|sources| sources.len() as u32)
+            .unwrap_or(0);
+        assert_eq!(
+            page.inlinks_count, expected_total,
+            "inlinks for {} should match the link graph",
+            page.url
+        );
+        assert_eq!(
+            page.unique_inlinks_count, expected_unique,
+            "unique inlinks for {} should count distinct sources",
+            page.url
+        );
+    }
 }

@@ -1116,6 +1116,18 @@ pub async fn load_pages_for_crawl(
         .map(|(url, count)| (url, count as u32))
         .collect();
 
+    let unique_inlink_rows = sqlx::query_as::<_, (String, i64)>(
+        "SELECT dst_url, COUNT(DISTINCT src_url) FROM links WHERE crawl_id = ? GROUP BY dst_url",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+
+    let unique_inlink_counts: std::collections::HashMap<String, u32> = unique_inlink_rows
+        .into_iter()
+        .map(|(url, count)| (url, count as u32))
+        .collect();
+
     let csr_inlink_rows = sqlx::query_as::<_, (String, i64)>(
         "SELECT dst_url, SUM(csr_only) FROM links WHERE crawl_id = ? GROUP BY dst_url",
     )
@@ -1326,6 +1338,7 @@ pub async fn load_pages_for_crawl(
                 let page_sitemap_url = sitemap_by_url.get(&url).cloned();
                 let page_ecommerce = ecom_by_url.remove(&url);
                 let page_inlinks = inlink_counts.get(&url).copied().unwrap_or(0);
+                let page_unique_inlinks = unique_inlink_counts.get(&url).copied().unwrap_or(0);
                 let page_csr_inlinks = csr_inlink_counts.get(&url).copied().unwrap_or(0);
                 let page_sd_items = sd_items_by_url.remove(&url).unwrap_or_default();
                 let page_a11y_issues = a11y_by_url.remove(&url).unwrap_or_default();
@@ -1388,6 +1401,7 @@ pub async fn load_pages_for_crawl(
                     a11y_warnings: a11y_warnings as u32,
                     a11y_issues: page_a11y_issues,
                     inlinks_count: page_inlinks,
+                    unique_inlinks_count: page_unique_inlinks,
                     csr_inlinks_count: page_csr_inlinks,
                     sd_items: page_sd_items,
                     sd_issues: page_sd_issues,

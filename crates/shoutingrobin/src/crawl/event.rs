@@ -60,6 +60,9 @@ pub struct PageRecord {
     pub ecommerce: Option<EcommerceAudit>,
     pub outlinks: Vec<Outlink>,
     pub inlinks_count: u32,
+    /// Number of distinct source URLs linking here. A page linking to this one
+    /// three times counts as three inlinks but one unique inlink.
+    pub unique_inlinks_count: u32,
     pub csr_inlinks_count: u32,
     pub a11y_errors: u32,
     pub a11y_warnings: u32,

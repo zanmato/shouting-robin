@@ -281,8 +281,11 @@ impl CrawlEngine {
             let pump = tokio::spawn(async move {
                 let mut subscribe_guard = subscribe_guard;
                 let mut total: u64 = 0;
-                let mut inlink_counts: std::collections::HashMap<String, (u32, u32)> =
-                    std::collections::HashMap::new();
+                // dst_url -> (total inlinks, csr-only inlinks, distinct source URLs)
+                let mut inlink_counts: std::collections::HashMap<
+                    String,
+                    (u32, u32, std::collections::HashSet<String>),
+                > = std::collections::HashMap::new();
                 // Resource URLs already emitted as their own rows. The same
                 // asset (a shared stylesheet, say) shows up on most pages, so
                 // we record each one once.
@@ -485,15 +488,27 @@ impl CrawlEngine {
                         tracing::warn!(error=%e, url=%record.url, "failed to persist page");
                     }
                     for link in &record.outlinks {
-                        let entry = inlink_counts.entry(link.dst_url.clone()).or_insert((0, 0));
+                        let entry = inlink_counts.entry(link.dst_url.clone()).or_insert((
+                            0,
+                            0,
+                            std::collections::HashSet::new(),
+                        ));
                         entry.0 += 1;
                         if link.csr_only {
                             entry.1 += 1;
                         }
+                        entry.2.insert(record.url.clone());
                     }
-                    if let Some((in_count, csr_in_count)) = inlink_counts.get(&record.url) {
+                    // Only pages crawled so far have contributed their links, so
+                    // this is a lower bound that grows as the crawl proceeds. It
+                    // exists to give the live grid a non-zero figure; the real
+                    // counts come from `load_pages_for_crawl`, which aggregates
+                    // the whole `links` table once the crawl finishes.
+                    if let Some((in_count, csr_in_count, sources)) = inlink_counts.get(&record.url)
+                    {
                         record.inlinks_count = *in_count;
                         record.csr_inlinks_count = *csr_in_count;
+                        record.unique_inlinks_count = sources.len() as u32;
                     }
                     tracing::info!(
                         total,
