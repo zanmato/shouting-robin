@@ -159,6 +159,31 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Hreflang Non-Canonical Targets" => {
             Some((ResultTab::Hreflang, IssueFilter::HreflangNonCanonical))
         }
+        "Page Title Below 30 Characters" => Some((ResultTab::PageTitles, IssueFilter::UnderLength)),
+        "Page Title Below 200 Pixels" => {
+            Some((ResultTab::PageTitles, IssueFilter::UnderPixelWidth))
+        }
+        "Meta Description Below 70 Characters" => {
+            Some((ResultTab::MetaDesc, IssueFilter::UnderLength))
+        }
+        "Meta Description Below 400 Pixels" => {
+            Some((ResultTab::MetaDesc, IssueFilter::UnderPixelWidth))
+        }
+        "Missing H2" => Some((ResultTab::H2, IssueFilter::Missing)),
+        "Multiple H1" => Some((ResultTab::H1, IssueFilter::Multiple)),
+        "Canonicalised" => Some((ResultTab::Canonicals, IssueFilter::Canonicalised)),
+        "Images Missing Alt Attribute" => {
+            Some((ResultTab::Images, IssueFilter::MissingAltAttribute))
+        }
+        "Images Missing Size Attributes" => {
+            Some((ResultTab::Images, IssueFilter::MissingSizeAttributes))
+        }
+        "URLs with Parameters" => Some((ResultTab::Url, IssueFilter::UrlParameters)),
+        "Missing X-Frame-Options" => Some((ResultTab::Security, IssueFilter::MissingFrameGuard)),
+        "Missing X-Content-Type-Options" => {
+            Some((ResultTab::Security, IssueFilter::MissingContentTypeOptions))
+        }
+        "Missing Content-Security-Policy" => Some((ResultTab::Security, IssueFilter::MissingCsp)),
         _ => None,
     }
 }
@@ -697,6 +722,20 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
+    // Rules whose predicate already exists as a tab sub-filter. Counting them
+    // through the filter itself means the headline figure and the rows you land
+    // on after clicking through are produced by the same code, so they cannot
+    // drift the way two hand-written copies of a predicate do.
+    for rule in FILTER_DERIVED_RULES {
+        let denominator = match rule.denominator {
+            Denominator::Documents => doc_total,
+            Denominator::InternalUrls => total,
+        };
+        if let Some(entry) = filter_derived_entry(pages, rule, denominator) {
+            entries.push(entry);
+        }
+    }
+
     entries.sort_by(|a, b| match a.issue_type.cmp(&b.issue_type) {
         std::cmp::Ordering::Equal => match a.priority.cmp(&b.priority) {
             std::cmp::Ordering::Equal => b.count.cmp(&a.count),
@@ -706,6 +745,200 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     });
 
     entries
+}
+
+/// Which population a filter-derived rule's percentage is a share of.
+#[derive(Clone, Copy)]
+enum Denominator {
+    /// Pages eligible for on-page content issues, the denominator every
+    /// document-derived rule above uses.
+    Documents,
+    /// Every internal URL, including subresources, for rules that apply to
+    /// assets as much as to pages (URL shape, response headers).
+    InternalUrls,
+}
+
+struct FilterDerivedRule {
+    name: &'static str,
+    tab: ResultTab,
+    filter: IssueFilter,
+    issue_type: IssueType,
+    priority: IssuePriority,
+    denominator: Denominator,
+    description: &'static str,
+    hint: &'static str,
+}
+
+/// Overview rules that are a straight promotion of an existing tab sub-filter.
+/// Adding one here also needs a line in `overview_issue_target` so the row stays
+/// clickable; `every_filter_derived_rule_has_a_click_through_target` enforces it.
+static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
+    FilterDerivedRule {
+        name: "Page Title Below 30 Characters",
+        tab: ResultTab::PageTitles,
+        filter: IssueFilter::UnderLength,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Titles short enough to leave SERP space unused.",
+        hint: "Work the page's primary keyword and a qualifier into the title.",
+    },
+    FilterDerivedRule {
+        name: "Page Title Below 200 Pixels",
+        tab: ResultTab::PageTitles,
+        filter: IssueFilter::UnderPixelWidth,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Titles that render narrower than 200 pixels in search results.",
+        hint: "Lengthen the title; Google renders roughly 580 pixels of it.",
+    },
+    FilterDerivedRule {
+        name: "Meta Description Below 70 Characters",
+        tab: ResultTab::MetaDesc,
+        filter: IssueFilter::UnderLength,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Descriptions short enough to leave SERP space unused.",
+        hint: "Describe the page in 70 to 155 characters, with a reason to click.",
+    },
+    FilterDerivedRule {
+        name: "Meta Description Below 400 Pixels",
+        tab: ResultTab::MetaDesc,
+        filter: IssueFilter::UnderPixelWidth,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Descriptions that render narrower than 400 pixels in search results.",
+        hint: "Lengthen the description; Google renders roughly 970 pixels of it.",
+    },
+    FilterDerivedRule {
+        name: "Missing H2",
+        tab: ResultTab::H2,
+        filter: IssueFilter::Missing,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages with no H2 subheading.",
+        hint: "Break long pages into sections with descriptive H2 headings.",
+    },
+    FilterDerivedRule {
+        name: "Multiple H1",
+        tab: ResultTab::H1,
+        filter: IssueFilter::Multiple,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages with more than one H1 heading.",
+        hint: "Keep one H1 per page for the primary topic and demote the rest to H2.",
+    },
+    FilterDerivedRule {
+        name: "Canonicalised",
+        tab: ResultTab::Canonicals,
+        filter: IssueFilter::Canonicalised,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages whose canonical points at a different URL, keeping them out of \
+                      the index.",
+        hint: "Confirm each is deliberate. A canonical pointing at the wrong URL silently \
+               removes the page from search.",
+    },
+    FilterDerivedRule {
+        name: "Images Missing Alt Attribute",
+        tab: ResultTab::Images,
+        filter: IssueFilter::MissingAltAttribute,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages carrying an image with no alt attribute at all.",
+        hint: "Add alt to every image; use alt=\"\" for purely decorative ones.",
+    },
+    FilterDerivedRule {
+        name: "Images Missing Size Attributes",
+        tab: ResultTab::Images,
+        filter: IssueFilter::MissingSizeAttributes,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages carrying an image without width and height attributes.",
+        hint: "Set width and height so the browser reserves space, which avoids layout shift.",
+    },
+    FilterDerivedRule {
+        name: "URLs with Parameters",
+        tab: ResultTab::Url,
+        filter: IssueFilter::UrlParameters,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::InternalUrls,
+        description: "URLs carrying a query string.",
+        hint: "Parameterised URLs multiply into near-duplicates. Canonicalise them to the \
+               clean URL.",
+    },
+    FilterDerivedRule {
+        name: "Uppercase URLs",
+        tab: ResultTab::Url,
+        filter: IssueFilter::UrlUppercase,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::InternalUrls,
+        description: "URLs containing uppercase characters.",
+        hint: "Servers usually treat /Page and /page as different URLs. Standardise on \
+               lowercase and redirect the rest.",
+    },
+    FilterDerivedRule {
+        name: "Missing X-Frame-Options",
+        tab: ResultTab::Security,
+        filter: IssueFilter::MissingFrameGuard,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::InternalUrls,
+        description: "URLs missing both X-Frame-Options and a CSP frame-ancestors directive.",
+        hint: "Send X-Frame-Options or frame-ancestors to prevent clickjacking.",
+    },
+    FilterDerivedRule {
+        name: "Missing X-Content-Type-Options",
+        tab: ResultTab::Security,
+        filter: IssueFilter::MissingContentTypeOptions,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::InternalUrls,
+        description: "URLs missing the X-Content-Type-Options header.",
+        hint: "Send X-Content-Type-Options: nosniff so browsers honour the declared type.",
+    },
+    FilterDerivedRule {
+        name: "Missing Content-Security-Policy",
+        tab: ResultTab::Security,
+        filter: IssueFilter::MissingCsp,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::InternalUrls,
+        description: "URLs missing a Content-Security-Policy header.",
+        hint: "Add a policy restricting where scripts, styles and frames may load from.",
+    },
+];
+
+fn filter_derived_entry(
+    pages: &[PageRecord],
+    rule: &FilterDerivedRule,
+    denominator: f32,
+) -> Option<IssueEntry> {
+    let occurrence_counts = super::columns::build_occurrence_counts(rule.tab, pages);
+    let count =
+        super::filter::filter_for_tab(rule.tab, rule.filter, pages, &occurrence_counts).len();
+    if count == 0 {
+        return None;
+    }
+    Some(IssueEntry {
+        name: rule.name.into(),
+        issue_type: rule.issue_type,
+        priority: rule.priority,
+        count,
+        pct: count as f32 / denominator * 100.0,
+        description: rule.description.into(),
+        hint: rule.hint.into(),
+    })
 }
 
 /// Compares the loaded crawl's internal pages against a baseline crawl, keyed by
@@ -1082,5 +1315,58 @@ mod overview_denominator_tests {
         for entry in build_issues_entries(&pages) {
             assert!(entry.pct <= 100.0, "{} reported {}%", entry.name, entry.pct);
         }
+    }
+}
+
+#[cfg(test)]
+mod filter_derived_rule_tests {
+    use super::*;
+
+    #[test]
+    fn every_filter_derived_rule_has_a_click_through_target() {
+        for rule in FILTER_DERIVED_RULES {
+            let target = overview_issue_target(rule.name);
+            assert_eq!(
+                target,
+                Some((rule.tab, rule.filter)),
+                "{} lands on {target:?} instead of its own filter",
+                rule.name
+            );
+        }
+    }
+
+    #[test]
+    fn rule_names_are_unique() {
+        let mut names: Vec<&str> = FILTER_DERIVED_RULES.iter().map(|r| r.name).collect();
+        names.sort_unstable();
+        let count = names.len();
+        names.dedup();
+        assert_eq!(names.len(), count, "duplicate rule name");
+    }
+
+    #[test]
+    fn a_rule_with_no_matches_is_not_listed() {
+        let clean = PageRecord {
+            url: "https://a.test/".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            title: Some("A perfectly ordinary page title of adequate length".into()),
+            meta_description: Some(
+                "A meta description with enough characters in it to clear the lower bound \
+                 comfortably."
+                    .into(),
+            ),
+            h1: Some("Heading".into()),
+            h2: Some("Subheading".into()),
+            h1_count: 1,
+            word_count: Some(500),
+            ..Default::default()
+        };
+        let entries = build_issues_entries(&[clean]);
+        assert!(
+            !entries.iter().any(|e| e.name == "Missing H2"),
+            "a zero count must not produce a row"
+        );
     }
 }

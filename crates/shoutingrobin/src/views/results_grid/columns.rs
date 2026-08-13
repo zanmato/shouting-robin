@@ -286,20 +286,32 @@ pub(super) fn char_length(text: &str) -> usize {
     text.chars().count()
 }
 
+/// The (minimum, maximum) sensible character count per tab. The minimums are
+/// the point below which a snippet leaves search-result space unused; the
+/// maximums the point where it starts being truncated.
+///
+/// The meta description minimum is 70 rather than the 50 we used before: 50
+/// characters is around a third of the space a description is given, so pages
+/// well short of a usable snippet were passing.
 pub(super) fn length_thresholds(tab: ResultTab) -> Option<(usize, usize)> {
     match tab {
         ResultTab::PageTitles => Some((30, 60)),
-        ResultTab::MetaDesc => Some((50, 160)),
+        ResultTab::MetaDesc => Some((70, 160)),
         ResultTab::H1 => Some((1, 70)),
         ResultTab::H2 => Some((1, 70)),
         _ => None,
     }
 }
 
+/// The same, in rendered pixels, which is what search engines actually truncate
+/// on. See `crawl::font_metrics` for how the widths are measured.
+///
+/// The meta description minimum is 400 rather than 200: at the 14px description
+/// size 200px is barely two words, which no page would ever fall below.
 pub(super) fn pixel_width_thresholds(tab: ResultTab) -> Option<(u32, u32)> {
     match tab {
         ResultTab::PageTitles => Some((200, 580)),
-        ResultTab::MetaDesc => Some((200, 970)),
+        ResultTab::MetaDesc => Some((400, 970)),
         _ => None,
     }
 }
