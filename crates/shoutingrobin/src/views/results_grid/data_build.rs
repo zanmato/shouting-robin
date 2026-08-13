@@ -397,10 +397,19 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let missing_alt: usize = documents
+    // Counted in pages, not image instances. Every other row in this table is a
+    // count of pages over the page total, and a row that silently switched to
+    // images over the image total made the percentage column impossible to read
+    // across rows: 4 images out of 1865 showed as 0.2% next to page percentages.
+    // The drill-down still lists the offending images, as it does for the
+    // accessibility rules.
+    let missing_alt = documents
         .iter()
-        .flat_map(|p| p.images.iter())
-        .filter(|img| !img.has_alt_attr || img.alt.as_deref().is_none_or(|a| a.is_empty()))
+        .filter(|p| {
+            p.images
+                .iter()
+                .any(|img| !img.has_alt_attr || img.alt.as_deref().is_none_or(|a| a.is_empty()))
+        })
         .count();
     if missing_alt > 0 {
         entries.push(IssueEntry {
@@ -408,14 +417,9 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::Medium,
             count: missing_alt,
-            pct: missing_alt as f32
-                / documents
-                    .iter()
-                    .map(|p| p.images.len())
-                    .sum::<usize>()
-                    .max(1) as f32
-                * 100.0,
-            description: "Images without alt text or with an empty alt attribute.".into(),
+            pct: missing_alt as f32 / doc_total * 100.0,
+            description: "Pages carrying an image without alt text or with an empty alt attribute."
+                .into(),
             hint: "Add descriptive alt text to every meaningful image.".into(),
         });
     }
@@ -538,27 +542,26 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
+    // Pages, not individual violations, for the same reason as the alt-text rule
+    // above: a tally of violations over a tally of violations answers a
+    // different question from every other percentage in this table, and could
+    // read 100% on a site with one bad page.
     let a11y_critical = documents
         .iter()
-        .flat_map(|p| p.a11y_issues.iter())
-        .filter(|i| matches!(i.impact.as_str(), "critical" | "serious"))
+        .filter(|p| {
+            p.a11y_issues
+                .iter()
+                .any(|i| matches!(i.impact.as_str(), "critical" | "serious"))
+        })
         .count();
     if a11y_critical > 0 {
-        // count is a tally of individual violations, not pages, so the
-        // percentage must be relative to the total number of a11y issues
-        // (as with "Images Missing Alt Text"), otherwise it can exceed 100%.
-        let a11y_total = documents
-            .iter()
-            .map(|p| p.a11y_issues.len())
-            .sum::<usize>()
-            .max(1) as f32;
         entries.push(IssueEntry {
             name: "Accessibility Critical Issues".into(),
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: a11y_critical,
-            pct: a11y_critical as f32 / a11y_total * 100.0,
-            description: "Critical or serious accessibility violations.".into(),
+            pct: a11y_critical as f32 / doc_total * 100.0,
+            description: "Pages with critical or serious accessibility violations.".into(),
             hint: "Fix missing labels, ARIA roles, color contrast, and heading hierarchy.".into(),
         });
     }
@@ -994,5 +997,90 @@ mod tests {
         let baseline = vec![page("https://a.test/keep", Some("Heading"))];
         let current = vec![page("https://a.test/keep", Some("Heading"))];
         assert!(build_change_entries(&current, &baseline).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod overview_denominator_tests {
+    use super::*;
+    use crate::crawl::event::{A11yIssue, ImageRef};
+
+    fn document(url: &str) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            title: Some(format!("Title for {url}")),
+            meta_description: Some(format!("Meta description for {url}, long enough to pass.")),
+            h1: Some(format!("H1 for {url}")),
+            word_count: Some(500),
+            ..Default::default()
+        }
+    }
+
+    fn image_without_alt(src: &str) -> ImageRef {
+        ImageRef {
+            src: src.into(),
+            alt: None,
+            width: Some(10),
+            height: Some(10),
+            has_alt_attr: false,
+        }
+    }
+
+    fn critical_issue(rule: &str) -> A11yIssue {
+        A11yIssue {
+            rule: rule.into(),
+            impact: "critical".into(),
+            target: None,
+            html: None,
+        }
+    }
+
+    fn entry<'a>(entries: &'a [IssueEntry], name: &str) -> &'a IssueEntry {
+        entries
+            .iter()
+            .find(|e| e.name == name)
+            .unwrap_or_else(|| panic!("no {name} entry in {:?}", entries.iter().map(|e| &e.name)))
+    }
+
+    /// One page carrying many offending images or violations must not report a
+    /// count or a percentage in those units: the whole table is pages over the
+    /// page total, and instance tallies made the percentage column unreadable
+    /// across rows.
+    #[test]
+    fn instance_derived_rules_are_counted_in_pages() {
+        let mut offender = document("https://a.test/gallery");
+        offender.images = vec![
+            image_without_alt("/one.png"),
+            image_without_alt("/two.png"),
+            image_without_alt("/three.png"),
+        ];
+        offender.a11y_issues = vec![critical_issue("image-alt"), critical_issue("label")];
+        let pages = vec![offender, document("https://a.test/clean")];
+
+        let entries = build_issues_entries(&pages);
+        let alt = entry(&entries, "Images Missing Alt Text");
+        assert_eq!(alt.count, 1, "one page, not three images");
+        assert!((alt.pct - 50.0).abs() < 0.01, "pct was {}", alt.pct);
+
+        let a11y = entry(&entries, "Accessibility Critical Issues");
+        assert_eq!(a11y.count, 1, "one page, not two violations");
+        assert!((a11y.pct - 50.0).abs() < 0.01, "pct was {}", a11y.pct);
+    }
+
+    #[test]
+    fn no_overview_percentage_can_exceed_one_hundred() {
+        let mut offender = document("https://a.test/gallery");
+        offender.images = (0..40)
+            .map(|index| image_without_alt(&format!("/{index}.png")))
+            .collect();
+        offender.a11y_issues = (0..40).map(|_| critical_issue("image-alt")).collect();
+        let pages = vec![offender];
+
+        for entry in build_issues_entries(&pages) {
+            assert!(entry.pct <= 100.0, "{} reported {}%", entry.name, entry.pct);
+        }
     }
 }
