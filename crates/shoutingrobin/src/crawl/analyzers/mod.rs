@@ -9,6 +9,9 @@ use scraper::{Html, Selector};
 use crate::crawl::event::{
     EcommerceAudit, ImageRef, Outlink, PageRecord, SdFormat, SdIssue, SdItem, SdSeverity,
 };
+use crate::crawl::font_metrics::{
+    META_DESCRIPTION_FONT_SIZE_PX, TITLE_FONT_SIZE_PX, text_pixel_width,
+};
 
 pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str) {
     let doc = Html::parse_document(html);
@@ -47,8 +50,14 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     record.h1_count = count_elements(&doc, "h1");
     record.h2_count = count_elements(&doc, "h2");
 
-    record.title_pixel_width = record.title.as_ref().map(|t| pixel_width(t));
-    record.meta_description_pixel_width = record.meta_description.as_ref().map(|d| pixel_width(d));
+    record.title_pixel_width = record
+        .title
+        .as_ref()
+        .map(|t| text_pixel_width(t, TITLE_FONT_SIZE_PX));
+    record.meta_description_pixel_width = record
+        .meta_description
+        .as_ref()
+        .map(|d| text_pixel_width(d, META_DESCRIPTION_FONT_SIZE_PX));
 
     extract_perf_metrics(&doc, record);
     extract_hreflang(&doc, record);
@@ -552,28 +561,6 @@ fn select_nth_attr(doc: &Html, selector: &str, attr: &str, index: usize) -> Opti
         .nth(index)
         .and_then(|el| el.value().attr(attr))
         .map(|s| s.trim().to_string())
-}
-
-fn pixel_width(text: &str) -> u32 {
-    let mut width: u32 = 0;
-    for ch in text.chars() {
-        width += char_pixel_width(ch);
-    }
-    width
-}
-
-fn char_pixel_width(ch: char) -> u32 {
-    match ch {
-        'M' | 'W' | 'm' | 'w' | '@' | 'G' | 'O' | 'Q' => 10,
-        'A' | 'B' | 'C' | 'D' | 'H' | 'K' | 'N' | 'R' | 'S' | 'U' | 'V' | 'X' | 'Y' | 'Z' | 'a'
-        | 'b' | 'c' | 'd' | 'e' | 'g' | 'h' | 'k' | 'n' | 'o' | 'p' | 'q' | 'r' | 's' | 'u'
-        | 'v' | 'x' | 'y' | 'z' | '0' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '&'
-        | '#' | '%' | '?' | '~' => 8,
-        'I' | 'J' | 'j' | 'l' | 'i' | 'f' | 't' | '1' | '.' | ',' | ':' | ';' | '!' | '|'
-        | '\'' | '"' | '(' | ')' | '{' | '}' | '[' | ']' => 4,
-        ' ' => 4,
-        _ => 8,
-    }
 }
 
 fn extract_body_text(doc: &Html) -> String {

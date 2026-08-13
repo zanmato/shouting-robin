@@ -1,6 +1,7 @@
 pub mod analyzers;
 pub mod engine;
 pub mod event;
+pub mod font_metrics;
 pub mod render_mode;
 pub mod similarity;
 pub mod sitemap;
