@@ -216,6 +216,19 @@ impl PageRecord {
         })
     }
 
+    /// True when this row is a redirect rather than a document of its own.
+    ///
+    /// Both signals are needed. A followed redirect can surface as the target's
+    /// 2xx with the final URL recorded, and a redirect the crawler didn't follow
+    /// surfaces as a 3xx with no final URL at all: on the crawled site two of
+    /// three redirects came back that way, and keying only on `redirect_url`
+    /// counted one redirect instead of three and let the other two be audited as
+    /// ordinary pages, reporting a missing title, H1 and description for a
+    /// response that has no body to carry them.
+    pub fn is_redirect(&self) -> bool {
+        self.redirect_url.is_some() || self.status.is_some_and(|c| (300..400).contains(&c))
+    }
+
     /// Why the page is or isn't eligible for the index, as the `Index. Status`
     /// column shows it: `Indexable`, or a comma-separated list of every reason
     /// it isn't. A page can be excluded for more than one reason at once (a
@@ -229,9 +242,7 @@ impl PageRecord {
             return "N/A".to_string();
         };
         let mut reasons: Vec<String> = Vec::new();
-        // A followed redirect can surface as the target's 2xx on this row, so
-        // `redirect_url` is the reliable signal, not the status code alone.
-        if self.redirect_url.is_some() || (300..400).contains(&status) {
+        if self.is_redirect() {
             reasons.push("Redirected".to_string());
         } else if !(200..300).contains(&status) {
             reasons.push(format!("Non-Indexable ({status})"));
@@ -241,7 +252,7 @@ impl PageRecord {
         }
         // A redirect response has no document, so any canonical on this row
         // belongs to the target and says nothing about this URL.
-        if self.redirect_url.is_none() && self.is_canonicalised() {
+        if !self.is_redirect() && self.is_canonicalised() {
             reasons.push("Canonicalised".to_string());
         }
         if reasons.is_empty() {
@@ -370,6 +381,35 @@ mod tests {
             status_of(&mut record),
             ("Redirected".into(), "Non-Indexable".into())
         );
+    }
+
+    #[test]
+    fn an_unfollowed_redirect_is_still_a_redirect() {
+        // Two of three redirects on the crawled site arrived this way: a 3xx
+        // with no final URL, so no `redirect_url` to key off.
+        let mut record = page("https://example.com/a");
+        record.status = Some(301);
+        assert!(record.is_redirect());
+        assert_eq!(
+            status_of(&mut record),
+            ("Redirected".into(), "Non-Indexable".into())
+        );
+    }
+
+    #[test]
+    fn a_followed_redirect_carrying_the_targets_status_is_still_a_redirect() {
+        let mut record = page("https://example.com/a");
+        record.status = Some(200);
+        record.redirect_url = Some("https://example.com/b".into());
+        assert!(record.is_redirect());
+    }
+
+    #[test]
+    fn an_ordinary_page_is_not_a_redirect() {
+        let mut record = page("https://example.com/a");
+        assert!(!record.is_redirect());
+        record.status = Some(404);
+        assert!(!record.is_redirect());
     }
 
     #[test]

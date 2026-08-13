@@ -400,11 +400,23 @@ impl CrawlEngine {
                     // turns `https://example.com` into `https://example.com/`)
                     // is not mistaken for a redirect, which would drop the start
                     // page's outlinks/title/H1 entirely.
-                    let redirected =
+                    let has_final_url =
                         !final_url.is_empty() && !urls_equivalent(original_url, final_url);
-                    if redirected {
+                    // A redirect the crawler didn't follow arrives as a 3xx with
+                    // no final URL. It still has no document of its own, so it
+                    // must skip analysis too, or its empty body is audited as the
+                    // page's own content and reported as a missing title and H1.
+                    let status_is_redirect =
+                        record.status.is_some_and(|code| (300..400).contains(&code));
+                    let redirected = has_final_url || status_is_redirect;
+                    if has_final_url {
                         record.redirect_url = Some(final_url.to_string());
-                        record.redirect_status = Some(301);
+                        // When spider followed the redirect, `status` is the
+                        // target's, so fall back to the usual 301.
+                        record.redirect_status = record
+                            .status
+                            .filter(|code| (300..400).contains(code))
+                            .or(Some(301));
                         // A redirect response has no document of its own. Any
                         // content type inferred above belongs to the target, or
                         // (under Chrome interception) to an unrelated subresource
@@ -425,7 +437,7 @@ impl CrawlEngine {
                     // We still emit the row so the redirect itself is visible.
                     // When there's no redirect, audit the row's own URL rather
                     // than a possibly-empty final URL.
-                    let analyzed_url = if redirected {
+                    let analyzed_url = if has_final_url {
                         final_url
                     } else {
                         record.url.as_str()

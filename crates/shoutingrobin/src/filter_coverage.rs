@@ -901,6 +901,10 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             resource_initiator: Some("fetch".to_string()),
             ..internal(format!("{base}/syn-xhr"))
         },
+        // A redirect the crawler did not follow: a 3xx with no final URL, which
+        // is how two of three redirects arrived on the crawled site. It is a
+        // redirect for every purpose, including being kept out of the
+        // content-issue rules, despite carrying no `redirect_url`.
         PageRecord {
             status: Some(301),
             ..internal(format!("{base}/syn-3xx"))
@@ -1057,11 +1061,11 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::Status3xx => both(&["/syn-3xx"], &[]),
         F::Status4xx => both(&["/not-found"], &["/"]),
         F::Status5xx => both(&["/server-error"], &["/"]),
-        F::Redirects => both(&["/syn-redirect"], &["/"]),
+        F::Redirects => both(&["/syn-redirect", "/syn-3xx"], &["/"]),
         F::RedirectLoop => both(&["/syn-loop-a"], &["/syn-redirect"]),
 
         // Titles / meta / headings (uniform across the four heading tabs)
-        F::Missing => both(&["/missing-all"], &["/"]),
+        F::Missing => both(&["/missing-all"], &["/", "/syn-3xx"]),
         F::Duplicate => both(&["/dup-a", "/dup-b"], &["/"]),
         F::OverLength => both(&["/long-all"], &["/"]),
         F::UnderLength => both(&["/short-all"], &["/"]),

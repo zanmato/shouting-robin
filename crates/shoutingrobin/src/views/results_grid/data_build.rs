@@ -420,7 +420,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let redirects = pages.iter().filter(|p| p.redirect_url.is_some()).count();
+    let redirects = pages.iter().filter(|p| p.is_redirect()).count();
     if redirects > 0 {
         entries.push(IssueEntry {
             name: "Redirects".into(),

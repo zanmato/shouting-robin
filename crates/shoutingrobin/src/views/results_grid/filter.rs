@@ -441,10 +441,7 @@ pub(super) fn is_low_content(page: &PageRecord) -> bool {
 /// statuses, and in Chrome mode the document status is unreliable (a
 /// sub-resource's 404 can leak onto a perfectly good page).
 pub(crate) fn is_content_eligible(page: &PageRecord) -> bool {
-    is_page_document(page)
-        && page.redirect_url.is_none()
-        && !page.is_noindex()
-        && !page.is_canonicalised()
+    is_page_document(page) && !page.is_redirect() && !page.is_noindex() && !page.is_canonicalised()
 }
 
 /// The issue filters that represent an on-page content problem (as opposed to
@@ -972,7 +969,7 @@ pub(super) fn filter_for_tab(
                         .any(|d| d.trim() == "none")
                 })
             }),
-            IssueFilter::Redirects => indices.retain(|&idx| pages[idx].redirect_url.is_some()),
+            IssueFilter::Redirects => indices.retain(|&idx| pages[idx].is_redirect()),
             IssueFilter::RedirectLoop => {
                 let url_set: HashMap<String, String> = pages
                     .iter()
