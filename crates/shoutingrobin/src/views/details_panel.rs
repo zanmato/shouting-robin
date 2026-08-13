@@ -1114,6 +1114,9 @@ fn hreflang_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> Option<AnyEl
                 format!("Invalid language code: {code}")
             }
             crate::crawl::event::HreflangIssue::MissingXDefault => "Missing x-default".into(),
+            crate::crawl::event::HreflangIssue::MissingSelfReference => {
+                "Missing self reference".into()
+            }
             crate::crawl::event::HreflangIssue::NonCanonicalUrl { hreflang_url } => {
                 format!("Non-canonical target: {hreflang_url}")
             }

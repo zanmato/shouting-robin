@@ -121,10 +121,21 @@ pub enum SdSeverity {
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum HreflangIssue {
-    MissingReturnTag { lang: String, target_url: String },
-    InvalidLanguageCode { code: String },
+    MissingReturnTag {
+        lang: String,
+        target_url: String,
+    },
+    InvalidLanguageCode {
+        code: String,
+    },
     MissingXDefault,
-    NonCanonicalUrl { hreflang_url: String },
+    /// The page's own hreflang set doesn't list the page itself. Search engines
+    /// treat a cluster whose members don't each point at themselves as
+    /// incomplete and may ignore the whole set.
+    MissingSelfReference,
+    NonCanonicalUrl {
+        hreflang_url: String,
+    },
 }
 
 #[derive(Debug, Clone)]

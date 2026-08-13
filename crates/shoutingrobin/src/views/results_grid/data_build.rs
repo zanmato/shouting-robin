@@ -184,6 +184,17 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
             Some((ResultTab::Security, IssueFilter::MissingContentTypeOptions))
         }
         "Missing Content-Security-Policy" => Some((ResultTab::Security, IssueFilter::MissingCsp)),
+        "Missing Referrer-Policy" => {
+            Some((ResultTab::Security, IssueFilter::MissingReferrerPolicy))
+        }
+        "Multiple H2" => Some((ResultTab::H2, IssueFilter::Multiple)),
+        "Hreflang Missing Self Reference" => Some((
+            ResultTab::Hreflang,
+            IssueFilter::HreflangMissingSelfReference,
+        )),
+        "Internal Outlinks With No Anchor Text" => {
+            Some((ResultTab::Links, IssueFilter::LinkNoAnchorText))
+        }
         _ => None,
     }
 }
@@ -722,6 +733,32 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
+    // Counted in pages, like the image rules: the drill-down lists the
+    // individual links. Only internal links count, because we can't fix anchor
+    // text on someone else's site, and an image link with no alt text lands
+    // here too, which is the common cause.
+    let no_anchor_text = documents
+        .iter()
+        .filter(|p| {
+            p.outlinks.iter().any(|link| {
+                is_same_domain(&p.url, &link.dst_url) && super::filter::link_lacks_anchor_text(link)
+            })
+        })
+        .count();
+    if no_anchor_text > 0 {
+        entries.push(IssueEntry {
+            name: "Internal Outlinks With No Anchor Text".into(),
+            issue_type: IssueType::Opportunity,
+            priority: IssuePriority::Low,
+            count: no_anchor_text,
+            pct: no_anchor_text as f32 / doc_total * 100.0,
+            description: "Pages linking internally with no anchor text at all.".into(),
+            hint: "Anchor text tells search engines what the target page is about. Give \
+                   every link words, or an image link alt text."
+                .into(),
+        });
+    }
+
     // Rules whose predicate already exists as a tab sub-filter. Counting them
     // through the filter itself means the headline figure and the rows you land
     // on after clicking through are produced by the same code, so they cannot
@@ -906,6 +943,40 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         denominator: Denominator::InternalUrls,
         description: "URLs missing the X-Content-Type-Options header.",
         hint: "Send X-Content-Type-Options: nosniff so browsers honour the declared type.",
+    },
+    FilterDerivedRule {
+        name: "Missing Referrer-Policy",
+        tab: ResultTab::Security,
+        filter: IssueFilter::MissingReferrerPolicy,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::InternalUrls,
+        description: "URLs missing a Referrer-Policy header, or sending one that still leaks \
+                      the full URL to other origins.",
+        hint: "Send Referrer-Policy: strict-origin-when-cross-origin so paths and query \
+               strings stay on your own site.",
+    },
+    FilterDerivedRule {
+        name: "Multiple H2",
+        tab: ResultTab::H2,
+        filter: IssueFilter::Multiple,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages with more than one H2 subheading.",
+        hint: "Several H2s are fine on a long page. Check they describe distinct sections \
+               rather than repeating the H1.",
+    },
+    FilterDerivedRule {
+        name: "Hreflang Missing Self Reference",
+        tab: ResultTab::Hreflang,
+        filter: IssueFilter::HreflangMissingSelfReference,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages whose hreflang set doesn't list the page itself.",
+        hint: "Every page in a cluster must reference itself, or search engines may \
+               discard the whole set.",
     },
     FilterDerivedRule {
         name: "Missing Content-Security-Policy",

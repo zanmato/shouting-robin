@@ -997,6 +997,17 @@ async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
             issues.push(crate::crawl::event::HreflangIssue::MissingXDefault);
         }
 
+        // Every page in an hreflang cluster must list itself. A set that omits
+        // its own page describes a group the page isn't part of, and search
+        // engines may discard the whole cluster rather than guess.
+        let has_self_reference = info
+            .hreflang_tags
+            .iter()
+            .any(|(lang, url)| lang != "x-default" && urls_equivalent(url, page_url));
+        if !has_self_reference {
+            issues.push(crate::crawl::event::HreflangIssue::MissingSelfReference);
+        }
+
         for (lang, target_url) in &info.hreflang_tags {
             if lang != "x-default" && !is_valid_bcp47(lang) {
                 issues.push(crate::crawl::event::HreflangIssue::InvalidLanguageCode {

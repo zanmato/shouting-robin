@@ -532,6 +532,14 @@ pub(super) fn cell_text(
                 .map(|_| "Yes")
                 .unwrap_or("No"),
         ),
+        // A policy that still sends the full URL cross-origin counts as absent,
+        // matching the filter.
+        "sec_referrer_policy" => {
+            SharedString::from(match header_value(&record.headers, "referrer-policy") {
+                Some(value) if !super::filter::referrer_policy_leaks_url(value) => "Yes",
+                _ => "No",
+            })
+        }
         "sec_mixed_content" => SharedString::from(if record.has_mixed_content {
             "Yes"
         } else {
@@ -657,13 +665,16 @@ pub(super) fn render_cell_tag(
                 Tone::Ok
             }
         }
-        "sec_https" | "sec_hsts" | "sec_csp" | "sec_frame_guard" | "sec_content_type_opts" => {
-            match text.as_ref() {
-                "Yes" => Tone::Ok,
-                "No" => Tone::Warn,
-                _ => return None,
-            }
-        }
+        "sec_https"
+        | "sec_hsts"
+        | "sec_csp"
+        | "sec_frame_guard"
+        | "sec_content_type_opts"
+        | "sec_referrer_policy" => match text.as_ref() {
+            "Yes" => Tone::Ok,
+            "No" => Tone::Warn,
+            _ => return None,
+        },
         // Mixed content inverts the polarity: "Yes" means insecure subresources.
         "sec_mixed_content" => match text.as_ref() {
             "Yes" => Tone::Err,

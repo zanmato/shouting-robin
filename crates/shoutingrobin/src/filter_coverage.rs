@@ -59,6 +59,7 @@ fn linked_paths() -> Vec<String> {
         "/canonical-other",
         "/hreflang-a",
         "/hreflang-b",
+        "/hreflang-c",
         "/sd-article",
         "/sd-faq",
         "/sd-howto",
@@ -402,6 +403,22 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                      <link rel=\"alternate\" hreflang=\"en\" href=\"{base}/sd-article\">"
                 ),
                 "<h1>Hreflang B Heading</h1><h2>Sub</h2><p>hreflang b body</p>",
+            ),
+        ),
+        // Points at the other two but never at itself, which is the one
+        // hreflang defect the a/b pair doesn't exhibit.
+        "/hreflang-c" => (
+            ok,
+            no_headers,
+            doc(
+                "Hreflang Page C Omitting Its Own Self Reference",
+                &format!(
+                    "<meta name=\"description\" content=\"Hreflang page c meta description here for test.\">\
+                     <link rel=\"alternate\" hreflang=\"x-default\" href=\"{base}/hreflang-a\">\
+                     <link rel=\"alternate\" hreflang=\"en\" href=\"{base}/hreflang-a\">\
+                     <link rel=\"alternate\" hreflang=\"de\" href=\"{base}/hreflang-b\">"
+                ),
+                "<h1>Hreflang C Heading</h1><h2>Sub</h2><p>hreflang c body</p>",
             ),
         ),
         "/sd-article" => (
@@ -916,6 +933,7 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
                 ("content-security-policy", "default-src 'self'"),
                 ("x-frame-options", "DENY"),
                 ("x-content-type-options", "nosniff"),
+                ("referrer-policy", "strict-origin-when-cross-origin"),
             ],
         ),
         with_headers("/syn-xrobots", &[("x-robots-tag", "noindex")]),
@@ -1058,7 +1076,8 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::MissingHreflang => both(&["/"], &["/hreflang-a"]),
         F::HreflangMissingReturnTag => both(&["/hreflang-a"], &[]),
         F::HreflangInvalidLang => both(&["/hreflang-a"], &[]),
-        F::HreflangMissingXDefault => both(&["/hreflang-a"], &[]),
+        F::HreflangMissingXDefault => both(&["/hreflang-a"], &["/hreflang-c"]),
+        F::HreflangMissingSelfReference => both(&["/hreflang-c"], &["/hreflang-a"]),
         F::HreflangNonCanonical => both(&["/hreflang-a"], &[]),
 
         // Structured data
@@ -1115,6 +1134,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::MissingCsp => both(&["/"], &["/syn-secure"]),
         F::MissingFrameGuard => both(&["/"], &["/syn-secure"]),
         F::MissingContentTypeOptions => both(&["/"], &["/syn-secure"]),
+        F::MissingReferrerPolicy => both(&["/"], &["/syn-secure"]),
         F::MixedContent => both(&["/syn-mixed"], &["/"]),
 
         // URL hygiene
@@ -1144,6 +1164,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         | F::LinkBroken
         | F::LinkRedirected
         | F::LinkNofollow
+        | F::LinkNoAnchorText
         | F::LinkExternal
         | F::DepthShallow
         | F::DepthMedium

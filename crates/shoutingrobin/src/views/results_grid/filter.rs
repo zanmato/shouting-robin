@@ -73,6 +73,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::Missing,
             IssueFilter::Duplicate,
             IssueFilter::OverLength,
+            IssueFilter::Multiple,
         ],
         ResultTab::Content => &[
             IssueFilter::All,
@@ -103,6 +104,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::HreflangMissingReturnTag,
             IssueFilter::HreflangInvalidLang,
             IssueFilter::HreflangMissingXDefault,
+            IssueFilter::HreflangMissingSelfReference,
             IssueFilter::HreflangNonCanonical,
         ],
         ResultTab::StructuredData => &[
@@ -165,6 +167,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::MissingCsp,
             IssueFilter::MissingFrameGuard,
             IssueFilter::MissingContentTypeOptions,
+            IssueFilter::MissingReferrerPolicy,
             IssueFilter::MixedContent,
         ],
         ResultTab::Url => &[
@@ -199,6 +202,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::LinkBroken,
             IssueFilter::LinkRedirected,
             IssueFilter::LinkNofollow,
+            IssueFilter::LinkNoAnchorText,
             IssueFilter::LinkExternal,
         ],
         ResultTab::SiteStructure => &[
@@ -389,6 +393,22 @@ fn is_fetch_xhr(page: &PageRecord) -> bool {
 /// would otherwise hide real pages from these tabs.
 fn is_page_document(page: &PageRecord) -> bool {
     page.is_page && !page.is_resource
+}
+
+/// True when a Referrer-Policy value still hands the full URL to other origins,
+/// which is what having no policy at all does. A header that says `unsafe-url`
+/// is not a policy worth crediting, so the security rules treat it as missing.
+pub(super) fn referrer_policy_leaks_url(value: &str) -> bool {
+    let value = value.to_ascii_lowercase();
+    let value = value.trim();
+    value.is_empty() || value.contains("unsafe-url") || value.contains("no-referrer-when-downgrade")
+}
+
+/// True when a link gives a search engine nothing to go on: no anchor text at
+/// all, or only whitespace. An image link with no alt text lands here too, since
+/// the anchor we record is the link's text content.
+pub(super) fn link_lacks_anchor_text(link: &crate::crawl::event::Outlink) -> bool {
+    link.anchor.as_deref().is_none_or(|a| a.trim().is_empty())
 }
 
 /// A page with fewer than this many words of body text counts as thin.
@@ -670,6 +690,12 @@ pub(super) fn filter_for_tab(
                     .iter()
                     .any(|i| matches!(i, HreflangIssue::InvalidLanguageCode { .. }))
             }),
+            IssueFilter::HreflangMissingSelfReference => indices.retain(|&idx| {
+                pages[idx]
+                    .hreflang_issues
+                    .iter()
+                    .any(|i| matches!(i, HreflangIssue::MissingSelfReference))
+            }),
             IssueFilter::HreflangMissingXDefault => indices.retain(|&idx| {
                 pages[idx]
                     .hreflang_issues
@@ -882,6 +908,10 @@ pub(super) fn filter_for_tab(
             IssueFilter::MissingContentTypeOptions => {
                 indices.retain(|&idx| !header_exists(&pages[idx].headers, "x-content-type-options"))
             }
+            IssueFilter::MissingReferrerPolicy => indices.retain(|&idx| {
+                header_value(&pages[idx].headers, "referrer-policy")
+                    .is_none_or(referrer_policy_leaks_url)
+            }),
             IssueFilter::MixedContent => indices.retain(|&idx| pages[idx].has_mixed_content),
             IssueFilter::UrlNonAscii => indices.retain(|&idx| !pages[idx].url.is_ascii()),
             IssueFilter::UrlUppercase => {
@@ -1026,6 +1056,7 @@ fn link_row_matches_filter(
     match filter {
         IssueFilter::LinkExternal => dst_is_external,
         IssueFilter::LinkNofollow => rel_nofollow,
+        IssueFilter::LinkNoAnchorText => !dst_is_external && link_lacks_anchor_text(link),
         IssueFilter::LinkBroken => dst_status.is_some_and(|c| c >= 400),
         IssueFilter::LinkRedirected => dst_status.is_some_and(|c| (300..400).contains(&c)),
         _ => true,
@@ -1437,5 +1468,72 @@ mod low_content_tests {
             .expect("low content entry");
         assert_eq!(rows.len(), 1);
         assert_eq!(entry.count, rows.len());
+    }
+}
+
+#[cfg(test)]
+mod new_rule_tests {
+    use super::*;
+    use crate::crawl::event::{Outlink, PageRecord};
+
+    fn link(dst: &str, anchor: Option<&str>) -> Outlink {
+        Outlink {
+            dst_url: dst.into(),
+            anchor: anchor.map(Into::into),
+            rel: None,
+            csr_only: false,
+        }
+    }
+
+    #[test]
+    fn whitespace_is_not_anchor_text() {
+        assert!(link_lacks_anchor_text(&link("https://a.test/b", None)));
+        assert!(link_lacks_anchor_text(&link("https://a.test/b", Some(""))));
+        assert!(link_lacks_anchor_text(&link(
+            "https://a.test/b",
+            Some(" \n\t")
+        )));
+        assert!(!link_lacks_anchor_text(&link(
+            "https://a.test/b",
+            Some("Read more")
+        )));
+    }
+
+    #[test]
+    fn a_policy_that_still_leaks_the_url_counts_as_missing() {
+        assert!(referrer_policy_leaks_url("unsafe-url"));
+        assert!(referrer_policy_leaks_url("no-referrer-when-downgrade"));
+        assert!(referrer_policy_leaks_url("   "));
+        // Case and multi-value lists are both in play in the wild.
+        assert!(referrer_policy_leaks_url("Unsafe-URL"));
+        assert!(!referrer_policy_leaks_url(
+            "strict-origin-when-cross-origin"
+        ));
+        assert!(!referrer_policy_leaks_url("no-referrer"));
+    }
+
+    #[test]
+    fn the_security_filter_treats_a_leaky_policy_as_missing() {
+        let with_policy = |value: &str| PageRecord {
+            url: "https://a.test/a".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            headers: vec![("Referrer-Policy".into(), value.into())],
+            ..Default::default()
+        };
+        let pages = vec![
+            with_policy("strict-origin-when-cross-origin"),
+            with_policy("unsafe-url"),
+        ];
+        assert_eq!(
+            matching_urls(
+                ResultTab::Security,
+                IssueFilter::MissingReferrerPolicy,
+                &pages
+            )
+            .len(),
+            1
+        );
     }
 }

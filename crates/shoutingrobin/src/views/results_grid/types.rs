@@ -123,6 +123,7 @@ pub enum IssueFilter {
     HreflangMissingReturnTag,
     HreflangInvalidLang,
     HreflangMissingXDefault,
+    HreflangMissingSelfReference,
     HreflangNonCanonical,
     HasStructuredData,
     MissingStructuredData,
@@ -176,6 +177,7 @@ pub enum IssueFilter {
     MissingCsp,
     MissingFrameGuard,
     MissingContentTypeOptions,
+    MissingReferrerPolicy,
     MixedContent,
     UrlNonAscii,
     UrlUppercase,
@@ -202,6 +204,7 @@ pub enum IssueFilter {
     LinkBroken,
     LinkRedirected,
     LinkNofollow,
+    LinkNoAnchorText,
     LinkExternal,
     DepthShallow,
     DepthMedium,
@@ -242,6 +245,7 @@ impl IssueFilter {
             IssueFilter::HreflangMissingReturnTag => "Missing Return Tags",
             IssueFilter::HreflangInvalidLang => "Invalid Language Code",
             IssueFilter::HreflangMissingXDefault => "Missing x-default",
+            IssueFilter::HreflangMissingSelfReference => "Missing Self Reference",
             IssueFilter::HreflangNonCanonical => "Non-Canonical Target",
             IssueFilter::HasStructuredData => "Has Structured Data",
             IssueFilter::MissingStructuredData => "Missing",
@@ -295,6 +299,7 @@ impl IssueFilter {
             IssueFilter::MissingCsp => "Missing CSP",
             IssueFilter::MissingFrameGuard => "Missing Frame Guard",
             IssueFilter::MissingContentTypeOptions => "Missing X-Content-Type",
+            IssueFilter::MissingReferrerPolicy => "Missing Referrer-Policy",
             IssueFilter::MixedContent => "Mixed Content",
             IssueFilter::UrlNonAscii => "Non-ASCII",
             IssueFilter::UrlUppercase => "Uppercase",
@@ -321,6 +326,7 @@ impl IssueFilter {
             IssueFilter::LinkBroken => "Broken (4xx/5xx)",
             IssueFilter::LinkRedirected => "Redirected (3xx)",
             IssueFilter::LinkNofollow => "Nofollow",
+            IssueFilter::LinkNoAnchorText => "No Anchor Text",
             IssueFilter::LinkExternal => "External",
             IssueFilter::DepthShallow => "Depth 0-1",
             IssueFilter::DepthMedium => "Depth 2-3",
@@ -404,6 +410,7 @@ impl IssueFilter {
             | Self::HreflangMissingReturnTag
             | Self::HreflangInvalidLang
             | Self::HreflangMissingXDefault
+            | Self::HreflangMissingSelfReference
             | Self::HreflangNonCanonical
             | Self::MissingStructuredData
             | Self::SdWarnings
@@ -438,6 +445,7 @@ impl IssueFilter {
             | Self::MissingCsp
             | Self::MissingFrameGuard
             | Self::MissingContentTypeOptions
+            | Self::MissingReferrerPolicy
             | Self::UrlNonAscii
             | Self::UrlUppercase
             | Self::UrlUnderscores
@@ -452,6 +460,7 @@ impl IssueFilter {
             | Self::UnderPixelWidth
             | Self::LinkRedirected
             | Self::LinkNofollow
+            | Self::LinkNoAnchorText
             | Self::DepthDeep => Tone::Warn,
         }
     }
