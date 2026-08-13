@@ -27,7 +27,12 @@ fn test_http_crawl() {
         .or_else(|| find_page(&pages, &format!(":{port}/")))
         .expect("home page should be crawled");
     assert_eq!(home.status, Some(200));
+    // The home page's canonical is the relative `/index.html`, i.e. it points at
+    // itself. It must resolve against the page URL before being compared, or a
+    // self-referencing canonical reads as canonicalised elsewhere.
+    assert_eq!(home.canonical.as_deref(), Some("/index.html"));
     assert_eq!(home.indexability.as_deref(), Some("Indexable"));
+    assert_eq!(home.indexability_status(), "Indexable");
     assert_eq!(home.title.as_deref(), Some("Test Site Home"));
     assert_eq!(home.h1.as_deref(), Some("Test Site Home"));
     assert!(

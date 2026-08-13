@@ -37,18 +37,59 @@ pub fn decode_entities(url: &str) -> String {
     }
 }
 
+/// Resolves `href` against the page it was found on, so a relative value such
+/// as `/index.html` or `../a` becomes an absolute URL. Returns `None` when
+/// either side doesn't parse.
+///
+/// Authors write canonical and hreflang targets both ways, and comparing a
+/// relative href against an absolute page URL as strings makes every
+/// self-referencing relative canonical look like it points somewhere else.
+pub fn resolve_url(base: &str, href: &str) -> Option<String> {
+    let base = url::Url::parse(base.trim()).ok()?;
+    Some(base.join(href.trim()).ok()?.to_string())
+}
+
+/// True when both URLs address the same resource once normalised. Falls back
+/// to exact string comparison when either side fails to parse, so an
+/// unparseable value is never silently treated as equal to something else.
+pub fn urls_equivalent(left: &str, right: &str) -> bool {
+    match (normalize_url(left), normalize_url(right)) {
+        (Some(left), Some(right)) => left == right,
+        _ => left.trim() == right.trim(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// True when both URLs address the same resource once normalised. Falls back
-    /// to exact string comparison when either side fails to parse, so an
-    /// unparseable value is never silently treated as equal to something else.
-    fn urls_equivalent(left: &str, right: &str) -> bool {
-        match (normalize_url(left), normalize_url(right)) {
-            (Some(left), Some(right)) => left == right,
-            _ => left.trim() == right.trim(),
-        }
+    #[test]
+    fn resolves_a_root_relative_href() {
+        assert_eq!(
+            resolve_url("https://example.com/a/b", "/c").as_deref(),
+            Some("https://example.com/c")
+        );
+    }
+
+    #[test]
+    fn resolves_a_document_relative_href() {
+        assert_eq!(
+            resolve_url("https://example.com/a/b", "c").as_deref(),
+            Some("https://example.com/a/c")
+        );
+    }
+
+    #[test]
+    fn leaves_an_absolute_href_alone() {
+        assert_eq!(
+            resolve_url("https://example.com/a", "https://other.test/b").as_deref(),
+            Some("https://other.test/b")
+        );
+    }
+
+    #[test]
+    fn resolving_against_an_unparseable_base_fails() {
+        assert_eq!(resolve_url("not a url", "/c"), None);
     }
 
     #[test]

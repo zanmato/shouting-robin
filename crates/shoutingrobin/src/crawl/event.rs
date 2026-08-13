@@ -173,22 +173,78 @@ pub struct Backlink {
 }
 
 impl PageRecord {
-    pub fn compute_indexability(&mut self) {
-        self.indexability = Some(match self.status {
-            Some(code) if (200..300).contains(&code) => {
-                if self
-                    .robots
-                    .as_deref()
-                    .map(|r| r.to_ascii_lowercase().contains("noindex"))
-                    .unwrap_or(false)
-                {
-                    "Non-Indexable".to_string()
-                } else {
-                    "Indexable".to_string()
-                }
+    /// True when the page carries a `noindex` directive, from either the robots
+    /// meta tag or the `X-Robots-Tag` response header. Search engines honour
+    /// both, so a page is out of the index either way.
+    pub fn is_noindex(&self) -> bool {
+        let mentions_noindex = |value: &str| value.to_ascii_lowercase().contains("noindex");
+        self.robots.as_deref().is_some_and(mentions_noindex)
+            || self
+                .headers
+                .iter()
+                .find(|(key, _)| key.eq_ignore_ascii_case("x-robots-tag"))
+                .is_some_and(|(_, value)| mentions_noindex(value))
+    }
+
+    /// True when the page declares a canonical pointing at a *different* URL,
+    /// i.e. it asks search engines to index that other page instead of this one.
+    ///
+    /// The href is resolved against the page URL and both sides are normalised
+    /// first. A relative canonical (`/a`) and a canonical written without the
+    /// trailing slash (`https://example.com` for the page served at
+    /// `https://example.com/`) are both self-referencing, but a raw string
+    /// comparison reports every such page as canonicalised elsewhere.
+    pub fn is_canonicalised(&self) -> bool {
+        self.canonical.as_deref().is_some_and(|canonical| {
+            if canonical.trim().is_empty() {
+                return false;
             }
-            Some(_) => "Non-Indexable".to_string(),
-            None => "N/A".to_string(),
+            let resolved = crate::crawl::url_norm::resolve_url(&self.url, canonical)
+                .unwrap_or_else(|| canonical.to_string());
+            !crate::crawl::url_norm::urls_equivalent(&resolved, &self.url)
+        })
+    }
+
+    /// Why the page is or isn't eligible for the index, as the `Index. Status`
+    /// column shows it: `Indexable`, or a comma-separated list of every reason
+    /// it isn't. A page can be excluded for more than one reason at once (a
+    /// canonicalised page that also carries `noindex`), and reporting only the
+    /// first would hide the rest.
+    ///
+    /// `indexability` is derived from this, so the two columns can never
+    /// disagree the way they did when each computed its own answer.
+    pub fn indexability_status(&self) -> String {
+        let Some(status) = self.status else {
+            return "N/A".to_string();
+        };
+        let mut reasons: Vec<String> = Vec::new();
+        // A followed redirect can surface as the target's 2xx on this row, so
+        // `redirect_url` is the reliable signal, not the status code alone.
+        if self.redirect_url.is_some() || (300..400).contains(&status) {
+            reasons.push("Redirected".to_string());
+        } else if !(200..300).contains(&status) {
+            reasons.push(format!("Non-Indexable ({status})"));
+        }
+        if self.is_noindex() {
+            reasons.push("Noindex".to_string());
+        }
+        // A redirect response has no document, so any canonical on this row
+        // belongs to the target and says nothing about this URL.
+        if self.redirect_url.is_none() && self.is_canonicalised() {
+            reasons.push("Canonicalised".to_string());
+        }
+        if reasons.is_empty() {
+            "Indexable".to_string()
+        } else {
+            reasons.join(", ")
+        }
+    }
+
+    pub fn compute_indexability(&mut self) {
+        self.indexability = Some(match self.indexability_status().as_str() {
+            "Indexable" => "Indexable".to_string(),
+            "N/A" => "N/A".to_string(),
+            _ => "Non-Indexable".to_string(),
         });
     }
 }
@@ -200,4 +256,125 @@ pub enum CrawlEvent {
     Progress { crawled: u64, queued: u64 },
     Finished { crawl_id: i64, total: u64 },
     Error { url: String, message: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(url: &str) -> PageRecord {
+        PageRecord {
+            url: url.to_string(),
+            status: Some(200),
+            ..Default::default()
+        }
+    }
+
+    fn status_of(record: &mut PageRecord) -> (String, String) {
+        record.compute_indexability();
+        (
+            record.indexability_status(),
+            record.indexability.clone().unwrap_or_default(),
+        )
+    }
+
+    #[test]
+    fn a_plain_page_is_indexable() {
+        let mut record = page("https://example.com/a");
+        assert_eq!(
+            status_of(&mut record),
+            ("Indexable".into(), "Indexable".into())
+        );
+    }
+
+    #[test]
+    fn a_canonical_without_the_trailing_slash_is_self_referencing() {
+        // The live false positive: the home page's canonical omits the slash.
+        let mut record = page("https://example.com/");
+        record.canonical = Some("https://example.com".into());
+        assert!(!record.is_canonicalised());
+        assert_eq!(
+            status_of(&mut record),
+            ("Indexable".into(), "Indexable".into())
+        );
+    }
+
+    #[test]
+    fn a_relative_canonical_is_resolved_before_comparison() {
+        let mut record = page("https://example.com/a");
+        record.canonical = Some("/a".into());
+        assert!(!record.is_canonicalised());
+        assert_eq!(record.indexability_status(), "Indexable");
+    }
+
+    #[test]
+    fn a_canonical_pointing_elsewhere_is_non_indexable() {
+        let mut record = page("https://example.com/a");
+        record.canonical = Some("https://example.com/b".into());
+        assert!(record.is_canonicalised());
+        assert_eq!(
+            status_of(&mut record),
+            ("Canonicalised".into(), "Non-Indexable".into())
+        );
+    }
+
+    #[test]
+    fn an_empty_canonical_is_not_canonicalisation() {
+        let mut record = page("https://example.com/a");
+        record.canonical = Some("  ".into());
+        assert!(!record.is_canonicalised());
+        assert_eq!(record.indexability_status(), "Indexable");
+    }
+
+    #[test]
+    fn every_exclusion_reason_is_reported_at_once() {
+        let mut record = page("https://example.com/a");
+        record.robots = Some("noindex, follow".into());
+        record.canonical = Some("https://example.com/b".into());
+        assert_eq!(
+            status_of(&mut record),
+            ("Noindex, Canonicalised".into(), "Non-Indexable".into())
+        );
+    }
+
+    #[test]
+    fn an_x_robots_tag_header_counts_as_noindex() {
+        let mut record = page("https://example.com/a");
+        record.headers = vec![("X-Robots-Tag".into(), "NOINDEX".into())];
+        assert!(record.is_noindex());
+        assert_eq!(
+            status_of(&mut record),
+            ("Noindex".into(), "Non-Indexable".into())
+        );
+    }
+
+    #[test]
+    fn a_redirect_is_reported_as_redirected() {
+        let mut record = page("https://example.com/a");
+        record.redirect_url = Some("https://example.com/b".into());
+        // The row carries the target's canonical, which says nothing about this
+        // URL, so it must not add a second reason.
+        record.canonical = Some("https://example.com/b".into());
+        assert_eq!(
+            status_of(&mut record),
+            ("Redirected".into(), "Non-Indexable".into())
+        );
+    }
+
+    #[test]
+    fn an_error_status_reports_its_code() {
+        let mut record = page("https://example.com/a");
+        record.status = Some(404);
+        assert_eq!(
+            status_of(&mut record),
+            ("Non-Indexable (404)".into(), "Non-Indexable".into())
+        );
+    }
+
+    #[test]
+    fn a_row_without_a_status_is_not_assessed() {
+        let mut record = page("https://example.com/a");
+        record.status = None;
+        assert_eq!(status_of(&mut record), ("N/A".into(), "N/A".into()));
+    }
 }

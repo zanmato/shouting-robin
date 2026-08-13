@@ -394,23 +394,22 @@ fn is_page_document(page: &PageRecord) -> bool {
 /// True when a page should be subject to on-page content issue flags
 /// (missing/duplicate title, meta, H1, canonical, thin content,
 /// a11y, perf, hreflang, structured data). Redirect sources carry the target's
-/// body rather than their own, and non-indexable pages (noindex or error) are
-/// intentionally out of the index, so neither should be reported as having
-/// content problems. The overview tallies, the duplicate occurrence counts, and
-/// the drill-down issue filters all gate on this so the numbers reconcile.
-pub(crate) fn is_content_eligible(page: &PageRecord) -> bool {
-    is_page_document(page) && page.redirect_url.is_none() && !is_noindex(page)
-}
-
-/// True when the page carries a `noindex` robots directive (meta or
-/// X-Robots-Tag header). We key content-issue eligibility off this rather than
-/// the computed `indexability`, because that field also flips to Non-Indexable
-/// on error statuses, and in Chrome mode the document status is unreliable (a
+/// body rather than their own, and pages that are intentionally out of the
+/// index (noindex, or canonicalised to another URL) should not be reported as
+/// having content problems: a set of product variants all canonicalised to the
+/// same page is correct SEO, not a duplicate-title issue. The overview tallies,
+/// the duplicate occurrence counts, and the drill-down issue filters all gate on
+/// this so the numbers reconcile.
+///
+/// Keyed off `is_noindex`/`is_canonicalised` rather than the computed
+/// `indexability`, because that field also flips to Non-Indexable on error
+/// statuses, and in Chrome mode the document status is unreliable (a
 /// sub-resource's 404 can leak onto a perfectly good page).
-fn is_noindex(page: &PageRecord) -> bool {
-    let mentions_noindex = |value: &str| value.to_ascii_lowercase().contains("noindex");
-    page.robots.as_deref().is_some_and(mentions_noindex)
-        || header_value(&page.headers, "x-robots-tag").is_some_and(mentions_noindex)
+pub(crate) fn is_content_eligible(page: &PageRecord) -> bool {
+    is_page_document(page)
+        && page.redirect_url.is_none()
+        && !page.is_noindex()
+        && !page.is_canonicalised()
 }
 
 /// The issue filters that represent an on-page content problem (as opposed to
@@ -631,14 +630,10 @@ pub(super) fn filter_for_tab(
                 let page = &pages[idx];
                 page.canonical
                     .as_deref()
-                    .is_some_and(|c| !c.is_empty() && c == page.url)
+                    .is_some_and(|c| !c.trim().is_empty())
+                    && !page.is_canonicalised()
             }),
-            IssueFilter::Canonicalised => indices.retain(|&idx| {
-                let page = &pages[idx];
-                page.canonical
-                    .as_deref()
-                    .is_some_and(|c| !c.is_empty() && c != page.url)
-            }),
+            IssueFilter::Canonicalised => indices.retain(|&idx| pages[idx].is_canonicalised()),
             IssueFilter::MissingCanonical => {
                 indices.retain(|&idx| pages[idx].canonical.as_deref().is_none_or(|c| c.is_empty()))
             }
@@ -987,9 +982,10 @@ pub(super) fn filter_for_tab(
             _ => {}
         }
 
-        // A noindex or redirected page is never the source of a content issue,
-        // so drop it from these filters. This keeps the drill-down row set in
-        // step with the overview tallies, which gate on the same predicate.
+        // A noindex, canonicalised or redirected page is never the source of a
+        // content issue, so drop it from these filters. This keeps the
+        // drill-down row set in step with the overview tallies, which gate on
+        // the same predicate.
         if is_content_issue_filter(issue_filter) {
             indices.retain(|&idx| is_content_eligible(&pages[idx]));
         }
@@ -1276,5 +1272,52 @@ mod counting_tests {
             counts.badge.total
         );
         assert!(counts.badge.errors + counts.badge.warnings <= counts.badge.total);
+    }
+}
+
+#[cfg(test)]
+mod content_eligibility_tests {
+    use super::*;
+    use crate::crawl::event::PageRecord;
+
+    fn titled_page(url: &str, title: &str) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            title: Some(title.into()),
+            title_count: 1,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn canonicalised_pages_are_not_duplicate_title_sources() {
+        // Product variants that all canonicalise to the same page share a title
+        // on purpose. Reporting them as duplicates is a false positive.
+        let mut variant_one = titled_page("https://a.test/bett?size=95", "Bett | Shop");
+        variant_one.canonical = Some("https://a.test/bett".into());
+        let mut variant_two = titled_page("https://a.test/bett?size=105", "Bett | Shop");
+        variant_two.canonical = Some("https://a.test/bett".into());
+        let mut canonical_page = titled_page("https://a.test/bett", "Bett | Shop");
+        canonical_page.canonical = Some("https://a.test/bett".into());
+
+        let pages = vec![variant_one, variant_two, canonical_page];
+        let duplicates = matching_urls(ResultTab::PageTitles, IssueFilter::Duplicate, &pages);
+        assert!(
+            duplicates.is_empty(),
+            "canonicalised variants should not be duplicate titles, got {duplicates:?}"
+        );
+    }
+
+    #[test]
+    fn indexable_pages_sharing_a_title_are_still_duplicates() {
+        let pages = vec![
+            titled_page("https://a.test/one", "Same Title"),
+            titled_page("https://a.test/two", "Same Title"),
+        ];
+        let duplicates = matching_urls(ResultTab::PageTitles, IssueFilter::Duplicate, &pages);
+        assert_eq!(duplicates.len(), 2, "got {duplicates:?}");
     }
 }

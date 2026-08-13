@@ -505,7 +505,7 @@ pub(super) fn cell_text(
                 .unwrap_or(0);
             SharedString::from(depth.to_string())
         }
-        "indexability_status" => SharedString::from(compute_indexability_status(record)),
+        "indexability_status" => SharedString::from(record.indexability_status()),
         "content_hash" => SharedString::from(record.content_hash.as_deref().unwrap_or("-")),
         "sec_https" => SharedString::from(if record.url.starts_with("https://") {
             "Yes"
@@ -579,30 +579,6 @@ fn status_label(record: &PageRecord) -> SharedString {
     }
 }
 
-fn compute_indexability_status(record: &PageRecord) -> String {
-    if record.status.is_none_or(|c| !(200..300).contains(&c)) {
-        return record
-            .status
-            .map(|c| format!("Non-Indexable ({c})"))
-            .unwrap_or_else(|| "Non-Indexable".into());
-    }
-    if record
-        .robots
-        .as_deref()
-        .is_some_and(|r| r.to_ascii_lowercase().contains("noindex"))
-    {
-        return "Noindex Meta Tag".into();
-    }
-    if record
-        .canonical
-        .as_deref()
-        .is_some_and(|c| !c.is_empty() && c != record.url)
-    {
-        return "Canonicalised".into();
-    }
-    "Indexable".into()
-}
-
 fn format_size(bytes: u64) -> SharedString {
     if bytes == 0 {
         return SharedString::from("-");
@@ -669,10 +645,14 @@ pub(super) fn render_cell_tag(
             }
         }
         "indexability_status" => {
-            if text.starts_with("Non-Indexable") || text.starts_with("Noindex") {
+            // The status lists every reason at once ("Noindex, Canonicalised"),
+            // so tone on the most severe reason present rather than the first.
+            if text.contains("Non-Indexable") || text.contains("Noindex") {
                 Tone::Err
-            } else if text.starts_with("Canonicalised") {
+            } else if text.contains("Redirected") || text.contains("Canonicalised") {
                 Tone::Warn
+            } else if text.as_ref() == "N/A" {
+                Tone::Neutral
             } else {
                 Tone::Ok
             }

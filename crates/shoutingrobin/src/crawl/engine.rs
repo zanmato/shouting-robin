@@ -15,6 +15,7 @@ use sqlx::SqlitePool;
 use crate::crawl::CrawlConfig;
 use crate::crawl::event::{A11yIssue, CrawlEvent, PageRecord};
 use crate::crawl::render_mode::RenderMode;
+use crate::crawl::url_norm::urls_equivalent;
 use crate::storage;
 
 pub struct CrawlEngine {
@@ -1020,9 +1021,16 @@ async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
                 });
             }
 
+            // Resolve and normalise before comparing: a target whose canonical
+            // is relative, or written without the trailing slash, is pointing at
+            // itself, not somewhere else.
             if let Some(target_info) = target_info
-                && let Some(ref canonical) = target_info.canonical
-                && canonical != target_url
+                && let Some(canonical) = target_info.canonical.as_deref().filter(|c| !c.is_empty())
+                && !urls_equivalent(
+                    &crate::crawl::url_norm::resolve_url(target_url, canonical)
+                        .unwrap_or_else(|| canonical.to_string()),
+                    target_url,
+                )
             {
                 issues.push(crate::crawl::event::HreflangIssue::NonCanonicalUrl {
                     hreflang_url: target_url.clone(),
@@ -1178,19 +1186,6 @@ pub fn is_same_domain(root: &str, url: &str) -> bool {
         return false;
     };
     root_parsed.host_str() == url_parsed.host_str()
-}
-
-/// True when two URL strings resolve to the same URL after normalization.
-/// `url::Url::parse` fills an empty path with `/`, so `https://example.com`
-/// and `https://example.com/` compare equal. Genuine host/path/scheme
-/// differences still compare unequal. Falls back to a plain string comparison
-/// if either side fails to parse, preserving the prior behavior for malformed
-/// inputs.
-fn urls_equivalent(a: &str, b: &str) -> bool {
-    match (url::Url::parse(a), url::Url::parse(b)) {
-        (Ok(a_parsed), Ok(b_parsed)) => a_parsed == b_parsed,
-        _ => a == b,
-    }
 }
 
 fn build_ssr_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Error> {

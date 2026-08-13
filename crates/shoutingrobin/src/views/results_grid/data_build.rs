@@ -346,7 +346,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             priority: IssuePriority::High,
             count: non_indexable,
             pct: non_indexable as f32 / total * 100.0,
-            description: "Pages blocked from indexing via noindex or other directives.".into(),
+            description: "Pages excluded from the index by a noindex directive, a canonical pointing elsewhere, a redirect or an error status.".into(),
             hint: "Verify each non-indexable page is intentionally excluded. Remove noindex from pages that should rank.".into(),
         });
     }
