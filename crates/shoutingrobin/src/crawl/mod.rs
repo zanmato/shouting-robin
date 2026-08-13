@@ -4,6 +4,7 @@ pub mod event;
 pub mod render_mode;
 pub mod similarity;
 pub mod sitemap;
+pub mod url_norm;
 
 pub use engine::CrawlEngine;
 pub use event::CrawlEvent;

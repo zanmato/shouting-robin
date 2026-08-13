@@ -630,6 +630,8 @@ impl CrawlEngine {
 
             run_near_duplicate_analysis(&pool, crawl_id, config.near_duplicate_threshold).await;
 
+            run_crawl_depth_analysis(&pool, crawl_id, &root_url).await;
+
             run_pagerank_analysis(&pool, crawl_id).await;
 
             run_hreflang_validation(&pool, crawl_id).await;
@@ -723,6 +725,113 @@ async fn run_near_duplicate_analysis(pool: &SqlitePool, crawl_id: i64, threshold
     .await
     {
         tracing::warn!(error=%e, "failed to persist near-duplicate results");
+    }
+}
+
+/// Assigns each crawled URL its click depth from the start page: a breadth-first
+/// walk of the link graph, with a redirect counted as a hop so a page reached
+/// only through a 301 sits one level deeper than the URL that redirected to it.
+/// URLs the walk can't reach (sitemap-only orphans, robots.txt-blocked URLs) are
+/// left untouched rather than reported as depth 0, which would put them level
+/// with the start page.
+async fn run_crawl_depth_analysis(pool: &SqlitePool, crawl_id: i64, root_url: &str) {
+    let link_rows = match sqlx::query_as::<_, (String, String)>(
+        "SELECT src_url, dst_url FROM links WHERE crawl_id = ?",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to load links for crawl depth");
+            return;
+        }
+    };
+
+    let page_rows = match sqlx::query_as::<_, (String, Option<String>)>(
+        "SELECT url, redirect_url FROM pages WHERE crawl_id = ?",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await
+    {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to load pages for crawl depth");
+            return;
+        }
+    };
+
+    // Key the graph on normalised URLs so a link written as
+    // `https://site.com` reaches the page stored as `https://site.com/`.
+    let mut edges: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    let normalize =
+        |url: &str| crate::crawl::url_norm::normalize_url(url).unwrap_or_else(|| url.to_string());
+
+    for (src, dst) in &link_rows {
+        edges
+            .entry(normalize(src))
+            .or_default()
+            .push(normalize(dst));
+    }
+    for (url, redirect_url) in &page_rows {
+        if let Some(target) = redirect_url.as_deref().filter(|t| !t.is_empty()) {
+            edges
+                .entry(normalize(url))
+                .or_default()
+                .push(normalize(target));
+        }
+    }
+
+    // Several stored URLs can normalise to the same key (e.g. with and without a
+    // fragment), so a key maps back to every page row it stands for.
+    let mut urls_by_key: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    for (url, _) in &page_rows {
+        urls_by_key
+            .entry(normalize(url))
+            .or_default()
+            .push(url.clone());
+    }
+
+    let root_key = normalize(root_url);
+    if !urls_by_key.contains_key(&root_key) {
+        tracing::warn!(
+            root_url,
+            "start page not found among crawled pages; skipping depth"
+        );
+        return;
+    }
+
+    let mut depth_by_key: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    depth_by_key.insert(root_key.clone(), 0);
+    let mut queue = std::collections::VecDeque::from([root_key]);
+
+    while let Some(key) = queue.pop_front() {
+        let depth = depth_by_key[&key];
+        let Some(targets) = edges.get(&key) else {
+            continue;
+        };
+        for target in targets {
+            if let std::collections::hash_map::Entry::Vacant(slot) =
+                depth_by_key.entry(target.clone())
+            {
+                slot.insert(depth + 1);
+                queue.push_back(target.clone());
+            }
+        }
+    }
+
+    let depths: Vec<(String, u32)> = depth_by_key
+        .iter()
+        .filter_map(|(key, depth)| urls_by_key.get(key).map(|urls| (urls, *depth)))
+        .flat_map(|(urls, depth)| urls.iter().map(move |url| (url.clone(), depth)))
+        .collect();
+
+    if let Err(e) = storage::update_crawl_depths(pool, crawl_id, &depths).await {
+        tracing::warn!(error=%e, "failed to persist crawl depths");
     }
 }
 

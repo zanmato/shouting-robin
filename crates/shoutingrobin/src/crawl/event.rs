@@ -14,7 +14,10 @@ pub struct PageRecord {
     pub canonical: Option<String>,
     pub robots: Option<String>,
     pub word_count: Option<u32>,
-    pub depth: u32,
+    /// Click depth from the start page. `None` for URLs the link graph never
+    /// reaches, such as sitemap-only orphans and robots.txt-blocked URLs, which
+    /// are not zero clicks away from the start page but an unknown number.
+    pub depth: Option<u32>,
     pub is_internal: bool,
     /// True when this row came from spider's page callback, i.e. a navigated,
     /// parsed document. Document-derived tabs (Page Titles, Meta Desc, H1, ...)

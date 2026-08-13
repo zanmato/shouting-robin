@@ -257,7 +257,7 @@ pub async fn insert_page(
     .bind(record.content_type.as_deref())
     .bind(record.size_bytes as i64)
     .bind(record.response_time.as_millis() as i64)
-    .bind(record.depth as i64)
+    .bind(record.depth.map(|d| d as i64))
     .bind(record.title.as_deref())
     .bind(record.meta_description.as_deref())
     .bind(record.h1.as_deref())
@@ -513,6 +513,24 @@ pub async fn update_link_scores(
     for (url, score) in scores {
         sqlx::query("UPDATE pages SET link_score = ? WHERE crawl_id = ? AND url = ?")
             .bind(*score)
+            .bind(crawl_id)
+            .bind(url)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn update_crawl_depths(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    depths: &[(String, u32)],
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (url, depth) in depths {
+        sqlx::query("UPDATE pages SET depth = ? WHERE crawl_id = ? AND url = ?")
+            .bind(*depth as i64)
             .bind(crawl_id)
             .bind(url)
             .execute(&mut *tx)
@@ -1364,7 +1382,7 @@ pub async fn load_pages_for_crawl(
                     robots: page_robots,
                     outlinks: page_outlinks,
                     word_count: word_count.map(|w| w as u32),
-                    depth: depth.unwrap_or(0) as u32,
+                    depth: depth.map(|d| d as u32),
                     is_internal,
                     is_page,
                     is_resource,

@@ -306,7 +306,12 @@ pub(super) fn cell_text(
                 .unwrap_or_else(|| "-".into()),
         ),
         "ssr_diff" => SharedString::from(ssr_diff_label(record)),
-        "depth" => SharedString::from(record.depth.to_string()),
+        "depth" => SharedString::from(
+            record
+                .depth
+                .map(|d| d.to_string())
+                .unwrap_or_else(|| "-".into()),
+        ),
         "response_time" => SharedString::from(format!("{}ms", record.response_time.as_millis())),
         "closest_similarity" => SharedString::from(
             record

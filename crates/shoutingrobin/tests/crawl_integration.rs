@@ -577,3 +577,42 @@ fn test_inlink_counts_reflect_the_whole_link_graph() {
         );
     }
 }
+
+/// Crawl depth is the number of clicks from the start page. It must come from a
+/// walk of the link graph, not default to zero for every URL.
+#[test]
+fn test_crawl_depth_is_computed_from_the_link_graph() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+
+    let pages = crawl_test_site_reloaded(&root_url);
+
+    server.kill();
+
+    for page in &pages {
+        eprintln!("depth {:?} {}", page.depth, path_of(&page.url));
+    }
+
+    let home = find_page(&pages, &format!(":{port}/"))
+        .filter(|p| path_of(&p.url) == "/")
+        .expect("home page should be crawled");
+    assert_eq!(home.depth, Some(0), "the start page is zero clicks deep");
+
+    let about = find_page(&pages, "/about.html").expect("about should be crawled");
+    assert_eq!(
+        about.depth,
+        Some(1),
+        "about.html is linked from the start page"
+    );
+
+    assert!(
+        pages.iter().any(|p| p.depth.is_some_and(|d| d > 0)),
+        "pages beyond the start page should have a non-zero depth"
+    );
+
+    // A sitemap-only orphan is never reached by following links, so its depth is
+    // unknown rather than zero, which would put it level with the start page.
+    let orphan = find_page(&pages, "/orphan-page.html").expect("orphan should be present");
+    assert_eq!(orphan.depth, None, "an unlinked URL has no crawl depth");
+}

@@ -914,7 +914,11 @@ fn link_metrics_section(
         ))
         .child(row(
             "Depth",
-            SharedString::from(rec.depth.to_string()),
+            SharedString::from(
+                rec.depth
+                    .map(|d| d.to_string())
+                    .unwrap_or_else(|| "-".into()),
+            ),
             muted,
         ))
         .child(row(
