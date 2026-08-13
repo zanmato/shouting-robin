@@ -494,3 +494,33 @@ fn test_chrome_crawl() {
     assert_eq!(orphan.status, Some(404));
     assert_eq!(orphan.in_sitemap, Some(true));
 }
+
+/// The records streamed during a crawl predate the post-crawl passes, which
+/// write straight to the database. The app reloads from the database once the
+/// crawl finishes; this asserts the reloaded records actually carry those
+/// results, so the live session matches what reopening the crawl would show.
+#[test]
+fn test_reload_after_finish_carries_post_crawl_analysis() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+
+    let streamed = crawl_test_site(&root_url);
+    let reloaded = crawl_test_site_reloaded(&root_url);
+
+    server.kill();
+
+    assert!(
+        !reloaded.is_empty(),
+        "reload should return the crawled pages"
+    );
+
+    assert!(
+        streamed.iter().all(|p| p.link_score.is_none()),
+        "streamed records predate the PageRank pass, so they carry no link score"
+    );
+    assert!(
+        reloaded.iter().any(|p| p.link_score.is_some()),
+        "reloaded records should carry the link scores the PageRank pass persisted"
+    );
+}

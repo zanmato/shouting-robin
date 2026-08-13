@@ -467,6 +467,34 @@ impl ShoutingRobinApp {
     /// Loads the previous crawl of `root_url` (if any) and installs it as the
     /// comparison baseline on the results grid, or clears the baseline when no
     /// earlier crawl exists.
+    /// Re-reads the finished crawl's pages from the database and swaps them
+    /// into the grid. The records streamed during the crawl predate the
+    /// post-crawl passes (link aggregation, PageRank, near-duplicate detection,
+    /// hreflang validation), which write their results straight to the
+    /// database. Without this the live session shows empty link scores,
+    /// similarity and hreflang issues until the crawl is reopened from history.
+    fn reload_finished_crawl(&mut self, crawl_id: i64, root_url: String, cx: &mut Context<Self>) {
+        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        let results_grid = self.results_grid.clone();
+        cx.spawn(async move |_, cx| {
+            let pages = match crate::storage::load_pages_for_crawl(&pool, crawl_id, &root_url).await
+            {
+                Ok(pages) => pages,
+                Err(e) => {
+                    tracing::error!(error=%e, crawl_id, "failed to reload pages after crawl");
+                    return;
+                }
+            };
+            tracing::info!(count = pages.len(), crawl_id, "reloaded pages after crawl");
+            cx.update(|cx| {
+                results_grid.update(cx, |g, cx| {
+                    g.replace_records(pages, cx);
+                });
+            });
+        })
+        .detach();
+    }
+
     fn apply_baseline(
         &mut self,
         root_url: String,
@@ -577,7 +605,7 @@ impl ShoutingRobinApp {
                     CrawlEvent::Page(record) => {
                         tracing::info!(url = %record.url, "UI received page event");
                     }
-                    CrawlEvent::Finished { total } => {
+                    CrawlEvent::Finished { total, .. } => {
                         tracing::info!(total, "crawl finished event received");
                     }
                     _ => {}
@@ -630,7 +658,7 @@ impl ShoutingRobinApp {
                             cx.notify();
                         });
                     }
-                    CrawlEvent::Finished { total } => {
+                    CrawlEvent::Finished { crawl_id, total } => {
                         tracing::info!(total, "crawl finished");
                         status_bar.update(cx, |s, cx| {
                             s.running = false;
@@ -644,7 +672,8 @@ impl ShoutingRobinApp {
                                 });
                                 this.load_crawl_history(cx);
                                 if let Some(root_url) = this.results_grid.read(cx).root_url(cx) {
-                                    this.apply_baseline(root_url, None, cx);
+                                    this.reload_finished_crawl(crawl_id, root_url.clone(), cx);
+                                    this.apply_baseline(root_url, Some(crawl_id), cx);
                                 }
                             });
                         }

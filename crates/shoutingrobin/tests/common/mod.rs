@@ -203,10 +203,32 @@ pub fn chrome_test_guard() -> std::sync::MutexGuard<'static, ()> {
     guard
 }
 
+/// Crawls the test site and returns the records as the app sees them *after*
+/// the crawl finishes: reloaded from the database, so they carry the results of
+/// the post-crawl passes (link aggregation, depth, PageRank, near-duplicates,
+/// hreflang validation) that the streamed records never have.
+pub fn crawl_test_site_reloaded(root_url: &str) -> Vec<shoutingrobin::crawl::event::PageRecord> {
+    crawl_test_site_inner(
+        root_url,
+        shoutingrobin::crawl::render_mode::RenderMode::Http,
+        Duration::from_secs(30),
+        true,
+    )
+}
+
 pub fn crawl_test_site_with_mode(
     root_url: &str,
     render_mode: shoutingrobin::crawl::render_mode::RenderMode,
     timeout: Duration,
+) -> Vec<shoutingrobin::crawl::event::PageRecord> {
+    crawl_test_site_inner(root_url, render_mode, timeout, false)
+}
+
+fn crawl_test_site_inner(
+    root_url: &str,
+    render_mode: shoutingrobin::crawl::render_mode::RenderMode,
+    timeout: Duration,
+    reload_after_finish: bool,
 ) -> Vec<shoutingrobin::crawl::event::PageRecord> {
     let _chrome_guard = matches!(
         render_mode,
@@ -239,7 +261,7 @@ pub fn crawl_test_site_with_mode(
         engine.start(
             root_url.to_string(),
             tx,
-            pool,
+            pool.clone(),
             render_mode,
             shoutingrobin::crawl::CrawlConfig {
                 max_pages: 0,
@@ -267,6 +289,7 @@ pub fn crawl_test_site_with_mode(
     });
 
     let mut pages = Vec::new();
+    let mut finished_crawl_id = None;
     let start = std::time::Instant::now();
     loop {
         let Some(remaining) = timeout.checked_sub(start.elapsed()) else {
@@ -277,7 +300,10 @@ pub fn crawl_test_site_with_mode(
             Ok(shoutingrobin::crawl::event::CrawlEvent::Page(record)) => {
                 pages.push(*record);
             }
-            Ok(shoutingrobin::crawl::event::CrawlEvent::Finished { .. }) => break,
+            Ok(shoutingrobin::crawl::event::CrawlEvent::Finished { crawl_id, .. }) => {
+                finished_crawl_id = Some(crawl_id);
+                break;
+            }
             Ok(shoutingrobin::crawl::event::CrawlEvent::Error { url, message }) => {
                 eprintln!("crawl error: {url}: {message}");
             }
@@ -291,6 +317,16 @@ pub fn crawl_test_site_with_mode(
     }
 
     cancel.store(true, Ordering::Relaxed);
+
+    if reload_after_finish {
+        let crawl_id = finished_crawl_id.expect("crawl should report a finished event");
+        return rt.block_on(async {
+            shoutingrobin::storage::load_pages_for_crawl(&pool, crawl_id, root_url)
+                .await
+                .expect("reload pages after crawl")
+        });
+    }
+
     pages
 }
 

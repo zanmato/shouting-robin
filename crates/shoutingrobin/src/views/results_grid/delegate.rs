@@ -191,6 +191,17 @@ impl ResultsDelegate {
         self.rebuild_filter();
     }
 
+    /// Swaps in a fresh set of records, keeping the active tab, filter, root
+    /// URL and baseline. Used after a crawl finishes to pick up the columns the
+    /// post-crawl passes (link aggregation, PageRank, near-duplicates, hreflang
+    /// validation) write straight to the database, which the streamed records
+    /// never carried.
+    pub fn replace_records(&mut self, records: Vec<PageRecord>) {
+        self.all_pages = records;
+        self.invalidate_counts();
+        self.rebuild_filter();
+    }
+
     pub fn clear(&mut self) {
         self.all_pages.clear();
         self.filtered_indices.clear();

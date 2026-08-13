@@ -192,6 +192,6 @@ pub enum CrawlEvent {
     Started { crawl_id: i64, root_url: String },
     Page(Box<PageRecord>),
     Progress { crawled: u64, queued: u64 },
-    Finished { total: u64 },
+    Finished { crawl_id: i64, total: u64 },
     Error { url: String, message: String },
 }

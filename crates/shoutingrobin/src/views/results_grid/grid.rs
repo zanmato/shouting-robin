@@ -52,6 +52,14 @@ impl ResultsGrid {
         cx.notify();
     }
 
+    pub fn replace_records(&mut self, records: Vec<PageRecord>, cx: &mut Context<Self>) {
+        self.state.update(cx, |state, cx| {
+            state.delegate_mut().replace_records(records);
+            state.refresh(cx);
+        });
+        cx.notify();
+    }
+
     pub fn clear(&mut self, cx: &mut Context<Self>) {
         self.state.update(cx, |state, cx| {
             state.delegate_mut().clear();

@@ -659,7 +659,10 @@ impl CrawlEngine {
                 }
             }
 
-            if let Err(e) = tx.send_async(CrawlEvent::Finished { total }).await {
+            if let Err(e) = tx
+                .send_async(CrawlEvent::Finished { crawl_id, total })
+                .await
+            {
                 tracing::warn!(error=%e, "failed to send finished event");
             }
         };
