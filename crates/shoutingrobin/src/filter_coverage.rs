@@ -60,6 +60,7 @@ fn linked_paths() -> Vec<String> {
         "/hreflang-a",
         "/hreflang-b",
         "/hreflang-c",
+        "/hreflang-d",
         "/sd-article",
         "/sd-faq",
         "/sd-howto",
@@ -403,6 +404,23 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                      <link rel=\"alternate\" hreflang=\"en\" href=\"{base}/sd-article\">"
                 ),
                 "<h1>Hreflang B Heading</h1><h2>Sub</h2><p>hreflang b body</p>",
+            ),
+        ),
+        // A complete cluster whose only other member lives outside the crawl.
+        // Nothing can be asserted about that member, so this page must come back
+        // clean rather than reporting a missing return tag.
+        "/hreflang-d" => (
+            ok,
+            no_headers,
+            doc(
+                "Hreflang Page D Pointing Outside The Crawl",
+                &format!(
+                    "<meta name=\"description\" content=\"Hreflang page d meta description here for test.\">\
+                     <link rel=\"alternate\" hreflang=\"x-default\" href=\"{base}/hreflang-d\">\
+                     <link rel=\"alternate\" hreflang=\"sv\" href=\"{base}/hreflang-d\">\
+                     <link rel=\"alternate\" hreflang=\"de\" href=\"https://never-crawled.invalid/de/x\">"
+                ),
+                "<h1>Hreflang D Heading</h1><h2>Sub</h2><p>hreflang d body</p>",
             ),
         ),
         // Points at the other two but never at itself, which is the one
@@ -1074,10 +1092,10 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         // Hreflang
         F::ContainsHreflang => both(&["/hreflang-a", "/hreflang-b"], &["/"]),
         F::MissingHreflang => both(&["/"], &["/hreflang-a"]),
-        F::HreflangMissingReturnTag => both(&["/hreflang-a"], &[]),
+        F::HreflangMissingReturnTag => both(&["/hreflang-a"], &["/hreflang-d"]),
         F::HreflangInvalidLang => both(&["/hreflang-a"], &[]),
-        F::HreflangMissingXDefault => both(&["/hreflang-a"], &["/hreflang-c"]),
-        F::HreflangMissingSelfReference => both(&["/hreflang-c"], &["/hreflang-a"]),
+        F::HreflangMissingXDefault => both(&["/hreflang-a"], &["/hreflang-c", "/hreflang-d"]),
+        F::HreflangMissingSelfReference => both(&["/hreflang-c"], &["/hreflang-a", "/hreflang-d"]),
         F::HreflangNonCanonical => both(&["/hreflang-a"], &[]),
 
         // Structured data

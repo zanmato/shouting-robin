@@ -941,6 +941,96 @@ async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) {
     }
 }
 
+/// What the crawl knows about one page, for hreflang validation.
+pub(crate) struct HreflangPage {
+    pub hreflang_tags: Vec<(String, String)>,
+    pub canonical: Option<String>,
+}
+
+/// The hreflang defects of a single page, given every page the crawl reached
+/// keyed by normalised URL.
+///
+/// `crawled` holds *every* page, not just the ones carrying hreflang tags,
+/// because the difference between "the target has no return tag" and "we never
+/// looked at the target" is the whole point: a target outside the crawl tells us
+/// nothing, and asserting against it flagged 104 of 125 pages on a site whose
+/// alternates live in language trees the crawl doesn't cover.
+pub(crate) fn hreflang_issues_for_page(
+    page_url: &str,
+    info: &HreflangPage,
+    crawled: &std::collections::HashMap<String, HreflangPage>,
+) -> Vec<crate::crawl::event::HreflangIssue> {
+    use crate::crawl::event::HreflangIssue;
+    use crate::crawl::url_norm::{normalize_url, resolve_url};
+
+    let lookup =
+        |url: &str| crawled.get(&normalize_url(url).unwrap_or_else(|| url.trim().to_string()));
+
+    let mut issues: Vec<HreflangIssue> = Vec::new();
+
+    let has_x_default = info
+        .hreflang_tags
+        .iter()
+        .any(|(lang, _)| lang == "x-default");
+    if !has_x_default {
+        issues.push(HreflangIssue::MissingXDefault);
+    }
+
+    // Every page in an hreflang cluster must list itself. A set that omits its
+    // own page describes a group the page isn't part of, and search engines may
+    // discard the whole cluster rather than guess.
+    let has_self_reference = info
+        .hreflang_tags
+        .iter()
+        .any(|(lang, url)| lang != "x-default" && urls_equivalent(url, page_url));
+    if !has_self_reference {
+        issues.push(HreflangIssue::MissingSelfReference);
+    }
+
+    for (lang, target_url) in &info.hreflang_tags {
+        if lang != "x-default" && !is_valid_bcp47(lang) {
+            issues.push(HreflangIssue::InvalidLanguageCode { code: lang.clone() });
+        }
+
+        // Anything below needs the target's own markup, so a target the crawl
+        // never reached is skipped rather than reported against.
+        let Some(target) = lookup(target_url) else {
+            continue;
+        };
+
+        // The return tag only has to point back at this page. Its language is
+        // the target's opinion of *this* page, not `lang` (which is this page's
+        // opinion of the target), so requiring the two to match reported a
+        // missing return tag for every correctly configured cluster.
+        let return_tag_exists = target
+            .hreflang_tags
+            .iter()
+            .any(|(_, return_url)| urls_equivalent(return_url, page_url));
+        if !return_tag_exists {
+            issues.push(HreflangIssue::MissingReturnTag {
+                lang: lang.clone(),
+                target_url: target_url.clone(),
+            });
+        }
+
+        // Resolve and normalise before comparing: a target whose canonical is
+        // relative, or written without the trailing slash, is pointing at
+        // itself, not somewhere else.
+        if let Some(canonical) = target.canonical.as_deref().filter(|c| !c.trim().is_empty())
+            && !urls_equivalent(
+                &resolve_url(target_url, canonical).unwrap_or_else(|| canonical.to_string()),
+                target_url,
+            )
+        {
+            issues.push(HreflangIssue::NonCanonicalUrl {
+                hreflang_url: target_url.clone(),
+            });
+        }
+    }
+
+    issues
+}
+
 async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
     let rows = match sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
         r#"SELECT url, hreflang_tags_json, canonical FROM pages WHERE crawl_id = ?"#,
@@ -956,103 +1046,44 @@ async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
         }
     };
 
-    struct PageInfo {
-        hreflang_tags: Vec<(String, String)>,
-        canonical: Option<String>,
-    }
-
-    let mut page_map: std::collections::HashMap<String, PageInfo> =
-        std::collections::HashMap::new();
-
+    let mut crawled: std::collections::HashMap<String, HreflangPage> =
+        std::collections::HashMap::with_capacity(rows.len());
+    let mut tagged: Vec<(String, HreflangPage)> = Vec::new();
     for (url, hreflang_json, canonical) in &rows {
         let tags: Vec<(String, String)> = hreflang_json
             .as_deref()
             .and_then(|j| serde_json::from_str(j).ok())
             .unwrap_or_default();
         if !tags.is_empty() {
-            page_map.insert(
+            tagged.push((
                 url.clone(),
-                PageInfo {
-                    hreflang_tags: tags,
+                HreflangPage {
+                    hreflang_tags: tags.clone(),
                     canonical: canonical.clone(),
                 },
-            );
+            ));
         }
+        let key = crate::crawl::url_norm::normalize_url(url).unwrap_or_else(|| url.clone());
+        crawled.insert(
+            key,
+            HreflangPage {
+                hreflang_tags: tags,
+                canonical: canonical.clone(),
+            },
+        );
     }
 
-    if page_map.is_empty() {
+    if tagged.is_empty() {
         return;
     }
 
-    let mut all_issues: Vec<(String, Vec<crate::crawl::event::HreflangIssue>)> = Vec::new();
-
-    for (page_url, info) in &page_map {
-        let mut issues: Vec<crate::crawl::event::HreflangIssue> = Vec::new();
-
-        let has_x_default = info
-            .hreflang_tags
-            .iter()
-            .any(|(lang, _)| lang == "x-default");
-        if !has_x_default {
-            issues.push(crate::crawl::event::HreflangIssue::MissingXDefault);
-        }
-
-        // Every page in an hreflang cluster must list itself. A set that omits
-        // its own page describes a group the page isn't part of, and search
-        // engines may discard the whole cluster rather than guess.
-        let has_self_reference = info
-            .hreflang_tags
-            .iter()
-            .any(|(lang, url)| lang != "x-default" && urls_equivalent(url, page_url));
-        if !has_self_reference {
-            issues.push(crate::crawl::event::HreflangIssue::MissingSelfReference);
-        }
-
-        for (lang, target_url) in &info.hreflang_tags {
-            if lang != "x-default" && !is_valid_bcp47(lang) {
-                issues.push(crate::crawl::event::HreflangIssue::InvalidLanguageCode {
-                    code: lang.clone(),
-                });
-            }
-
-            let target_info = page_map.get(target_url);
-            let return_tag_exists = target_info.is_some_and(|target| {
-                target
-                    .hreflang_tags
-                    .iter()
-                    .any(|(return_lang, return_url)| {
-                        return_url == page_url
-                            && (return_lang == lang || lang.starts_with(&format!("{return_lang}-")))
-                    })
-            });
-            if !return_tag_exists {
-                issues.push(crate::crawl::event::HreflangIssue::MissingReturnTag {
-                    lang: lang.clone(),
-                    target_url: target_url.clone(),
-                });
-            }
-
-            // Resolve and normalise before comparing: a target whose canonical
-            // is relative, or written without the trailing slash, is pointing at
-            // itself, not somewhere else.
-            if let Some(target_info) = target_info
-                && let Some(canonical) = target_info.canonical.as_deref().filter(|c| !c.is_empty())
-                && !urls_equivalent(
-                    &crate::crawl::url_norm::resolve_url(target_url, canonical)
-                        .unwrap_or_else(|| canonical.to_string()),
-                    target_url,
-                )
-            {
-                issues.push(crate::crawl::event::HreflangIssue::NonCanonicalUrl {
-                    hreflang_url: target_url.clone(),
-                });
-            }
-        }
-
-        if !issues.is_empty() {
-            all_issues.push((page_url.clone(), issues));
-        }
-    }
+    let all_issues: Vec<(String, Vec<crate::crawl::event::HreflangIssue>)> = tagged
+        .iter()
+        .filter_map(|(page_url, info)| {
+            let issues = hreflang_issues_for_page(page_url, info, &crawled);
+            (!issues.is_empty()).then(|| (page_url.clone(), issues))
+        })
+        .collect();
 
     if let Err(e) = storage::update_hreflang_issues(pool, crawl_id, &all_issues).await {
         tracing::warn!(error=%e, "failed to persist hreflang issues");
@@ -1523,5 +1554,174 @@ async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRec
                 html: None,
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod hreflang_tests {
+    use super::*;
+    use crate::crawl::event::HreflangIssue;
+    use std::collections::HashMap;
+
+    fn page(tags: &[(&str, &str)]) -> HreflangPage {
+        HreflangPage {
+            hreflang_tags: tags
+                .iter()
+                .map(|(lang, url)| ((*lang).to_string(), (*url).to_string()))
+                .collect(),
+            canonical: None,
+        }
+    }
+
+    fn crawl(pages: &[(&str, HreflangPage)]) -> HashMap<String, HreflangPage> {
+        pages
+            .iter()
+            .map(|(url, info)| {
+                (
+                    crate::crawl::url_norm::normalize_url(url).unwrap_or_else(|| url.to_string()),
+                    HreflangPage {
+                        hreflang_tags: info.hreflang_tags.clone(),
+                        canonical: info.canonical.clone(),
+                    },
+                )
+            })
+            .collect()
+    }
+
+    fn missing_return_tags(issues: &[HreflangIssue]) -> Vec<&str> {
+        issues
+            .iter()
+            .filter_map(|issue| match issue {
+                HreflangIssue::MissingReturnTag { target_url, .. } => Some(target_url.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_target_outside_the_crawl_is_unknown_not_missing() {
+        // The live false positive: a Swedish crawl whose alternates point into
+        // /de/ and /fr/ trees it never visits flagged 104 of 125 pages.
+        let a = page(&[
+            ("sv", "https://a.test/se/x"),
+            ("de", "https://a.test/de/x"),
+            ("fr", "https://a.test/fr/x"),
+        ]);
+        let crawled = crawl(&[(
+            "https://a.test/se/x",
+            page(&[("sv", "https://a.test/se/x")]),
+        )]);
+        let issues = hreflang_issues_for_page("https://a.test/se/x", &a, &crawled);
+        assert!(
+            missing_return_tags(&issues).is_empty(),
+            "got {:?}",
+            missing_return_tags(&issues)
+        );
+    }
+
+    #[test]
+    fn a_crawled_target_that_does_not_link_back_is_still_reported() {
+        let a = page(&[("sv", "https://a.test/se/x"), ("de", "https://a.test/de/x")]);
+        let crawled = crawl(&[
+            (
+                "https://a.test/se/x",
+                page(&[("sv", "https://a.test/se/x")]),
+            ),
+            // The German page lists only itself, never the Swedish one.
+            (
+                "https://a.test/de/x",
+                page(&[("de", "https://a.test/de/x")]),
+            ),
+        ]);
+        let issues = hreflang_issues_for_page("https://a.test/se/x", &a, &crawled);
+        assert_eq!(missing_return_tags(&issues), vec!["https://a.test/de/x"]);
+    }
+
+    #[test]
+    fn a_crawled_target_with_no_hreflang_at_all_is_reported() {
+        // Reached, parsed, and carries no alternates: that is a real missing
+        // return tag rather than an unknown.
+        let a = page(&[("sv", "https://a.test/se/x"), ("de", "https://a.test/de/x")]);
+        let crawled = crawl(&[
+            (
+                "https://a.test/se/x",
+                page(&[("sv", "https://a.test/se/x")]),
+            ),
+            ("https://a.test/de/x", page(&[])),
+        ]);
+        let issues = hreflang_issues_for_page("https://a.test/se/x", &a, &crawled);
+        assert_eq!(missing_return_tags(&issues), vec!["https://a.test/de/x"]);
+    }
+
+    #[test]
+    fn the_return_tag_comparison_normalises_urls() {
+        // The target links back without the trailing slash.
+        let a = page(&[("sv", "https://a.test/"), ("de", "https://a.test/de/")]);
+        let crawled = crawl(&[
+            ("https://a.test/", page(&[("sv", "https://a.test/")])),
+            (
+                "https://a.test/de/",
+                page(&[("sv", "https://a.test"), ("de", "https://a.test/de/")]),
+            ),
+        ]);
+        let issues = hreflang_issues_for_page("https://a.test/", &a, &crawled);
+        assert!(
+            missing_return_tags(&issues).is_empty(),
+            "got {:?}",
+            missing_return_tags(&issues)
+        );
+    }
+
+    #[test]
+    fn a_regional_tag_is_satisfied_by_its_base_language() {
+        let a = page(&[("sv-SE", "https://a.test/"), ("de-DE", "https://a.test/de")]);
+        let crawled = crawl(&[
+            ("https://a.test/", page(&[("sv-SE", "https://a.test/")])),
+            ("https://a.test/de", page(&[("de", "https://a.test/")])),
+        ]);
+        let issues = hreflang_issues_for_page("https://a.test/", &a, &crawled);
+        assert!(
+            missing_return_tags(&issues).is_empty(),
+            "got {:?}",
+            missing_return_tags(&issues)
+        );
+    }
+
+    #[test]
+    fn the_other_three_rules_still_fire() {
+        let mut a = page(&[
+            ("sv", "https://a.test/se/x"),
+            ("invalid", "https://a.test/de/x"),
+        ]);
+        a.canonical = None;
+        let mut target = page(&[("de", "https://a.test/de/x")]);
+        target.canonical = Some("https://a.test/de/other".into());
+        let crawled = crawl(&[("https://a.test/de/x", target)]);
+        let issues = hreflang_issues_for_page("https://a.test/other", &a, &crawled);
+
+        assert!(issues.contains(&HreflangIssue::MissingXDefault));
+        assert!(issues.contains(&HreflangIssue::MissingSelfReference));
+        assert!(issues.contains(&HreflangIssue::InvalidLanguageCode {
+            code: "invalid".into()
+        }));
+        assert!(issues.contains(&HreflangIssue::NonCanonicalUrl {
+            hreflang_url: "https://a.test/de/x".into()
+        }));
+    }
+
+    #[test]
+    fn a_self_referencing_target_canonical_is_not_a_defect() {
+        let a = page(&[("sv", "https://a.test/"), ("de", "https://a.test/de")]);
+        let mut target = page(&[("sv", "https://a.test/"), ("de", "https://a.test/de")]);
+        // Written relative, and resolving to the target itself.
+        target.canonical = Some("/de".into());
+        let crawled = crawl(&[("https://a.test/de", target)]);
+        let issues = hreflang_issues_for_page("https://a.test/", &a, &crawled);
+        assert!(
+            !issues
+                .iter()
+                .any(|i| matches!(i, HreflangIssue::NonCanonicalUrl { .. })),
+            "got {issues:?}"
+        );
     }
 }
