@@ -452,7 +452,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
 
     let low_content = documents
         .iter()
-        .filter(|p| p.word_count.is_some_and(|w| w > 0 && w < 100))
+        .filter(|p| super::filter::is_low_content(p))
         .count();
     if low_content > 0 {
         entries.push(IssueEntry {
@@ -461,7 +461,10 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             priority: IssuePriority::Low,
             count: low_content,
             pct: low_content as f32 / doc_total * 100.0,
-            description: "Pages with fewer than 100 words of body text.".into(),
+            description: format!(
+                "Pages with fewer than {} words of body text.",
+                super::filter::LOW_CONTENT_WORD_COUNT
+            ),
             hint: "Add substantive content or consolidate thin pages.".into(),
         });
     }

@@ -391,6 +391,21 @@ fn is_page_document(page: &PageRecord) -> bool {
     page.is_page && !page.is_resource
 }
 
+/// A page with fewer than this many words of body text counts as thin.
+///
+/// 200 rather than the 100 we used before: at 100 a page had to be nearly empty
+/// to qualify, so the rule stayed silent on sites full of genuinely thin pages.
+/// The overview rule and the drill-down filter share this so a page can never
+/// be counted in one and missing from the other.
+pub(super) const LOW_CONTENT_WORD_COUNT: u32 = 200;
+
+/// True when the page has body text but not much of it. A page with no word
+/// count at all is not thin, it is unmeasured.
+pub(super) fn is_low_content(page: &PageRecord) -> bool {
+    page.word_count
+        .is_some_and(|words| words > 0 && words < LOW_CONTENT_WORD_COUNT)
+}
+
 /// True when a page should be subject to on-page content issue flags
 /// (missing/duplicate title, meta, H1, canonical, thin content,
 /// a11y, perf, hreflang, structured data). Redirect sources carry the target's
@@ -804,9 +819,7 @@ pub(super) fn filter_for_tab(
             IssueFilter::NearDuplicates => {
                 indices.retain(|&idx| pages[idx].near_duplicate_count.is_some_and(|c| c > 0))
             }
-            IssueFilter::LowContent => {
-                indices.retain(|&idx| pages[idx].word_count.is_some_and(|w| w > 0 && w < 100))
-            }
+            IssueFilter::LowContent => indices.retain(|&idx| is_low_content(&pages[idx])),
             IssueFilter::SsrContentMissing => {
                 indices.retain(|&idx| pages[idx].ssr_content_missing == Some(true))
             }
@@ -1373,5 +1386,56 @@ mod length_threshold_tests {
             matching_urls(ResultTab::PageTitles, IssueFilter::OverLength, &pages).len(),
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod low_content_tests {
+    use super::*;
+    use crate::crawl::event::PageRecord;
+
+    fn page_with_words(url: &str, words: u32) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            word_count: Some(words),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn the_threshold_sits_at_two_hundred_words() {
+        assert!(is_low_content(&page_with_words("https://a.test/a", 199)));
+        assert!(!is_low_content(&page_with_words("https://a.test/a", 200)));
+        // 150 words is the band the old threshold of 100 stayed silent on.
+        assert!(is_low_content(&page_with_words("https://a.test/a", 150)));
+    }
+
+    #[test]
+    fn a_page_with_no_word_count_is_unmeasured_not_thin() {
+        let mut page = page_with_words("https://a.test/a", 0);
+        page.word_count = None;
+        assert!(!is_low_content(&page));
+        // An explicit zero is a real measurement of an empty page, but the rule
+        // is about thin content rather than no content, so it stays out too.
+        assert!(!is_low_content(&page_with_words("https://a.test/a", 0)));
+    }
+
+    #[test]
+    fn the_overview_count_and_the_drill_down_agree() {
+        let pages = vec![
+            page_with_words("https://a.test/thin", 150),
+            page_with_words("https://a.test/fat", 400),
+        ];
+        let rows = matching_urls(ResultTab::Content, IssueFilter::LowContent, &pages);
+        let entries = build_issues_entries(&pages);
+        let entry = entries
+            .iter()
+            .find(|e| e.name == "Low Content Pages")
+            .expect("low content entry");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(entry.count, rows.len());
     }
 }
