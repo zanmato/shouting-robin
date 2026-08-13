@@ -112,7 +112,29 @@ async fn fetch_url(url: &str) -> Result<String, reqwest::Error> {
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
-    client.get(url).send().await?.text().await
+    let bytes = client.get(url).send().await?.bytes().await?;
+    Ok(decode_sitemap_body(&bytes))
+}
+
+/// Sitemaps are commonly published gzipped, as `sitemap.xml.gz` served with
+/// `Content-Type: application/gzip`. That is a compressed *payload*, not a
+/// transfer encoding, so no HTTP client inflates it for us and reading the
+/// response as text yields binary that parses as zero URLs. Detect the gzip
+/// magic number and inflate before decoding.
+fn decode_sitemap_body(bytes: &[u8]) -> String {
+    if bytes.starts_with(&[0x1f, 0x8b]) {
+        use std::io::Read;
+        let mut decoder = flate2::read::GzDecoder::new(bytes);
+        let mut decoded = String::new();
+        match decoder.read_to_string(&mut decoded) {
+            Ok(_) => return decoded,
+            Err(e) => {
+                tracing::warn!(error=%e, "failed to inflate gzipped sitemap");
+                return String::new();
+            }
+        }
+    }
+    String::from_utf8_lossy(bytes).into_owned()
 }
 
 fn parse_sitemap_index(xml: &str) -> Option<Vec<String>> {
@@ -258,5 +280,34 @@ mod tests {
         <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
         </urlset>"#;
         assert!(parse_urlset(xml).is_none());
+    }
+
+    #[test]
+    fn inflates_a_gzipped_sitemap() {
+        use std::io::Write;
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+            <url><loc>https://example.com/a</loc></url>
+            <url><loc>https://example.com/b</loc></url>
+        </urlset>"#;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+        encoder.write_all(xml.as_bytes()).expect("gzip the sitemap");
+        let gzipped = encoder.finish().expect("finish gzip");
+
+        assert_ne!(
+            String::from_utf8_lossy(&gzipped),
+            xml,
+            "the fixture should really be compressed"
+        );
+
+        let body = decode_sitemap_body(&gzipped);
+        let urls = parse_urlset(&body).expect("gzipped sitemap should parse");
+        assert_eq!(urls, vec!["https://example.com/a", "https://example.com/b"]);
+    }
+
+    #[test]
+    fn plain_xml_is_left_alone() {
+        let xml = "<urlset><url><loc>https://example.com/a</loc></url></urlset>";
+        assert_eq!(decode_sitemap_body(xml.as_bytes()), xml);
     }
 }

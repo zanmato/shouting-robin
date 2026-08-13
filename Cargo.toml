@@ -79,6 +79,7 @@ md5 = "0.7"
 
 # XML parsing
 quick-xml = "0.37"
+flate2 = "1"
 
 # HTTP client (reuse from spider's dep tree)
 reqwest = { version = "0.12", default-features = false, features = [

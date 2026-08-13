@@ -41,6 +41,7 @@ scraper = { workspace = true }
 csv = "1"
 md5 = { workspace = true }
 quick-xml = { workspace = true }
+flate2 = { workspace = true }
 reqwest = { workspace = true }
 ego-tree = "0.9.0"
 

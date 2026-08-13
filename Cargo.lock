@@ -7192,6 +7192,7 @@ dependencies = [
  "csv",
  "dirs 5.0.1",
  "ego-tree",
+ "flate2",
  "flume 0.11.1",
  "gpui",
  "gpui-component",
