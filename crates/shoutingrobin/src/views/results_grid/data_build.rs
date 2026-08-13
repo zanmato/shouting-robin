@@ -763,12 +763,18 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     // through the filter itself means the headline figure and the rows you land
     // on after clicking through are produced by the same code, so they cannot
     // drift the way two hand-written copies of a predicate do.
+    // Several rules share a tab, and the occurrence map is the expensive part of
+    // setting one up (a string key per page), so build one per tab, not per rule.
+    let mut occurrences_by_tab: HashMap<ResultTab, HashMap<String, usize>> = HashMap::new();
     for rule in FILTER_DERIVED_RULES {
         let denominator = match rule.denominator {
             Denominator::Documents => doc_total,
             Denominator::InternalUrls => total,
         };
-        if let Some(entry) = filter_derived_entry(pages, rule, denominator) {
+        let occurrences = occurrences_by_tab
+            .entry(rule.tab)
+            .or_insert_with(|| super::columns::build_occurrence_counts(rule.tab, pages));
+        if let Some(entry) = filter_derived_entry(pages, rule, denominator, occurrences) {
             entries.push(entry);
         }
     }
@@ -994,10 +1000,10 @@ fn filter_derived_entry(
     pages: &[PageRecord],
     rule: &FilterDerivedRule,
     denominator: f32,
+    occurrence_counts: &HashMap<String, usize>,
 ) -> Option<IssueEntry> {
-    let occurrence_counts = super::columns::build_occurrence_counts(rule.tab, pages);
     let count =
-        super::filter::filter_for_tab(rule.tab, rule.filter, pages, &occurrence_counts).len();
+        super::filter::filter_for_tab(rule.tab, rule.filter, pages, occurrence_counts).len();
     if count == 0 {
         return None;
     }

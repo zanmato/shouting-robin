@@ -9,7 +9,7 @@ use gpui_component::table::{DataTable, TableEvent, TableState};
 use crate::crawl::event::PageRecord;
 use crate::views::ResultTab;
 
-use super::data_build::{build_issues_entries, overview_issue_target};
+use super::data_build::overview_issue_target;
 use super::delegate::ResultsDelegate;
 use super::types::{FlatRow, IssueFilter, ResultsGridEvent, TabCounts};
 
@@ -26,14 +26,11 @@ impl ResultsGrid {
                 let delegate = this.state.read(cx).delegate();
                 if delegate.active_tab == ResultTab::Overview
                     && let Some(FlatRow::IssuesRow { index }) = delegate.flat_rows().get(*row_ix)
+                    && let Some(entry) = delegate.issue_entries().get(*index)
+                    && let Some((tab, filter)) = overview_issue_target(&entry.name)
                 {
-                    let entries = build_issues_entries(delegate.all_pages());
-                    if let Some(entry) = entries.get(*index)
-                        && let Some((tab, filter)) = overview_issue_target(&entry.name)
-                    {
-                        cx.emit(ResultsGridEvent::OverviewDrillDown { tab, filter });
-                        return;
-                    }
+                    cx.emit(ResultsGridEvent::OverviewDrillDown { tab, filter });
+                    return;
                 }
                 cx.emit(ResultsGridEvent::Selected(*row_ix))
             }

@@ -28,7 +28,7 @@ use super::data_build::{
 };
 use super::filter::{compute_tab_filter_counts, filter_for_tab, flat_row_matches_filter};
 use super::types::{
-    ChangeEntry, ChangeKind, FlatRow, IssueFilter, TabFilterCounts, tab_is_flattened,
+    ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, TabFilterCounts, tab_is_flattened,
 };
 
 fn format_delta(delta: i64) -> String {
@@ -61,6 +61,12 @@ pub struct ResultsDelegate {
     baseline_pages: Option<Vec<PageRecord>>,
     baseline_started_at: Option<i64>,
     baseline_issue_counts: HashMap<String, (usize, f32)>,
+    /// The Overview tab's issue entries, rebuilt whenever its rows are. Every
+    /// Overview row, cell, sort comparison and drill-down reads this rather than
+    /// rebuilding: building the entries walks the whole page set once per rule,
+    /// so recomputing it per cell made the tab quadratic in rules times cells.
+    /// Empty on every other tab.
+    issue_entries: Vec<IssueEntry>,
     /// Lazily computed per-tab badge and sub-filter counts, keyed by tab.
     /// Invalidated whenever the underlying data changes (pages, baseline, root),
     /// but not on tab/filter switches since the counts span all tabs.
@@ -83,6 +89,7 @@ impl ResultsDelegate {
             baseline_pages: None,
             baseline_started_at: None,
             baseline_issue_counts: HashMap::new(),
+            issue_entries: Vec::new(),
             counts_cache: None,
         }
     }
@@ -262,7 +269,14 @@ impl ResultsDelegate {
         &self.flat_rows
     }
 
-    pub fn all_pages(&self) -> &[PageRecord] {
+    /// The Overview tab's issue entries, positionally aligned with its rows.
+    /// Empty on every other tab.
+    pub fn issue_entries(&self) -> &[IssueEntry] {
+        &self.issue_entries
+    }
+
+    #[cfg(test)]
+    pub(super) fn all_pages_for_test(&self) -> &[PageRecord] {
         &self.all_pages
     }
 
@@ -280,16 +294,27 @@ impl ResultsDelegate {
     fn rebuild_flat_rows(&mut self) {
         if !tab_is_flattened(self.active_tab) {
             self.flat_rows.clear();
+            self.issue_entries.clear();
             return;
         }
-        let change_entries = self.change_entries();
-        self.flat_rows = build_rows_for_tab(
-            self.active_tab,
-            &self.filtered_indices,
-            &self.all_pages,
-            &change_entries,
-            self.root_origin.as_deref(),
-        );
+        if self.active_tab == ResultTab::Overview {
+            // The entries are the rows here, so build them once and keep them:
+            // everything downstream reads `issue_entries` by index.
+            self.issue_entries = build_issues_entries(&self.all_pages);
+            self.flat_rows = (0..self.issue_entries.len())
+                .map(|index| FlatRow::IssuesRow { index })
+                .collect();
+        } else {
+            self.issue_entries.clear();
+            let change_entries = self.change_entries();
+            self.flat_rows = build_rows_for_tab(
+                self.active_tab,
+                &self.filtered_indices,
+                &self.all_pages,
+                &change_entries,
+                self.root_origin.as_deref(),
+            );
+        }
         self.filter_flat_rows();
     }
 
@@ -298,7 +323,7 @@ impl ResultsDelegate {
             return;
         }
         if self.active_tab == ResultTab::Overview {
-            let entries = build_issues_entries(&self.all_pages);
+            let entries = &self.issue_entries;
             let filter = self.issue_filter;
             self.flat_rows.retain(|row| {
                 let FlatRow::IssuesRow { index } = row else {
@@ -410,8 +435,7 @@ impl ResultsDelegate {
     fn flat_row_cell_text(&self, row: &FlatRow, col_key: &str) -> String {
         match row {
             FlatRow::IssuesRow { index } => {
-                let entries = build_issues_entries(&self.all_pages);
-                let Some(entry) = entries.get(*index) else {
+                let Some(entry) = self.issue_entries.get(*index) else {
                     return String::new();
                 };
                 match col_key {
@@ -568,8 +592,7 @@ impl TableDelegate for ResultsDelegate {
             };
             match row {
                 FlatRow::IssuesRow { index } => {
-                    let entries = build_issues_entries(&self.all_pages);
-                    let Some(entry) = entries.get(*index) else {
+                    let Some(entry) = self.issue_entries.get(*index) else {
                         return cell;
                     };
                     let previous = self.baseline_issue_counts.get(&entry.name).map(|(c, _)| *c);
@@ -811,13 +834,13 @@ impl TableDelegate for ResultsDelegate {
             } else {
                 Vec::new()
             };
+            let issue_entries = std::mem::take(&mut self.issue_entries);
             self.flat_rows.sort_by(|a, b| {
                 if let (FlatRow::IssuesRow { index: a_idx }, FlatRow::IssuesRow { index: b_idx }) =
                     (a, b)
                 {
-                    let entries = build_issues_entries(&self.all_pages);
-                    let a_entry = entries.get(*a_idx);
-                    let b_entry = entries.get(*b_idx);
+                    let a_entry = issue_entries.get(*a_idx);
+                    let b_entry = issue_entries.get(*b_idx);
                     let ordering = match (a_entry, b_entry) {
                         (Some(ae), Some(be)) => match col_key.as_ref() {
                             "count" => ae.count.cmp(&be.count),
@@ -953,6 +976,7 @@ impl TableDelegate for ResultsDelegate {
                     _ => ordering,
                 }
             });
+            self.issue_entries = issue_entries;
         } else {
             self.filtered_indices.sort_by(|&a, &b| {
                 let a_record = &self.all_pages[a];
@@ -1055,5 +1079,124 @@ mod cache_tests {
             .map(|counts| counts.badge.total)
             .unwrap_or_default();
         assert_eq!(after, 0, "clearing the baseline must drop change rows");
+    }
+}
+
+#[cfg(test)]
+mod issue_entry_cache_tests {
+    use super::*;
+
+    fn pages() -> Vec<PageRecord> {
+        (0..5)
+            .map(|i| PageRecord {
+                url: format!("https://a.test/page-{i}"),
+                is_internal: true,
+                is_page: true,
+                status: Some(200),
+                title: Some("Shared title across every page".into()),
+                word_count: Some(10),
+                ..Default::default()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn overview_rows_and_entries_stay_aligned() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.switch_tab(ResultTab::Overview);
+        delegate.replace_records(pages());
+
+        let expected = build_issues_entries(delegate.all_pages_for_test());
+        assert!(!expected.is_empty(), "fixture should trip some rules");
+        assert_eq!(delegate.issue_entries().len(), expected.len());
+        assert_eq!(delegate.flat_rows().len(), expected.len());
+        for (cached, fresh) in delegate.issue_entries().iter().zip(expected.iter()) {
+            assert_eq!(cached.name, fresh.name);
+            assert_eq!(cached.count, fresh.count);
+        }
+    }
+
+    #[test]
+    fn the_cache_refreshes_when_the_records_change() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.switch_tab(ResultTab::Overview);
+        delegate.replace_records(pages());
+        let before = delegate.issue_entries().len();
+
+        let mut fixed = pages();
+        for (i, page) in fixed.iter_mut().enumerate() {
+            page.title = Some(format!("A distinct title for page number {i}"));
+            page.meta_description = Some(format!(
+                "A distinct meta description for page number {i}, long enough to clear the bound."
+            ));
+            page.h1 = Some(format!("Heading {i}"));
+            page.h2 = Some(format!("Sub {i}"));
+            page.h1_count = 1;
+            page.word_count = Some(500);
+        }
+        delegate.replace_records(fixed);
+        assert!(
+            delegate.issue_entries().len() < before,
+            "fixing the pages should drop rules, got {} then {}",
+            before,
+            delegate.issue_entries().len()
+        );
+        assert_eq!(delegate.flat_rows().len(), delegate.issue_entries().len());
+    }
+
+    /// Stands in for a frame of the Overview grid: every visible cell asks the
+    /// delegate for its text. This is the path that got slow, because each cell
+    /// used to rebuild every issue entry from the full page set.
+    #[test]
+    fn a_full_grid_of_cells_is_cheap_to_render() {
+        use std::time::Instant;
+        let pages: Vec<PageRecord> = (0..1000)
+            .map(|i| PageRecord {
+                url: format!("https://a.test/page-{i}"),
+                is_internal: true,
+                is_page: true,
+                status: Some(200),
+                title: Some(format!("Title number {i} for the page")),
+                word_count: Some(10),
+                ..Default::default()
+            })
+            .collect();
+        let mut delegate = ResultsDelegate::new();
+        delegate.switch_tab(ResultTab::Overview);
+        delegate.replace_records(pages);
+
+        let columns = [
+            "issue_name",
+            "issue_type",
+            "priority",
+            "count",
+            "pct",
+            "delta",
+        ];
+        let start = Instant::now();
+        let mut cells = 0;
+        for row in delegate.flat_rows().to_vec() {
+            for col in columns {
+                std::hint::black_box(delegate.flat_row_cell_text(&row, col));
+                cells += 1;
+            }
+        }
+        let elapsed = start.elapsed();
+        eprintln!("{cells} overview cells over 1000 pages in {elapsed:?}");
+        assert!(
+            elapsed < std::time::Duration::from_millis(50),
+            "{cells} cells took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn leaving_the_overview_drops_the_entries() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.switch_tab(ResultTab::Overview);
+        delegate.replace_records(pages());
+        assert!(!delegate.issue_entries().is_empty());
+
+        delegate.switch_tab(ResultTab::Internal);
+        assert!(delegate.issue_entries().is_empty());
     }
 }
