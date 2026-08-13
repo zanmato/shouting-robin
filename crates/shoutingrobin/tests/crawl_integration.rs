@@ -616,3 +616,34 @@ fn test_crawl_depth_is_computed_from_the_link_graph() {
     let orphan = find_page(&pages, "/orphan-page.html").expect("orphan should be present");
     assert_eq!(orphan.depth, None, "an unlinked URL has no crawl depth");
 }
+
+/// HTML requires `&` to be escaped in attribute values, so a href of
+/// `?ref=nav&amp;page=2` addresses `?ref=nav&page=2`. Queueing the raw text
+/// instead fetches a URL nothing linked to and misses the real one.
+#[test]
+fn test_escaped_ampersands_in_hrefs_are_decoded_before_crawling() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+
+    let pages = crawl_test_site(&root_url);
+
+    server.kill();
+
+    assert!(
+        pages.iter().all(|p| !p.url.contains("amp;")),
+        "no crawled URL should carry an undecoded entity, got {:?}",
+        pages
+            .iter()
+            .map(|p| p.url.as_str())
+            .filter(|u| u.contains("amp;"))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        pages
+            .iter()
+            .any(|p| p.url.contains("about.html?ref=nav&page=2")),
+        "the decoded URL should have been crawled, got {:?}",
+        page_paths(&pages)
+    );
+}

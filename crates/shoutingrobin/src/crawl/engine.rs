@@ -219,6 +219,27 @@ impl CrawlEngine {
                 }
             }
 
+            // spider extracts hrefs with a streaming HTML rewriter, which hands
+            // back the raw attribute text with its character references intact.
+            // Left alone, a href of `?a=1&amp;b=2` is queued verbatim, so the
+            // crawler requests a URL nobody linked to and never reaches the real
+            // one (missing any redirect it serves). Decode on the way into the
+            // frontier, which is the hook spider provides for rewriting URLs.
+            website.with_on_link_find_callback(Some(std::sync::Arc::new(
+                |url: spider::CaseInsensitiveString, source: Option<String>| {
+                    let raw = url.to_string();
+                    let decoded = crate::crawl::url_norm::decode_entities(&raw);
+                    if decoded == raw {
+                        (url, source)
+                    } else {
+                        (
+                            spider::CaseInsensitiveString::from(decoded.as_str()),
+                            source,
+                        )
+                    }
+                },
+            )));
+
             let blocked_urls: std::sync::Arc<std::sync::Mutex<Vec<String>>> =
                 std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
             {

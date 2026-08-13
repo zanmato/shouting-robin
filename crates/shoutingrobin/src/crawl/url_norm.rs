@@ -18,6 +18,25 @@ pub fn normalize_url(url: &str) -> Option<String> {
     Some(parsed.to_string())
 }
 
+/// Decodes the character references an HTML author writes inside an attribute
+/// value, so a href of `?a=1&amp;b=2` becomes the URL `?a=1&b=2`.
+///
+/// HTML requires `&` to be escaped in attribute values, and browsers decode it
+/// before requesting the URL. A crawler that skips this step requests a URL
+/// nobody linked to: it invents `?a=1&amp;b=2` (a query with an `amp;b`
+/// parameter) and never visits the real page.
+///
+/// Only the five predefined entities and numeric references are decoded. An
+/// unrecognised sequence such as `&sect` is left exactly as it is, because in a
+/// query string it is far more likely to be a parameter named `sect` than an
+/// author's attempt to write `§`.
+pub fn decode_entities(url: &str) -> String {
+    match quick_xml::escape::unescape(url) {
+        Ok(decoded) => decoded.into_owned(),
+        Err(_) => url.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,5 +123,32 @@ mod tests {
     fn unparseable_urls_fall_back_to_string_comparison() {
         assert!(urls_equivalent("not a url", "not a url"));
         assert!(!urls_equivalent("not a url", "https://example.com/"));
+    }
+
+    #[test]
+    fn decodes_escaped_ampersands_in_a_query_string() {
+        assert_eq!(
+            decode_entities("/list?f[serie]=Touch&amp;page=1"),
+            "/list?f[serie]=Touch&page=1"
+        );
+    }
+
+    #[test]
+    fn decodes_numeric_character_references() {
+        assert_eq!(decode_entities("/a?x=1&#38;y=2"), "/a?x=1&y=2");
+        assert_eq!(decode_entities("/a?x=1&#x26;y=2"), "/a?x=1&y=2");
+    }
+
+    #[test]
+    fn leaves_a_plain_url_untouched() {
+        let url = "https://example.com/a?x=1&y=2";
+        assert_eq!(decode_entities(url), url);
+    }
+
+    #[test]
+    fn leaves_an_unrecognised_sequence_untouched() {
+        // `sect` here is a query parameter, not an attempt to write a section sign.
+        let url = "https://example.com/a?x=1&sect=news";
+        assert_eq!(decode_entities(url), url);
     }
 }

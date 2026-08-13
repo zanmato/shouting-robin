@@ -347,11 +347,17 @@ pub fn chrome_available() -> bool {
     })
 }
 
+/// Finds a crawled page by path. Prefers an exact path match so a lookup for
+/// `/about.html` can't return `/about.html?ref=nav&page=2`, and only falls back
+/// to a substring match for callers passing a fragment of a URL.
 pub fn find_page<'a>(
     pages: &'a [shoutingrobin::crawl::event::PageRecord],
     substr: &str,
 ) -> Option<&'a shoutingrobin::crawl::event::PageRecord> {
-    pages.iter().find(|p| p.url.contains(substr))
+    pages
+        .iter()
+        .find(|p| path_of(&p.url) == substr)
+        .or_else(|| pages.iter().find(|p| p.url.contains(substr)))
 }
 
 pub fn path_of(url: &str) -> String {

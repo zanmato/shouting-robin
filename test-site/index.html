@@ -27,6 +27,10 @@
   <li><a href="/a11y.html">Accessibility violations</a></li>
   <li><a href="/performance.html">Performance</a></li>
   <li><a href="/external.html">External resources</a></li>
+  <!-- The ampersand is escaped, as HTML requires. A crawler must decode it
+       before requesting the URL, or it fetches a page with an "amp;page"
+       parameter that nothing linked to. -->
+  <li><a href="/about.html?ref=nav&amp;page=2">About, with tracking params</a></li>
 </ul>
 </body>
 </html>
