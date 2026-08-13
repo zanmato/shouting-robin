@@ -274,6 +274,18 @@ pub(super) fn field_count(record: &PageRecord, field: &str) -> u32 {
     }
 }
 
+/// The length of `text` in characters, which is what the `LENGTH` columns and
+/// the over/under-length thresholds mean.
+///
+/// `str::len()` returns bytes, so every non-ASCII character inflates the figure:
+/// `Kvalitetsbett för dig och din häst | ByLynga` is 44 characters but 46 bytes.
+/// On a Swedish site that was most of the pages reporting a length nobody could
+/// reproduce by counting, and the same skew silently moved pages in and out of
+/// the over/under-length filters.
+pub(super) fn char_length(text: &str) -> usize {
+    text.chars().count()
+}
+
 pub(super) fn length_thresholds(tab: ResultTab) -> Option<(usize, usize)> {
     match tab {
         ResultTab::PageTitles => Some((30, 60)),

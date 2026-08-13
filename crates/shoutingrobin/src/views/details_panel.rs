@@ -1291,8 +1291,10 @@ fn headers_section(
     }
     let mut headers_body = div().flex().flex_col().gap_0p5();
     for (key, value) in &rec.headers {
-        let display_value = if value.len() > 80 {
-            format!("{}...", &value[..80])
+        // Truncate by characters, not bytes: slicing a multi-byte value at byte
+        // 80 would land mid-character and panic.
+        let display_value = if value.chars().count() > 80 {
+            format!("{}...", value.chars().take(80).collect::<String>())
         } else {
             value.clone()
         };

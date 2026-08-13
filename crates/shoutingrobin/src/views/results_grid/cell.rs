@@ -7,7 +7,7 @@ use crate::crawl::event::{A11yIssue, ImageRef, PageRecord, SdFormat, SdItem};
 use crate::ui::tag::{Tone, count_tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::ResultTab;
 
-use super::columns::{field_value, header_value, primary_field_key};
+use super::columns::{char_length, field_value, header_value, primary_field_key};
 use super::data_build::dir_format_size;
 use super::types::FlatRow;
 
@@ -262,7 +262,7 @@ pub(super) fn cell_text(
         "title_length" => record
             .title
             .as_ref()
-            .map(|t| SharedString::from(t.len().to_string()))
+            .map(|t| SharedString::from(char_length(t).to_string()))
             .unwrap_or_else(|| SharedString::from("0")),
         "title_pixel_width" => record
             .title_pixel_width
@@ -272,7 +272,7 @@ pub(super) fn cell_text(
         "meta_desc_length" => record
             .meta_description
             .as_ref()
-            .map(|d| SharedString::from(d.len().to_string()))
+            .map(|d| SharedString::from(char_length(d).to_string()))
             .unwrap_or_else(|| SharedString::from("0")),
         "meta_desc_pixel_width" => record
             .meta_description_pixel_width
@@ -282,13 +282,13 @@ pub(super) fn cell_text(
         "h1_length" => record
             .h1
             .as_ref()
-            .map(|h| SharedString::from(h.len().to_string()))
+            .map(|h| SharedString::from(char_length(h).to_string()))
             .unwrap_or_else(|| SharedString::from("0")),
         "h2" => SharedString::from(record.h2.clone().unwrap_or_default()),
         "h2_length" => record
             .h2
             .as_ref()
-            .map(|h| SharedString::from(h.len().to_string()))
+            .map(|h| SharedString::from(char_length(h).to_string()))
             .unwrap_or_else(|| SharedString::from("0")),
         "canonical" => SharedString::from(record.canonical.clone().unwrap_or_default()),
         "robots" => SharedString::from(record.robots.clone().unwrap_or_default()),
@@ -541,7 +541,7 @@ pub(super) fn cell_text(
             SharedString::from(header_value(&record.headers, "last-modified").unwrap_or("-"))
         }
         "redirect_url" => SharedString::from(record.redirect_url.as_deref().unwrap_or("-")),
-        "url_length" => SharedString::from(record.url.len().to_string()),
+        "url_length" => SharedString::from(char_length(&record.url).to_string()),
         "x_robots_tag" => {
             SharedString::from(header_value(&record.headers, "x-robots-tag").unwrap_or("-"))
         }
@@ -754,5 +754,51 @@ mod tests {
     fn ssr_diff_clamps_to_zero_when_ssr_exceeds_csr() {
         let record = make_record(Some(378), Some(379));
         assert_eq!(ssr_diff_label(&record), "0%");
+    }
+}
+
+#[cfg(test)]
+mod length_tests {
+    use super::*;
+
+    fn page_with_title(title: &str) -> PageRecord {
+        PageRecord {
+            url: "https://a.test/".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            title: Some(title.into()),
+            title_count: 1,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn length_columns_count_characters_not_bytes() {
+        // 44 characters, 46 bytes.
+        let title = "Kvalitetsbett för dig och din häst | ByLynga";
+        assert_eq!(title.len(), 46);
+        let record = page_with_title(title);
+        assert_eq!(
+            cell_text(
+                &record,
+                "title_length",
+                &HashMap::new(),
+                ResultTab::PageTitles,
+                None
+            )
+            .as_ref(),
+            "44"
+        );
+    }
+
+    #[test]
+    fn url_length_counts_characters_not_bytes() {
+        let mut record = page_with_title("T");
+        record.url = "https://a.test/hästar".into();
+        assert_eq!(
+            cell_text(&record, "url_length", &HashMap::new(), ResultTab::Url, None).as_ref(),
+            "21"
+        );
     }
 }

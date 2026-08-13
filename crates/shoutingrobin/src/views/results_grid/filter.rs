@@ -6,7 +6,7 @@ use crate::ui::tag::Tone;
 use crate::views::ResultTab;
 
 use super::columns::{
-    build_occurrence_counts, field_count, field_value, header_exists, header_value,
+    build_occurrence_counts, char_length, field_count, field_value, header_exists, header_value,
     length_thresholds, pixel_width_thresholds, primary_field_key,
 };
 use super::data_build::{
@@ -525,7 +525,7 @@ pub(super) fn filter_for_tab(
             indices.retain(|&idx| {
                 let page = &pages[idx];
                 let val = field_value(page, field_key).unwrap_or("");
-                let len = val.len();
+                let len = char_length(val);
                 let occurrences = occurrence_counts
                     .get(val)
                     .copied()
@@ -691,7 +691,7 @@ pub(super) fn filter_for_tab(
                 pages[idx]
                     .images
                     .iter()
-                    .any(|img| img.alt.as_deref().is_some_and(|a| a.len() > 100))
+                    .any(|img| img.alt.as_deref().is_some_and(|a| char_length(a) > 100))
             }),
             IssueFilter::MissingSizeAttributes => indices.retain(|&idx| {
                 pages[idx]
@@ -883,7 +883,7 @@ pub(super) fn filter_for_tab(
                 }
             }),
             IssueFilter::UrlParameters => indices.retain(|&idx| pages[idx].url.contains('?')),
-            IssueFilter::UrlOverLength => indices.retain(|&idx| pages[idx].url.len() > 115),
+            IssueFilter::UrlOverLength => indices.retain(|&idx| char_length(&pages[idx].url) > 115),
             IssueFilter::UrlSpaces => indices.retain(|&idx| pages[idx].url.contains(' ')),
             IssueFilter::DirectiveNoindex => indices.retain(|&idx| {
                 let page = &pages[idx];
@@ -1066,7 +1066,7 @@ fn image_matches_filter(image: &ImageRef, filter: IssueFilter) -> bool {
             image.has_alt_attr && image.alt.as_deref().is_none_or(|a| a.is_empty())
         }
         IssueFilter::MissingAltAttribute => !image.has_alt_attr,
-        IssueFilter::AltOver100 => image.alt.as_deref().is_some_and(|a| a.len() > 100),
+        IssueFilter::AltOver100 => image.alt.as_deref().is_some_and(|a| char_length(a) > 100),
         IssueFilter::MissingSizeAttributes => image.width.is_none() || image.height.is_none(),
         _ => true,
     }
@@ -1319,5 +1319,59 @@ mod content_eligibility_tests {
         ];
         let duplicates = matching_urls(ResultTab::PageTitles, IssueFilter::Duplicate, &pages);
         assert_eq!(duplicates.len(), 2, "got {duplicates:?}");
+    }
+}
+
+#[cfg(test)]
+mod length_threshold_tests {
+    use super::*;
+    use crate::crawl::event::PageRecord;
+
+    fn page_with_title(url: &str, title: &str) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            title: Some(title.into()),
+            title_count: 1,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_title_under_the_character_minimum_is_under_length() {
+        // 28 characters but 32 bytes: counting bytes puts it over the
+        // 30-character minimum and hides a genuinely short title.
+        let title = "Bättre bett för hästar i sör";
+        assert_eq!(title.chars().count(), 28);
+        assert_eq!(title.len(), 32);
+
+        let pages = vec![page_with_title("https://a.test/a", title)];
+        assert_eq!(
+            matching_urls(ResultTab::PageTitles, IssueFilter::UnderLength, &pages).len(),
+            1
+        );
+    }
+
+    #[test]
+    fn a_title_within_the_character_maximum_is_not_over_length() {
+        // 56 characters but 62 bytes: counting bytes flags a title that fits.
+        let title = "Köp kvalitetsbett för häst och ägare i vår svenska affär";
+        assert_eq!(title.chars().count(), 56);
+        assert_eq!(title.len(), 62);
+
+        let pages = vec![page_with_title("https://a.test/a", title)];
+        assert!(matching_urls(ResultTab::PageTitles, IssueFilter::OverLength, &pages).is_empty());
+    }
+
+    #[test]
+    fn a_genuinely_long_title_is_still_over_length() {
+        let title = "a".repeat(61);
+        let pages = vec![page_with_title("https://a.test/a", &title)];
+        assert_eq!(
+            matching_urls(ResultTab::PageTitles, IssueFilter::OverLength, &pages).len(),
+            1
+        );
     }
 }

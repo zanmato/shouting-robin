@@ -4,7 +4,7 @@ use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::{HreflangIssue, PageRecord};
 use crate::views::ResultTab;
 
-use super::columns::header_exists;
+use super::columns::{char_length, header_exists};
 use super::types::{
     ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, IssuePriority, IssueType,
 };
@@ -230,7 +230,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         .filter(|p| {
             p.title
                 .as_deref()
-                .is_some_and(|t| t.len() > 60 && !t.is_empty())
+                .is_some_and(|t| char_length(t) > 60 && !t.is_empty())
         })
         .count();
     if over_title > 0 {
