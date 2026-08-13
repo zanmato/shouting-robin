@@ -23,7 +23,7 @@ impl JsonView {
         let mut highlighter = SyntaxHighlighter::new("json");
         let rope = ropey::Rope::from(formatted.as_str());
         highlighter.update(None, &rope, None);
-        let highlights = highlighter.styles(&(0..formatted.len()), highlight_theme);
+        let highlights = highlighter.styles(&(0..formatted.len()), highlight_theme.as_ref());
 
         Self(Arc::new(CachedJson {
             formatted: SharedString::from(formatted),

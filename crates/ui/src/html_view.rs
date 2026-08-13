@@ -22,7 +22,7 @@ impl HtmlView {
         let mut highlighter = SyntaxHighlighter::new("html");
         let rope = ropey::Rope::from(html);
         highlighter.update(None, &rope, None);
-        let highlights = highlighter.styles(&(0..html.len()), highlight_theme);
+        let highlights = highlighter.styles(&(0..html.len()), highlight_theme.as_ref());
 
         Self(Arc::new(CachedHtml {
             text: SharedString::from(html.to_string()),

@@ -5,7 +5,7 @@ use gpui::{
 use gpui_component::{
     ActiveTheme, Sizable as _,
     button::{Button, ButtonVariants as _},
-    input::{Input, InputEvent, InputState},
+    input::{Input, InputEvent, InputState, Textarea, TextareaState},
     switch::Switch,
 };
 
@@ -30,12 +30,12 @@ pub struct CrawlBar {
     pub has_results: bool,
     default_mode: RenderMode,
     advanced_open: bool,
-    headers_input: gpui::Entity<InputState>,
-    include_input: gpui::Entity<InputState>,
-    exclude_input: gpui::Entity<InputState>,
+    headers_input: gpui::Entity<TextareaState>,
+    include_input: gpui::Entity<TextareaState>,
+    exclude_input: gpui::Entity<TextareaState>,
     crawl_subdomains: bool,
     list_mode: bool,
-    list_urls_input: gpui::Entity<InputState>,
+    list_urls_input: gpui::Entity<TextareaState>,
     _subscriptions: Vec<gpui::Subscription>,
 }
 
@@ -57,22 +57,22 @@ impl CrawlBar {
         );
 
         let headers_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .placeholder("Authorization: Bearer token  (one Name: Value per line)")
                 .auto_grow(3, 8)
         });
         let include_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .placeholder("/blog/.*  (one regex per line)")
                 .auto_grow(3, 8)
         });
         let exclude_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .placeholder("/tag/.*  (one regex per line)")
                 .auto_grow(3, 8)
         });
         let list_urls_input = cx.new(|cx| {
-            InputState::new(window, cx)
+            TextareaState::new(window, cx)
                 .placeholder("https://example.com/page1\nhttps://example.com/page2")
                 .auto_grow(4, 10)
         });
@@ -105,7 +105,7 @@ impl CrawlBar {
             if val.is_empty() { None } else { Some(val) }
         };
 
-        let parse_lines = |entity: &gpui::Entity<InputState>| -> Vec<String> {
+        let parse_lines = |entity: &gpui::Entity<TextareaState>| -> Vec<String> {
             entity
                 .read(cx)
                 .value()
@@ -390,7 +390,7 @@ impl Render for CrawlBar {
                                     .text_color(cx.theme().muted_foreground)
                                     .child("Include (regex)"),
                             )
-                            .child(Input::new(&self.include_input).small()),
+                            .child(Textarea::new(&self.include_input)),
                     )
                     .child(
                         div()
@@ -404,7 +404,7 @@ impl Render for CrawlBar {
                                     .text_color(cx.theme().muted_foreground)
                                     .child("Exclude (regex)"),
                             )
-                            .child(Input::new(&self.exclude_input).small()),
+                            .child(Textarea::new(&self.exclude_input)),
                     )
                     .child(
                         div()
@@ -418,7 +418,7 @@ impl Render for CrawlBar {
                                     .text_color(cx.theme().muted_foreground)
                                     .child("Custom Headers"),
                             )
-                            .child(Input::new(&self.headers_input).small()),
+                            .child(Textarea::new(&self.headers_input)),
                     ),
             )
             .when(list_mode, |el| {
@@ -434,11 +434,7 @@ impl Render for CrawlBar {
                                 .text_color(cx.theme().muted_foreground)
                                 .child("URLs to crawl (one per line)"),
                         )
-                        .child(
-                            div()
-                                .w_full()
-                                .child(Input::new(&self.list_urls_input).small()),
-                        ),
+                        .child(div().w_full().child(Textarea::new(&self.list_urls_input))),
                 )
             });
 
