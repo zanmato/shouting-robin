@@ -1100,6 +1100,7 @@ impl Render for ShoutingRobinApp {
         }
 
         div()
+            .track_focus(&self.focus_handle)
             .flex()
             .flex_col()
             .size_full()

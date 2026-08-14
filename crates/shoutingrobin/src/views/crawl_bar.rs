@@ -441,6 +441,7 @@ impl Render for CrawlBar {
 
         div()
             .id("crawl-bar")
+            .track_focus(&self.focus_handle)
             .flex()
             .flex_col()
             .bg(cx.theme().background)

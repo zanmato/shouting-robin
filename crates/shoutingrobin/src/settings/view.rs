@@ -2,12 +2,12 @@ use crate::app_database::AppDatabase;
 use crate::app_settings::AppSettings;
 use crate::settings::Settings;
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, IntoElement, Render, SharedString,
-    Styled, Window, px, rems,
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    ParentElement, Render, SharedString, Styled, Window, px, rems,
 };
 use gpui_component::ThemeRegistry;
 use gpui_component::{
-    ActiveTheme, Sizable, Theme,
+    ActiveTheme, Sizable,
     select::{SearchableVec, Select, SelectEvent, SelectItem, SelectState},
     setting::{
         NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage,
@@ -535,8 +535,7 @@ impl SettingsView {
                                     if let Some(theme_config) =
                                         ThemeRegistry::global(cx).themes().get(&val).cloned()
                                     {
-                                        Theme::global_mut(cx).apply_config(&theme_config);
-                                        crate::settings::apply_font_settings(cx);
+                                        crate::settings::apply_theme_config(&theme_config, cx);
                                     }
 
                                     let key = "appearance.theme".to_string();
@@ -563,7 +562,7 @@ impl SettingsView {
                                 let theme_font = cx.theme().font_family.to_string();
                                 if let Some(state) = &ui_font_select {
                                     Select::new(state)
-                                        .with_size(options.size)
+                                        .with_size(options.size())
                                         .placeholder(format!("{theme_font} (theme default)"))
                                         .search_placeholder("Search fonts...")
                                         .cleanable(true)
@@ -585,7 +584,7 @@ impl SettingsView {
                                 let theme_font = cx.theme().mono_font_family.to_string();
                                 if let Some(state) = &mono_font_select {
                                     Select::new(state)
-                                        .with_size(options.size)
+                                        .with_size(options.size())
                                         .placeholder(format!("{theme_font} (theme default)"))
                                         .search_placeholder("Search fonts...")
                                         .cleanable(true)
@@ -615,6 +614,9 @@ impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.ensure_font_selects(window, cx);
 
-        GpuiSettings::new("shoutingrobin-settings").pages(self.setting_pages(cx))
+        gpui::div()
+            .track_focus(&self.focus_handle)
+            .size_full()
+            .child(GpuiSettings::new("shoutingrobin-settings").pages(self.setting_pages(cx)))
     }
 }

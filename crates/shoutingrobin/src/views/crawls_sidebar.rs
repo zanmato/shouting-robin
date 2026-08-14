@@ -73,6 +73,7 @@ impl Render for CrawlsSidebar {
 
         div()
             .id("crawls-sidebar")
+            .track_focus(&self.focus_handle)
             .flex()
             .flex_col()
             .h_full()
