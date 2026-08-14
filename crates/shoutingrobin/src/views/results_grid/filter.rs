@@ -322,7 +322,7 @@ fn row_matches_filter(
             allowed_pages.contains(&page_index)
                 && pages
                     .get(page_index)
-                    .is_some_and(|page| flat_row_matches_filter(row, page, filter, pages))
+                    .is_some_and(|page| flat_row_matches_filter(row, page, filter))
         }
         None => match row {
             FlatRow::DirectoryAggregate { depth, .. } => match filter {
@@ -405,8 +405,8 @@ pub(super) fn referrer_policy_leaks_url(value: &str) -> bool {
 }
 
 /// True when a link gives a search engine nothing to go on: no anchor text at
-/// all, or only whitespace. An image link with no alt text lands here too, since
-/// the anchor we record is the link's text content.
+/// all, or only whitespace. An image link lands here only when its `img` has no
+/// alt text either, since the analyzer falls back to that alt for the anchor.
 pub(super) fn link_lacks_anchor_text(link: &crate::crawl::event::Outlink) -> bool {
     link.anchor.as_deref().is_none_or(|a| a.trim().is_empty())
 }
@@ -910,6 +910,22 @@ pub(super) fn filter_for_tab(
                     .is_none_or(referrer_policy_leaks_url)
             }),
             IssueFilter::MixedContent => indices.retain(|&idx| pages[idx].has_mixed_content),
+            // The Links tab lists one row per URL, so a link-level sub-filter
+            // selects the pages carrying at least one such link. The details
+            // panel's Outlinks section is where the individual links are.
+            IssueFilter::LinkBroken
+            | IssueFilter::LinkRedirected
+            | IssueFilter::LinkNofollow
+            | IssueFilter::LinkNoAnchorText
+            | IssueFilter::LinkExternal => {
+                let status_by_url = status_by_url(pages);
+                indices.retain(|&idx| {
+                    let page = &pages[idx];
+                    page.outlinks
+                        .iter()
+                        .any(|link| link_matches_filter(link, page, issue_filter, &status_by_url))
+                });
+            }
             IssueFilter::UrlNonAscii => indices.retain(|&idx| !pages[idx].url.is_ascii()),
             IssueFilter::UrlUppercase => {
                 indices.retain(|&idx| pages[idx].url.chars().any(|c| c.is_ascii_uppercase()))
@@ -1034,21 +1050,31 @@ pub(super) fn filter_for_tab(
     indices
 }
 
-fn link_row_matches_filter(
+/// The status code of every crawled URL, keyed by URL, so a link's destination
+/// resolves in constant time.
+fn status_by_url(pages: &[PageRecord]) -> HashMap<&str, u16> {
+    pages
+        .iter()
+        .filter_map(|page| page.status.map(|status| (page.url.as_str(), status)))
+        .collect()
+}
+
+/// Whether one link matches a Links sub-filter. `status_by_url` maps a crawled
+/// URL to its status code: resolving each destination by scanning the page set
+/// made the Links tab quadratic once the counting engine started calling this
+/// for every page and every filter.
+fn link_matches_filter(
     link: &crate::crawl::event::Outlink,
     page: &PageRecord,
     filter: IssueFilter,
-    all_pages: &[PageRecord],
+    status_by_url: &HashMap<&str, u16>,
 ) -> bool {
     let dst_is_external = !is_same_domain(&page.url, &link.dst_url);
     let rel_nofollow = link
         .rel
         .as_deref()
         .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
-    let dst_status = all_pages
-        .iter()
-        .find(|p| p.url == link.dst_url)
-        .and_then(|p| p.status);
+    let dst_status = status_by_url.get(link.dst_url.as_str()).copied();
 
     match filter {
         IssueFilter::LinkExternal => dst_is_external,
@@ -1064,7 +1090,6 @@ pub(super) fn flat_row_matches_filter(
     row: &FlatRow,
     page: &PageRecord,
     filter: IssueFilter,
-    all_pages: &[PageRecord],
 ) -> bool {
     match row {
         FlatRow::Image { item, .. } => {
@@ -1084,12 +1109,6 @@ pub(super) fn flat_row_matches_filter(
                 return false;
             };
             sd_item_matches_filter(sd_item, page, filter)
-        }
-        FlatRow::LinkRow { item, .. } => {
-            let Some(link) = page.outlinks.get(*item) else {
-                return false;
-            };
-            link_row_matches_filter(link, page, filter, all_pages)
         }
         FlatRow::Hreflang { .. } | FlatRow::IssuesRow { .. } | FlatRow::ChangeRow { .. } => true,
         FlatRow::DirectoryAggregate { depth, .. } => match filter {
@@ -1241,10 +1260,10 @@ mod counting_tests {
     }
 
     #[test]
-    fn links_tab_totals_are_nonzero() {
-        // Regression: the Links tab used to report a zero badge because its
-        // per-filter count went through `flat_row_item_count`, which returned 0
-        // for Links.
+    fn links_tab_counts_pages_not_link_instances() {
+        // The tab lists one row per URL, so a page carrying two links is one
+        // row, and a sub-filter counts the pages carrying such a link rather
+        // than the links themselves.
         let mut source = internal_page("https://a.test/page");
         source.outlinks = vec![
             Outlink {
@@ -1265,9 +1284,40 @@ mod counting_tests {
         let pages = vec![source, broken];
 
         let counts = compute_tab_filter_counts(ResultTab::Links, &pages, &[], None);
-        assert_eq!(counts.badge.total, 2);
+        // Only the source page has outlinks, so the tab holds one row.
+        assert_eq!(counts.badge.total, 1);
         assert_eq!(count_of(&counts, IssueFilter::LinkBroken), 1);
         assert_eq!(counts.badge.errors, 1);
+    }
+
+    #[test]
+    fn links_sub_filters_select_the_pages_carrying_the_link() {
+        let mut with_broken = internal_page("https://a.test/has-broken");
+        with_broken.outlinks = vec![Outlink {
+            dst_url: "https://a.test/broken".into(),
+            anchor: Some("broken".into()),
+            rel: None,
+            csr_only: false,
+        }];
+        let mut with_external = internal_page("https://a.test/has-external");
+        with_external.outlinks = vec![Outlink {
+            dst_url: "https://other.test/elsewhere".into(),
+            anchor: Some("elsewhere".into()),
+            rel: None,
+            csr_only: false,
+        }];
+        let mut broken = internal_page("https://a.test/broken");
+        broken.status = Some(404);
+        let pages = vec![with_broken, with_external, broken];
+
+        assert_eq!(
+            matching_urls(ResultTab::Links, IssueFilter::LinkBroken, &pages),
+            vec!["https://a.test/has-broken".to_string()]
+        );
+        assert_eq!(
+            matching_urls(ResultTab::Links, IssueFilter::LinkExternal, &pages),
+            vec!["https://a.test/has-external".to_string()]
+        );
     }
 
     #[test]

@@ -1215,8 +1215,11 @@ fn outlinks_section(
         return None;
     }
     let mut body = div().flex().flex_col().gap_0p5();
-    let display_count = rec.outlinks.len().min(50);
-    for link in &rec.outlinks[..display_count] {
+    // Every link, not the first 50: the Links tab lists one row per URL now, so
+    // this section is the only place an individual link's anchor and rel are
+    // visible. It builds a child per link, which is what the inlinks section
+    // above already does and what virtualising both sections will fix.
+    for link in &rec.outlinks {
         let is_nofollow = link
             .rel
             .as_deref()
@@ -1253,18 +1256,6 @@ fn outlinks_section(
                             .unwrap_or_else(|| "-".into()),
                     )),
                 ),
-        );
-    }
-    if rec.outlinks.len() > display_count {
-        body = body.child(
-            div()
-                .text_xs()
-                .text_color(muted)
-                .pt_1()
-                .child(SharedString::from(format!(
-                    "... and {} more",
-                    rec.outlinks.len() - display_count
-                ))),
         );
     }
     Some(section(

@@ -72,25 +72,6 @@ pub(super) fn build_rows_for_tab(
             .map(|index| FlatRow::ChangeRow { index })
             .collect(),
         ResultTab::SiteStructure => build_directory_aggregates(pages, root_origin),
-        // The Links tab only lists internal outlinks; mirror that here so counts
-        // match what the grid shows.
-        ResultTab::Links => page_indices
-            .iter()
-            .flat_map(|&page_index| {
-                let Some(page) = pages.get(page_index) else {
-                    return Vec::<FlatRow>::new();
-                };
-                page.outlinks
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, link)| is_same_domain(&page.url, &link.dst_url))
-                    .map(|(item_index, _)| FlatRow::LinkRow {
-                        page: page_index,
-                        item: item_index,
-                    })
-                    .collect()
-            })
-            .collect(),
         _ => page_indices
             .iter()
             .flat_map(|&page_index| {

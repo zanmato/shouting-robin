@@ -25,10 +25,6 @@ pub(crate) enum FlatRow {
     ChangeRow {
         index: usize,
     },
-    LinkRow {
-        page: usize,
-        item: usize,
-    },
     DirectoryAggregate {
         path: String,
         depth: u32,
@@ -48,7 +44,6 @@ pub(crate) fn tab_is_flattened(tab: ResultTab) -> bool {
             | ResultTab::Hreflang
             | ResultTab::StructuredData
             | ResultTab::Overview
-            | ResultTab::Links
             | ResultTab::SiteStructure
             | ResultTab::Changes
     )
@@ -78,8 +73,7 @@ pub(super) fn flat_row_page_index(row: &FlatRow) -> Option<usize> {
         FlatRow::Image { page, .. }
         | FlatRow::A11yIssue { page, .. }
         | FlatRow::Hreflang { page, .. }
-        | FlatRow::SdItem { page, .. }
-        | FlatRow::LinkRow { page, .. } => Some(*page),
+        | FlatRow::SdItem { page, .. } => Some(*page),
         FlatRow::IssuesRow { .. }
         | FlatRow::ChangeRow { .. }
         | FlatRow::DirectoryAggregate { .. } => None,

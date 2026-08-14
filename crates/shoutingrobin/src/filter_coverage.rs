@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::crawl::CrawlConfig;
-use crate::crawl::event::{A11yIssue, CrawlEvent, PageRecord};
+use crate::crawl::event::{A11yIssue, CrawlEvent, Outlink, PageRecord};
 use crate::crawl::render_mode::RenderMode;
 use crate::views::ResultTab;
 use crate::views::results_grid::{
@@ -976,7 +976,30 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             is_internal: false,
             ..Default::default()
         },
+        // One page carrying a link of every kind the Links sub-filters select.
+        // The live `/links` fixture covers broken and nofollow, but a followed
+        // redirect cannot be produced against loopback (see `/syn-redirect`),
+        // so the whole set is covered here where the destinations are known.
+        PageRecord {
+            outlinks: vec![
+                link(&format!("{base}/not-found"), Some("broken"), None),
+                link(&format!("{base}/syn-3xx"), Some("redirected"), None),
+                link(&format!("{base}/large"), Some("nofollow"), Some("nofollow")),
+                link(&format!("{base}/dup-a"), None, None),
+                link("https://example.com/", Some("external"), None),
+            ],
+            ..internal(format!("{base}/syn-links"))
+        },
     ]
+}
+
+fn link(dst_url: &str, anchor: Option<&str>, rel: Option<&str>) -> Outlink {
+    Outlink {
+        dst_url: dst_url.to_string(),
+        anchor: anchor.map(|a| a.to_string()),
+        rel: rel.map(|r| r.to_string()),
+        csr_only: false,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1175,19 +1198,24 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::DirectiveNosnippet => both(&["/robots-meta"], &["/"]),
         F::DirectiveNone => both(&["/directive-none"], &["/robots-meta"]),
 
-        // Overview issue/priority + Links sub-filters + depth: page-level
-        // no-ops that return the tab's full base set.
+        // Links: the tab lists one row per URL, so each sub-filter selects the
+        // pages carrying at least one such link. `/external` carries a
+        // single external link with anchor text, which is the useful negative
+        // for the other four.
+        F::LinkBroken => both(&["/links", "/syn-links"], &["/external"]),
+        F::LinkRedirected => both(&["/syn-links"], &["/external"]),
+        F::LinkNofollow => both(&["/links", "/syn-links"], &["/external"]),
+        F::LinkNoAnchorText => both(&["/syn-links"], &["/external"]),
+        F::LinkExternal => both(&["/external", "/syn-links"], &["/links"]),
+
+        // Overview issue/priority + depth: page-level no-ops that return the
+        // tab's full base set.
         F::IssueTypeError
         | F::IssueTypeOpportunity
         | F::IssueTypeWarning
         | F::PriorityHigh
         | F::PriorityMedium
         | F::PriorityLow
-        | F::LinkBroken
-        | F::LinkRedirected
-        | F::LinkNofollow
-        | F::LinkNoAnchorText
-        | F::LinkExternal
         | F::DepthShallow
         | F::DepthMedium
         | F::DepthDeep

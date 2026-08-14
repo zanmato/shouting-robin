@@ -204,13 +204,19 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("description", "Description", 300., None),
             col("hint", "Hint", 300., None),
         ],
+        // One row per URL with its link counts. The individual links behind
+        // these figures are the details panel's Inlinks and Outlinks sections:
+        // a row per link instance put a 50k-page site's million-odd links in
+        // one in-memory grid, and the counts are what the tab is read for.
         ResultTab::Links => vec![
-            col("source", "Source", 380., Some(ColumnFixed::Left)),
-            col("destination", "Destination", 380., None),
-            col("anchor", "Anchor", 200., None),
-            col("rel", "Rel", 100., None),
-            col("status_code", "Code", 70., None),
-            col("link_type", "Type", 90., None),
+            col("address", "Address", 380., Some(ColumnFixed::Left)),
+            col("inlinks", "Inlinks", 80., None),
+            col("unique_inlinks", "Unique In", 90., None),
+            col("outlinks_count", "Outlinks", 80., None),
+            col("unique_outlinks", "Unique Out", 95., None),
+            col("external_outlinks", "Ext. Out", 80., None),
+            col("unique_external_outlinks", "Unique Ext. Out", 120., None),
+            col("indexability", "Indexability", 110., None),
         ],
         ResultTab::SiteStructure => vec![
             col("dir_path", "Directory", 400., Some(ColumnFixed::Left)),

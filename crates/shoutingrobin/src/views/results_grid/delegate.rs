@@ -5,15 +5,13 @@ use gpui::{
     StatefulInteractiveElement, Styled, Window, div,
 };
 use gpui_component::{
-    ActiveTheme, Icon as UiIcon, Sizable, StyledExt as _,
+    ActiveTheme, StyledExt as _,
     table::{ColumnSort, TableDelegate, TableState},
     tooltip::Tooltip,
 };
 
 use crate::a11y_rules::rule_description;
-use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::PageRecord;
-use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, tone_tag, tone_text_color};
 use crate::views::ResultTab;
 
@@ -28,7 +26,8 @@ use super::data_build::{
 };
 use super::filter::{compute_tab_filter_counts, filter_for_tab, flat_row_matches_filter};
 use super::types::{
-    ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, TabFilterCounts, tab_is_flattened,
+    ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, TabFilterCounts,
+    flat_row_page_index, tab_is_flattened,
 };
 
 fn format_delta(delta: i64) -> String {
@@ -229,8 +228,7 @@ impl ResultsDelegate {
                 FlatRow::Image { page, .. }
                 | FlatRow::A11yIssue { page, .. }
                 | FlatRow::Hreflang { page, .. }
-                | FlatRow::SdItem { page, .. }
-                | FlatRow::LinkRow { page, .. } => self.all_pages.get(*page),
+                | FlatRow::SdItem { page, .. } => self.all_pages.get(*page),
                 FlatRow::ChangeRow { index } => {
                     let entries = self.change_entries();
                     let entry = entries.get(*index)?;
@@ -369,8 +367,7 @@ impl ResultsDelegate {
                 FlatRow::Image { page, .. }
                 | FlatRow::A11yIssue { page, .. }
                 | FlatRow::Hreflang { page, .. }
-                | FlatRow::SdItem { page, .. }
-                | FlatRow::LinkRow { page, .. } => *page,
+                | FlatRow::SdItem { page, .. } => *page,
                 FlatRow::IssuesRow { .. }
                 | FlatRow::ChangeRow { .. }
                 | FlatRow::DirectoryAggregate { .. } => return true,
@@ -378,7 +375,7 @@ impl ResultsDelegate {
             let Some(page) = self.all_pages.get(page_index) else {
                 return false;
             };
-            flat_row_matches_filter(row, page, self.issue_filter, &self.all_pages)
+            flat_row_matches_filter(row, page, self.issue_filter)
         });
     }
 
@@ -492,29 +489,6 @@ impl ResultsDelegate {
                 "dir_non_indexable" => non_indexable.to_string(),
                 _ => String::new(),
             },
-            FlatRow::LinkRow { page, item } => {
-                let Some(record) = self.all_pages.get(*page) else {
-                    return String::new();
-                };
-                let Some(link) = record.outlinks.get(*item) else {
-                    return String::new();
-                };
-                match col_key {
-                    "source" => url_to_path(&record.url, self.root_origin.as_deref()).into(),
-                    "destination" => url_to_path(&link.dst_url, self.root_origin.as_deref()).into(),
-                    "anchor" => link.anchor.clone().unwrap_or_default(),
-                    "rel" => link.rel.clone().unwrap_or_default(),
-                    "status_code" => "-".to_string(),
-                    "link_type" => {
-                        if is_same_domain(&record.url, &link.dst_url) {
-                            "Internal".to_string()
-                        } else {
-                            "External".to_string()
-                        }
-                    }
-                    _ => String::new(),
-                }
-            }
             _ => {
                 let page_index = match row {
                     FlatRow::Image { page, .. }
@@ -650,66 +624,6 @@ impl TableDelegate for ResultsDelegate {
                         _ => cell.child(text),
                     }
                 }
-                FlatRow::LinkRow { page, item } => {
-                    let Some(record) = self.all_pages.get(*page) else {
-                        return cell;
-                    };
-                    let Some(link) = record.outlinks.get(*item) else {
-                        return cell;
-                    };
-                    let text = match key.as_ref() {
-                        "source" => url_to_path(&record.url, self.root_origin.as_deref()),
-                        "destination" => url_to_path(&link.dst_url, self.root_origin.as_deref()),
-                        "anchor" => SharedString::from(link.anchor.clone().unwrap_or_default()),
-                        "rel" => SharedString::from(link.rel.clone().unwrap_or_default()),
-                        "status_code" => SharedString::from("-"),
-                        "link_type" => {
-                            if is_same_domain(&record.url, &link.dst_url) {
-                                SharedString::from("Internal")
-                            } else {
-                                SharedString::from("External")
-                            }
-                        }
-                        _ => SharedString::default(),
-                    };
-                    match key.as_ref() {
-                        "link_type" => {
-                            let tone = if is_same_domain(&record.url, &link.dst_url) {
-                                Tone::Neutral
-                            } else {
-                                Tone::Warn
-                            };
-                            cell.child(tone_tag(tone, cx).child(text))
-                        }
-                        "source" => cell.child(text),
-                        "destination" => {
-                            let url = link.dst_url.clone();
-                            cell.child(
-                                div()
-                                    .group("url-cell-dst")
-                                    .flex()
-                                    .items_center()
-                                    .gap_1()
-                                    .child(text)
-                                    .child(
-                                        div()
-                                            .invisible()
-                                            .group_hover("url-cell-dst", |s| s.visible()),
-                                    )
-                                    .child(
-                                        div()
-                                            .id(("open-dst", row_ix))
-                                            .cursor_pointer()
-                                            .child(UiIcon::from(Icon::ExternalLink).xsmall())
-                                            .on_click(move |_, _window, cx| {
-                                                cx.open_url(&url);
-                                            }),
-                                    ),
-                            )
-                        }
-                        _ => cell.child(text),
-                    }
-                }
                 FlatRow::DirectoryAggregate {
                     path,
                     depth,
@@ -767,7 +681,6 @@ impl TableDelegate for ResultsDelegate {
                         | FlatRow::SdItem { page, .. } => *page,
                         FlatRow::IssuesRow { .. }
                         | FlatRow::ChangeRow { .. }
-                        | FlatRow::LinkRow { .. }
                         | FlatRow::DirectoryAggregate { .. }
                         | FlatRow::A11yIssue { .. } => unreachable!(),
                     };
@@ -939,27 +852,8 @@ impl TableDelegate for ResultsDelegate {
                         _ => ordering,
                     };
                 }
-                let a_page = match a {
-                    FlatRow::Image { page, .. }
-                    | FlatRow::A11yIssue { page, .. }
-                    | FlatRow::Hreflang { page, .. }
-                    | FlatRow::SdItem { page, .. }
-                    | FlatRow::LinkRow { page, .. } => *page,
-                    FlatRow::IssuesRow { .. }
-                    | FlatRow::ChangeRow { .. }
-                    | FlatRow::DirectoryAggregate { .. } => 0,
-                };
-
-                let b_page = match b {
-                    FlatRow::Image { page, .. }
-                    | FlatRow::A11yIssue { page, .. }
-                    | FlatRow::Hreflang { page, .. }
-                    | FlatRow::SdItem { page, .. }
-                    | FlatRow::LinkRow { page, .. } => *page,
-                    FlatRow::IssuesRow { .. }
-                    | FlatRow::ChangeRow { .. }
-                    | FlatRow::DirectoryAggregate { .. } => 0,
-                };
+                let a_page = flat_row_page_index(a).unwrap_or(0);
+                let b_page = flat_row_page_index(b).unwrap_or(0);
                 let a_record = &self.all_pages[a_page];
                 let b_record = &self.all_pages[b_page];
                 let a_text = flat_cell_text(a_record, a, &col_key, root_origin.as_deref());
