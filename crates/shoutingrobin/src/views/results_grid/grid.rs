@@ -8,6 +8,7 @@ use gpui_component::table::{DataTable, TableEvent, TableState};
 
 use crate::crawl::event::PageRecord;
 use crate::views::ResultTab;
+use crate::views::details_panel::DetailsSelection;
 
 use super::data_build::overview_issue_target;
 use super::delegate::ResultsDelegate;
@@ -118,8 +119,8 @@ impl ResultsGrid {
         self.state.read(cx).delegate().baseline_started_at()
     }
 
-    pub fn record_at(&self, index: usize, cx: &App) -> Option<PageRecord> {
-        self.state.read(cx).delegate().record_at(index).cloned()
+    pub fn selection_at(&self, index: usize, cx: &App) -> Option<DetailsSelection> {
+        self.state.read(cx).delegate().selection_at(index)
     }
 
     pub fn row_count(&self, cx: &App) -> usize {

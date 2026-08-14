@@ -85,9 +85,9 @@ impl ShoutingRobinApp {
             &results_grid,
             move |this, _grid, event: &ResultsGridEvent, cx| match event {
                 ResultsGridEvent::Selected(row_ix) => {
-                    let record = results_for_grid.read(cx).record_at(*row_ix, cx);
+                    let selection = results_for_grid.read(cx).selection_at(*row_ix, cx);
                     details_for_grid.update(cx, |panel, cx| {
-                        panel.set_selected(record, cx);
+                        panel.set_selected(selection, cx);
                     });
                 }
                 ResultsGridEvent::OverviewDrillDown { tab, filter } => {

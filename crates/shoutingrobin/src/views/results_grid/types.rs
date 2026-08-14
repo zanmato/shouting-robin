@@ -1,12 +1,37 @@
 use crate::ui::tag::Tone;
 use crate::views::ResultTab;
 
+/// One unique image source and everything the Images tab knows about it.
+///
+/// The flags are "any reference": a logo referenced from 125 pages is one row,
+/// and it belongs in `Missing Alt Text` if any of those 125 `img` tags lacks
+/// alt text. Boxed inside `FlatRow` so the other row variants, of which a large
+/// crawl holds far more, stay small.
+#[derive(Clone, Debug)]
+pub(crate) struct ImageAggregateRow {
+    pub src: String,
+    /// The first alt text seen, which is what the column shows. References
+    /// disagreeing about the alt are visible in the details panel.
+    pub alt: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub missing_alt_attr: bool,
+    pub missing_alt_text: bool,
+    pub alt_over_100: bool,
+    pub missing_size_attrs: bool,
+    /// How many `img` tags across the crawl point at this source.
+    pub reference_count: usize,
+    /// The pages referencing it, in crawl order, as indices into `all_pages`.
+    pub pages: Vec<usize>,
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum FlatRow {
     Image {
         page: usize,
         item: usize,
     },
+    ImageAggregate(Box<ImageAggregateRow>),
     A11yIssue {
         page: usize,
         item: usize,
@@ -76,6 +101,7 @@ pub(super) fn flat_row_page_index(row: &FlatRow) -> Option<usize> {
         | FlatRow::SdItem { page, .. } => Some(*page),
         FlatRow::IssuesRow { .. }
         | FlatRow::ChangeRow { .. }
+        | FlatRow::ImageAggregate(_)
         | FlatRow::DirectoryAggregate { .. } => None,
     }
 }

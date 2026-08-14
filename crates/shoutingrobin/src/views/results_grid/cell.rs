@@ -9,7 +9,7 @@ use crate::views::ResultTab;
 
 use super::columns::{char_length, field_value, header_value, primary_field_key};
 use super::data_build::dir_format_size;
-use super::types::FlatRow;
+use super::types::{FlatRow, ImageAggregateRow};
 
 pub(super) fn page_address(record: &PageRecord, root_origin: Option<&str>) -> SharedString {
     if record.is_internal
@@ -83,6 +83,7 @@ pub(super) fn flat_cell_text(
                 }
             }
         }
+        FlatRow::ImageAggregate(image) => image_aggregate_cell_text(image, col_key),
         // IssuesRow and ChangeRow have dedicated sort branches in perform_sort,
         // so they never reach this text-based path.
         FlatRow::IssuesRow { .. } | FlatRow::ChangeRow { .. } => SharedString::default(),
@@ -134,6 +135,30 @@ fn image_cell_text(
         "indexability" => {
             SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
         }
+        _ => SharedString::default(),
+    }
+}
+
+pub(super) fn image_aggregate_cell_text(image: &ImageAggregateRow, col_key: &str) -> SharedString {
+    match col_key {
+        "image_src" => SharedString::from(image.src.clone()),
+        "image_alt" => SharedString::from(image.alt.clone().unwrap_or_default()),
+        "image_inlinks" => SharedString::from(image.reference_count.to_string()),
+        "image_width" => SharedString::from(
+            image
+                .width
+                .map(|w| w.to_string())
+                .unwrap_or_else(|| "-".into()),
+        ),
+        "image_height" => SharedString::from(
+            image
+                .height
+                .map(|h| h.to_string())
+                .unwrap_or_else(|| "-".into()),
+        ),
+        // "No" whenever any reference is missing the attribute, matching the
+        // Missing Alt Attribute filter.
+        "image_has_alt" => SharedString::from(if image.missing_alt_attr { "No" } else { "Yes" }),
         _ => SharedString::default(),
     }
 }

@@ -14,8 +14,11 @@ use crate::a11y_rules::rule_description;
 use crate::crawl::event::PageRecord;
 use crate::ui::tag::{Tone, tone_tag, tone_text_color};
 use crate::views::ResultTab;
+use crate::views::details_panel::{DetailsSelection, ImageDetails, ImageReference};
 
-use super::cell::{cell_text, flat_cell_text, render_cell_tag, url_to_path};
+use super::cell::{
+    cell_text, flat_cell_text, image_aggregate_cell_text, render_cell_tag, url_to_path,
+};
 use super::columns::{
     build_occurrence_counts, columns_for_tab_with_baseline, compare_numeric, is_mono_column,
     is_numeric_column,
@@ -24,7 +27,10 @@ use super::data_build::{
     build_change_entries, build_issues_entries, build_rows_for_tab, change_entry_matches,
     dir_format_size, issue_entry_matches,
 };
-use super::filter::{compute_tab_filter_counts, filter_for_tab, flat_row_matches_filter};
+use super::filter::{
+    compute_tab_filter_counts, filter_for_tab, flat_row_matches_filter,
+    image_aggregate_matches_filter,
+};
 use super::types::{
     ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, TabFilterCounts,
     flat_row_page_index, tab_is_flattened,
@@ -241,13 +247,48 @@ impl ResultsDelegate {
                         _ => self.all_pages.iter().find(|p| p.url == url),
                     }
                 }
-                FlatRow::IssuesRow { .. } | FlatRow::DirectoryAggregate { .. } => None,
+                FlatRow::IssuesRow { .. }
+                | FlatRow::ImageAggregate(_)
+                | FlatRow::DirectoryAggregate { .. } => None,
             }
         } else {
             self.filtered_indices
                 .get(index)
                 .and_then(|&idx| self.all_pages.get(idx))
         }
+    }
+
+    /// What the details panel should show for a row: the page behind it, or,
+    /// on the Images tab, the image source and the pages referencing it.
+    pub fn selection_at(&self, index: usize) -> Option<DetailsSelection> {
+        if tab_is_flattened(self.active_tab)
+            && let Some(FlatRow::ImageAggregate(image)) = self.flat_rows.get(index)
+        {
+            let references = image
+                .pages
+                .iter()
+                .filter_map(|&page_index| self.all_pages.get(page_index))
+                .flat_map(|page| {
+                    page.images
+                        .iter()
+                        .filter(|candidate| candidate.src == image.src)
+                        .map(|candidate| ImageReference {
+                            page_url: page.url.clone(),
+                            alt: candidate.alt.clone(),
+                            has_alt_attr: candidate.has_alt_attr,
+                        })
+                })
+                .collect();
+            return Some(DetailsSelection::Image(Box::new(ImageDetails {
+                src: image.src.clone(),
+                width: image.width,
+                height: image.height,
+                references,
+            })));
+        }
+        self.record_at(index)
+            .cloned()
+            .map(|record| DetailsSelection::Page(Box::new(record)))
     }
 
     pub fn filtered_count(&self) -> usize {
@@ -305,9 +346,23 @@ impl ResultsDelegate {
         } else {
             self.issue_entries.clear();
             let change_entries = self.change_entries();
+            // Image aggregates span every page referencing the image, so they
+            // are built from the tab's whole page set and filtered as rows
+            // afterwards. Building them from the narrowed set would make a
+            // logo's reference count shrink as soon as a filter was applied.
+            let source_indices = if self.active_tab == ResultTab::Images {
+                filter_for_tab(
+                    self.active_tab,
+                    IssueFilter::All,
+                    &self.all_pages,
+                    &self.occurrence_counts,
+                )
+            } else {
+                self.filtered_indices.clone()
+            };
             self.flat_rows = build_rows_for_tab(
                 self.active_tab,
-                &self.filtered_indices,
+                &source_indices,
                 &self.all_pages,
                 &change_entries,
                 self.root_origin.as_deref(),
@@ -348,6 +403,16 @@ impl ResultsDelegate {
             });
             return;
         }
+        if self.active_tab == ResultTab::Images {
+            let filter = self.issue_filter;
+            self.flat_rows.retain(|row| {
+                let FlatRow::ImageAggregate(image) = row else {
+                    return true;
+                };
+                image_aggregate_matches_filter(image, filter)
+            });
+            return;
+        }
         if self.active_tab == ResultTab::SiteStructure {
             self.flat_rows.retain(|row| {
                 let FlatRow::DirectoryAggregate { depth, .. } = row else {
@@ -370,6 +435,7 @@ impl ResultsDelegate {
                 | FlatRow::SdItem { page, .. } => *page,
                 FlatRow::IssuesRow { .. }
                 | FlatRow::ChangeRow { .. }
+                | FlatRow::ImageAggregate(_)
                 | FlatRow::DirectoryAggregate { .. } => return true,
             };
             let Some(page) = self.all_pages.get(page_index) else {
@@ -470,6 +536,7 @@ impl ResultsDelegate {
                     _ => String::new(),
                 }
             }
+            FlatRow::ImageAggregate(image) => image_aggregate_cell_text(image, col_key).into(),
             FlatRow::DirectoryAggregate {
                 path,
                 depth,
@@ -624,6 +691,20 @@ impl TableDelegate for ResultsDelegate {
                         _ => cell.child(text),
                     }
                 }
+                FlatRow::ImageAggregate(image) => {
+                    let text = image_aggregate_cell_text(image, &key);
+                    match key.as_ref() {
+                        "image_has_alt" => {
+                            let tone = if image.missing_alt_attr {
+                                Tone::Warn
+                            } else {
+                                Tone::Ok
+                            };
+                            cell.child(tone_tag(tone, cx).child(text))
+                        }
+                        _ => cell.child(text),
+                    }
+                }
                 FlatRow::DirectoryAggregate {
                     path,
                     depth,
@@ -681,6 +762,7 @@ impl TableDelegate for ResultsDelegate {
                         | FlatRow::SdItem { page, .. } => *page,
                         FlatRow::IssuesRow { .. }
                         | FlatRow::ChangeRow { .. }
+                        | FlatRow::ImageAggregate(_)
                         | FlatRow::DirectoryAggregate { .. }
                         | FlatRow::A11yIssue { .. } => unreachable!(),
                     };
@@ -973,6 +1055,99 @@ mod cache_tests {
             .map(|counts| counts.badge.total)
             .unwrap_or_default();
         assert_eq!(after, 0, "clearing the baseline must drop change rows");
+    }
+}
+
+#[cfg(test)]
+mod image_aggregate_tests {
+    use super::*;
+    use crate::crawl::event::ImageRef;
+
+    fn page_with_images(url: &str, images: Vec<ImageRef>) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            images,
+            ..Default::default()
+        }
+    }
+
+    fn image(src: &str, alt: Option<&str>) -> ImageRef {
+        ImageRef {
+            src: src.into(),
+            alt: alt.map(|a| a.to_string()),
+            width: Some(10),
+            height: Some(10),
+            has_alt_attr: alt.is_some(),
+        }
+    }
+
+    fn pages() -> Vec<PageRecord> {
+        vec![
+            page_with_images(
+                "https://a.test/one",
+                vec![image("/logo.svg", Some("Logo")), image("/hero.png", None)],
+            ),
+            page_with_images("https://a.test/two", vec![image("/logo.svg", Some("Logo"))]),
+        ]
+    }
+
+    #[test]
+    fn a_filter_narrows_the_rows_without_shrinking_the_reference_count() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.switch_tab(ResultTab::Images);
+        delegate.replace_records(pages());
+        assert_eq!(delegate.flat_rows().len(), 2);
+
+        // /hero.png is the only source missing its alt attribute, and the logo
+        // must keep both references even though only one page is selected by
+        // the filter that produced the row set.
+        delegate.set_issue_filter(IssueFilter::MissingAltAttribute);
+        let rows = delegate.flat_rows();
+        assert_eq!(rows.len(), 1);
+        let FlatRow::ImageAggregate(hero) = &rows[0] else {
+            panic!("expected an image aggregate");
+        };
+        assert_eq!(hero.src, "/hero.png");
+
+        delegate.set_issue_filter(IssueFilter::All);
+        let logo = delegate
+            .flat_rows()
+            .iter()
+            .find_map(|row| match row {
+                FlatRow::ImageAggregate(image) if image.src == "/logo.svg" => Some(image.clone()),
+                _ => None,
+            })
+            .expect("logo row");
+        assert_eq!(logo.reference_count, 2);
+    }
+
+    #[test]
+    fn selecting_a_row_resolves_the_pages_referencing_the_image() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.switch_tab(ResultTab::Images);
+        delegate.replace_records(pages());
+        let logo_row = delegate
+            .flat_rows()
+            .iter()
+            .position(
+                |row| matches!(row, FlatRow::ImageAggregate(image) if image.src == "/logo.svg"),
+            )
+            .expect("logo row");
+
+        let Some(DetailsSelection::Image(details)) = delegate.selection_at(logo_row) else {
+            panic!("an image row should select an image, not a page");
+        };
+        assert_eq!(details.src, "/logo.svg");
+        let urls: Vec<&str> = details
+            .references
+            .iter()
+            .map(|reference| reference.page_url.as_str())
+            .collect();
+        assert_eq!(urls, vec!["https://a.test/one", "https://a.test/two"]);
+        assert!(details.references.iter().all(|r| r.has_alt_attr));
     }
 }
 

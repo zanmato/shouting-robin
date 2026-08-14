@@ -13,8 +13,35 @@ use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::results_grid::ssr_diff_label;
 use shoutingrobin_ui::{HtmlView, JsonView};
 
+/// One page's use of an image, for the Images tab's drill-down.
+#[derive(Clone, Debug)]
+pub struct ImageReference {
+    pub page_url: String,
+    pub alt: Option<String>,
+    pub has_alt_attr: bool,
+}
+
+/// A unique image source and every page referencing it. The Images tab lists
+/// one row per source, so this is where the per-page detail the flattened tab
+/// used to show now lives.
+#[derive(Clone, Debug)]
+pub struct ImageDetails {
+    pub src: String,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub references: Vec<ImageReference>,
+}
+
+/// What the panel is inspecting. Most tabs select a page; the Images tab
+/// selects an image source, which is not one page's property.
+#[derive(Clone, Debug)]
+pub enum DetailsSelection {
+    Page(Box<PageRecord>),
+    Image(Box<ImageDetails>),
+}
+
 pub struct DetailsPanel {
-    pub selected: Option<PageRecord>,
+    selected: Option<DetailsSelection>,
     json_views: Vec<Option<JsonView>>,
     html_views: Vec<Option<HtmlView>>,
 }
@@ -28,8 +55,12 @@ impl DetailsPanel {
         }
     }
 
-    pub fn set_selected(&mut self, record: Option<PageRecord>, cx: &mut Context<Self>) {
-        self.json_views = match &record {
+    pub fn set_selected(&mut self, selection: Option<DetailsSelection>, cx: &mut Context<Self>) {
+        let record = match &selection {
+            Some(DetailsSelection::Page(rec)) => Some(rec.as_ref()),
+            _ => None,
+        };
+        self.json_views = match record {
             Some(rec) => rec
                 .sd_items
                 .iter()
@@ -43,7 +74,7 @@ impl DetailsPanel {
                 .collect(),
             None => Vec::new(),
         };
-        self.html_views = match &record {
+        self.html_views = match record {
             Some(rec) => rec
                 .a11y_issues
                 .iter()
@@ -57,7 +88,7 @@ impl DetailsPanel {
                 .collect(),
             None => Vec::new(),
         };
-        self.selected = record;
+        self.selected = selection;
         cx.notify();
     }
 }
@@ -1332,6 +1363,151 @@ fn headers_section(
     ))
 }
 
+fn image_header_block(image: &ImageDetails, muted: Hsla, border: Hsla) -> AnyElement {
+    let src = image.src.clone();
+    div()
+        .px_3()
+        .py_2()
+        .border_b_1()
+        .border_color(border)
+        .child(
+            div()
+                .flex()
+                .items_center()
+                .justify_between()
+                .gap_2()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(UiIcon::from(Icon::Image).small())
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .child("Image Details"),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("open-image-details")
+                        .cursor_pointer()
+                        .text_color(muted)
+                        .child(UiIcon::from(Icon::ExternalLink).small())
+                        .on_click(move |_, _window, cx| {
+                            cx.open_url(&src);
+                        }),
+                ),
+        )
+        .child(
+            div()
+                .mt_1()
+                .text_xs()
+                .text_color(muted)
+                .child(SharedString::from(image.src.clone())),
+        )
+        .into_any_element()
+}
+
+fn image_information_section(image: &ImageDetails, muted: Hsla, border: Hsla) -> AnyElement {
+    let dimensions = match (image.width, image.height) {
+        (Some(w), Some(h)) => format!("{w} x {h}"),
+        (Some(w), None) => format!("{w} x -"),
+        (None, Some(h)) => format!("- x {h}"),
+        (None, None) => "-".to_string(),
+    };
+    let missing_alt = image
+        .references
+        .iter()
+        .filter(|reference| {
+            !reference.has_alt_attr || reference.alt.as_deref().is_none_or(|alt| alt.is_empty())
+        })
+        .count();
+    let body = div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(row(
+            "References",
+            SharedString::from(image.references.len().to_string()),
+            muted,
+        ))
+        .child(row("Dimensions", SharedString::from(dimensions), muted))
+        .child(row(
+            "Missing alt",
+            SharedString::from(missing_alt.to_string()),
+            muted,
+        ))
+        .into_any_element();
+    section("Image Information", None, None, muted, border, body)
+}
+
+fn image_references_section(
+    image: &ImageDetails,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> AnyElement {
+    let mut body = div().flex().flex_col().gap_0p5();
+    for reference in &image.references {
+        let alt_tag = if reference.has_alt_attr {
+            if reference.alt.as_deref().is_none_or(|alt| alt.is_empty()) {
+                tone_tag(Tone::Warn, cx).child(SharedString::from("empty"))
+            } else {
+                tone_tag(Tone::Ok, cx).child(SharedString::from("yes"))
+            }
+        } else {
+            tone_tag(Tone::Err, cx).child(SharedString::from("missing"))
+        };
+        body = body.child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .pt_1()
+                .border_t_1()
+                .border_color(border)
+                .child(
+                    div()
+                        .text_xs()
+                        .font_family(cx.theme().mono_font_family.clone())
+                        .text_color(fg)
+                        .child(SharedString::from(reference.page_url.clone())),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .text_xs()
+                        .child(div().text_color(muted).child("Alt:"))
+                        .child(alt_tag)
+                        .when_some(reference.alt.clone(), |el, alt| {
+                            el.child(div().text_color(fg).child(SharedString::from(alt)))
+                        }),
+                ),
+        );
+    }
+    section(
+        "Referenced By",
+        None,
+        Some(
+            div()
+                .text_xs()
+                .child(SharedString::from(format!(
+                    "{} pages",
+                    image.references.len()
+                )))
+                .into_any_element(),
+        ),
+        muted,
+        border,
+        body.into_any_element(),
+    )
+}
+
 impl Render for DetailsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
@@ -1349,7 +1525,16 @@ impl Render for DetailsPanel {
                 .text_color(muted)
                 .child("Select a URL to inspect details.")
                 .into_any_element(),
-            Some(rec) => div()
+            Some(DetailsSelection::Image(image)) => div()
+                .id("details-scroll")
+                .overflow_y_scrollbar()
+                .flex()
+                .flex_col()
+                .child(image_header_block(image, muted, border))
+                .child(image_information_section(image, muted, border))
+                .child(image_references_section(image, muted, fg, border, cx))
+                .into_any_element(),
+            Some(DetailsSelection::Page(rec)) => div()
                 .id("details-scroll")
                 .overflow_y_scrollbar()
                 .flex()

@@ -13,8 +13,8 @@ use super::data_build::{
     build_issues_entries, build_rows_for_tab, change_entry_matches, issue_entry_matches,
 };
 use super::types::{
-    ChangeEntry, FlatRow, IssueFilter, TabCounts, TabFilterCounts, flat_row_page_index,
-    tab_is_flattened,
+    ChangeEntry, FlatRow, ImageAggregateRow, IssueFilter, TabCounts, TabFilterCounts,
+    flat_row_page_index, tab_is_flattened,
 };
 
 pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
@@ -331,6 +331,10 @@ fn row_matches_filter(
                 IssueFilter::DepthDeep => *depth >= 4,
                 _ => true,
             },
+            // Not gated on `allowed_pages`: an aggregate spans every page
+            // referencing the image, so the page set a filter selects says
+            // nothing about the row.
+            FlatRow::ImageAggregate(image) => image_aggregate_matches_filter(image, filter),
             _ => true,
         },
     }
@@ -1098,6 +1102,7 @@ pub(super) fn flat_row_matches_filter(
             };
             image_matches_filter(image, filter)
         }
+        FlatRow::ImageAggregate(image) => image_aggregate_matches_filter(image, filter),
         FlatRow::A11yIssue { item, .. } => {
             let Some(issue) = page.a11y_issues.get(*item) else {
                 return false;
@@ -1117,6 +1122,22 @@ pub(super) fn flat_row_matches_filter(
             IssueFilter::DepthDeep => *depth >= 4,
             _ => true,
         },
+    }
+}
+
+/// Whether an aggregated image row survives a sub-filter. The flags are already
+/// "any reference" (see `ImageAggregateRow`), so a source referenced from many
+/// pages is selected when any one of those references trips the filter.
+pub(super) fn image_aggregate_matches_filter(
+    image: &ImageAggregateRow,
+    filter: IssueFilter,
+) -> bool {
+    match filter {
+        IssueFilter::MissingAltText => image.missing_alt_text,
+        IssueFilter::MissingAltAttribute => image.missing_alt_attr,
+        IssueFilter::AltOver100 => image.alt_over_100,
+        IssueFilter::MissingSizeAttributes => image.missing_size_attrs,
+        _ => true,
     }
 }
 
@@ -1196,6 +1217,52 @@ mod counting_tests {
             status: Some(200),
             ..Default::default()
         }
+    }
+
+    fn image(src: &str, alt: Option<&str>, has_alt_attr: bool) -> ImageRef {
+        ImageRef {
+            src: src.into(),
+            alt: alt.map(|a| a.to_string()),
+            width: Some(10),
+            height: Some(10),
+            has_alt_attr,
+        }
+    }
+
+    #[test]
+    fn images_tab_counts_unique_sources_not_instances() {
+        // A logo on every page is one row. The inline data: URI is not a row at
+        // all, and the flags are "any reference": the logo lacks alt text on
+        // one of the three pages, which is enough to flag the source.
+        let pages: Vec<PageRecord> = (0..3)
+            .map(|i| {
+                let mut page = internal_page(&format!("https://a.test/page-{i}"));
+                page.images = vec![
+                    image(
+                        "/logo.svg",
+                        if i == 2 { Some("") } else { Some("Logo") },
+                        true,
+                    ),
+                    image("data:image/svg+xml;base64,AAAA", Some("Flag"), true),
+                ];
+                page
+            })
+            .collect();
+
+        let rows = build_rows_for_tab(ResultTab::Images, &[0, 1, 2], &pages, &[], None);
+        assert_eq!(rows.len(), 1, "one row for the one fetchable source");
+        let FlatRow::ImageAggregate(logo) = &rows[0] else {
+            panic!("expected an image aggregate, got {:?}", rows[0]);
+        };
+        assert_eq!(logo.src, "/logo.svg");
+        assert_eq!(logo.reference_count, 3);
+        assert_eq!(logo.pages, vec![0, 1, 2]);
+        assert!(logo.missing_alt_text);
+
+        let counts = compute_tab_filter_counts(ResultTab::Images, &pages, &[], None);
+        assert_eq!(count_of(&counts, IssueFilter::All), 1);
+        assert_eq!(count_of(&counts, IssueFilter::MissingAltText), 1);
+        assert_eq!(count_of(&counts, IssueFilter::MissingAltAttribute), 0);
     }
 
     #[test]

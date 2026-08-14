@@ -6,12 +6,12 @@ use crate::views::ResultTab;
 
 use super::columns::{char_length, header_exists};
 use super::types::{
-    ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, IssuePriority, IssueType,
+    ChangeEntry, ChangeKind, FlatRow, ImageAggregateRow, IssueEntry, IssueFilter, IssuePriority,
+    IssueType,
 };
 
 pub(super) fn flat_row_item_count(page: &PageRecord, tab: ResultTab) -> usize {
     match tab {
-        ResultTab::Images => page.images.len(),
         ResultTab::Accessibility => page.a11y_issues.len(),
         ResultTab::Hreflang => page.hreflang_tags.len().max(1),
         ResultTab::StructuredData => page.sd_items.len().max(1),
@@ -21,7 +21,6 @@ pub(super) fn flat_row_item_count(page: &PageRecord, tab: ResultTab) -> usize {
 
 pub(super) fn flat_row_variant(tab: ResultTab, page: usize, item: usize) -> FlatRow {
     match tab {
-        ResultTab::Images => FlatRow::Image { page, item },
         ResultTab::Accessibility => FlatRow::A11yIssue { page, item },
         ResultTab::Hreflang => FlatRow::Hreflang { page, item },
         ResultTab::StructuredData => FlatRow::SdItem { page, item },
@@ -72,6 +71,7 @@ pub(super) fn build_rows_for_tab(
             .map(|index| FlatRow::ChangeRow { index })
             .collect(),
         ResultTab::SiteStructure => build_directory_aggregates(pages, root_origin),
+        ResultTab::Images => build_image_aggregates(page_indices, pages),
         _ => page_indices
             .iter()
             .flat_map(|&page_index| {
@@ -1136,6 +1136,73 @@ pub(super) fn dir_format_size(bytes: u64) -> String {
         return format!("{:.1} KB", bytes as f64 / 1024.0);
     }
     format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+}
+
+/// True when an image source is an inline payload rather than a fetchable
+/// resource. The Images tab leaves these out: they cannot be requested, sized
+/// or status-checked, and on the reference crawl 872 of 1865 image rows were
+/// inline SVG flag icons, which is most of the tab.
+pub(super) fn is_inline_image(src: &str) -> bool {
+    src.trim_start().to_ascii_lowercase().starts_with("data:")
+}
+
+/// One row per unique image source across the given pages, carrying how many
+/// `img` tags point at it and which pages those are.
+pub(super) fn build_image_aggregates(page_indices: &[usize], pages: &[PageRecord]) -> Vec<FlatRow> {
+    let mut by_src: HashMap<&str, ImageAggregateRow> = HashMap::new();
+    // Insertion order, so the tab lists images in the order the crawl met them
+    // rather than in hash order, which would reshuffle between runs.
+    let mut order: Vec<&str> = Vec::new();
+
+    for &page_index in page_indices {
+        let Some(page) = pages.get(page_index) else {
+            continue;
+        };
+        for image in &page.images {
+            if is_inline_image(&image.src) {
+                continue;
+            }
+            let entry = by_src.entry(image.src.as_str()).or_insert_with(|| {
+                order.push(image.src.as_str());
+                ImageAggregateRow {
+                    src: image.src.clone(),
+                    alt: None,
+                    width: None,
+                    height: None,
+                    missing_alt_attr: false,
+                    missing_alt_text: false,
+                    alt_over_100: false,
+                    missing_size_attrs: false,
+                    reference_count: 0,
+                    pages: Vec::new(),
+                }
+            });
+
+            entry.reference_count += 1;
+            if entry.pages.last() != Some(&page_index) {
+                entry.pages.push(page_index);
+            }
+            if entry.alt.is_none() {
+                entry.alt = image.alt.clone().filter(|alt| !alt.is_empty());
+            }
+            entry.width = entry.width.or(image.width);
+            entry.height = entry.height.or(image.height);
+            entry.missing_alt_attr |= !image.has_alt_attr;
+            entry.missing_alt_text |=
+                image.has_alt_attr && image.alt.as_deref().is_none_or(|alt| alt.is_empty());
+            entry.alt_over_100 |= image
+                .alt
+                .as_deref()
+                .is_some_and(|alt| char_length(alt) > 100);
+            entry.missing_size_attrs |= image.width.is_none() || image.height.is_none();
+        }
+    }
+
+    order
+        .into_iter()
+        .filter_map(|src| by_src.remove(src))
+        .map(|row| FlatRow::ImageAggregate(Box::new(row)))
+        .collect()
 }
 
 pub(super) fn build_directory_aggregates(

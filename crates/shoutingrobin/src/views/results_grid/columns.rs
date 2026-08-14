@@ -104,14 +104,16 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("ssr_diff", "SSR Diff", 90., None),
             col("indexability", "Indexability", 110., None),
         ],
+        // One row per unique image source. A footer logo referenced from every
+        // page was a row per page before; the pages referencing an image are
+        // the details panel's Referenced By section.
         ResultTab::Images => vec![
-            col("address", "Address", 380., Some(ColumnFixed::Left)),
-            col("image_src", "Src", 300., None),
-            col("image_alt", "Alt Text", 200., None),
-            col("image_width", "Width", 70., None),
-            col("image_height", "Height", 70., None),
-            col("image_has_alt", "Has Alt", 70., None),
-            col("indexability", "Indexability", 110., None),
+            col("image_src", "Src", 420., Some(ColumnFixed::Left)),
+            col("image_alt", "Alt Text", 260., None),
+            col("image_inlinks", "IMG Inlinks", 100., None),
+            col("image_width", "Width", 80., None),
+            col("image_height", "Height", 80., None),
+            col("image_has_alt", "Has Alt", 80., None),
         ],
         ResultTab::Canonicals => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
@@ -395,6 +397,7 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "cls"
             | "image_width"
             | "image_height"
+            | "image_inlinks"
             | "url_length"
             | "dir_page_count"
             | "dir_depth"
@@ -437,6 +440,7 @@ pub(super) fn is_mono_column(key: &str) -> bool {
         || matches!(
             key,
             "address"
+                | "image_src"
                 | "canonical"
                 | "a11y_target"
                 | "a11y_html"
