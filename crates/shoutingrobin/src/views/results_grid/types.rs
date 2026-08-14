@@ -19,6 +19,11 @@ pub(crate) struct ImageAggregateRow {
     pub missing_alt_text: bool,
     pub alt_over_100: bool,
     pub missing_size_attrs: bool,
+    /// What the resource pass found when it requested the image: its status
+    /// code and size in bytes. `None`/0 when the image was never checked, which
+    /// is what a crawl run with resource checks off looks like.
+    pub status: Option<u16>,
+    pub size_bytes: u64,
     /// How many `img` tags across the crawl point at this source.
     pub reference_count: usize,
     /// The pages referencing it, in crawl order, as indices into `all_pages`.
@@ -144,6 +149,8 @@ pub enum IssueFilter {
     MissingAltAttribute,
     AltOver100,
     MissingSizeAttributes,
+    ImageOver100Kb,
+    ImageBroken,
     UrlsInSitemap,
     UrlsNotInSitemap,
     SitemapOrphans,
@@ -266,6 +273,8 @@ impl IssueFilter {
             IssueFilter::MissingAltAttribute => "Missing Alt Attribute",
             IssueFilter::AltOver100 => "Alt Over 100",
             IssueFilter::MissingSizeAttributes => "Missing Size Attrs",
+            IssueFilter::ImageOver100Kb => "Over 100 kB",
+            IssueFilter::ImageBroken => "Broken",
             IssueFilter::UrlsInSitemap => "In Sitemap",
             IssueFilter::UrlsNotInSitemap => "Not in Sitemap",
             IssueFilter::SitemapOrphans => "Orphan URLs",
@@ -403,6 +412,7 @@ impl IssueFilter {
             | Self::SsrContentMissing
             | Self::BlockedByRobots
             | Self::DirectiveNoindex
+            | Self::ImageBroken
             | Self::LinkBroken => Tone::Err,
 
             Self::NonIndexable
@@ -433,6 +443,7 @@ impl IssueFilter {
             | Self::MissingAltAttribute
             | Self::AltOver100
             | Self::MissingSizeAttributes
+            | Self::ImageOver100Kb
             | Self::NonIndexableInSitemap
             | Self::UrlsNotInSitemap
             | Self::MissingPrice

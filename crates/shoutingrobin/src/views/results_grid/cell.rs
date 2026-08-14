@@ -95,6 +95,13 @@ pub(super) fn image_aggregate_cell_text(image: &ImageAggregateRow, col_key: &str
         "image_src" => SharedString::from(image.src.clone()),
         "image_alt" => SharedString::from(image.alt.clone().unwrap_or_default()),
         "image_inlinks" => SharedString::from(image.reference_count.to_string()),
+        "image_status" => SharedString::from(
+            image
+                .status
+                .map(|status| status.to_string())
+                .unwrap_or_else(|| "-".into()),
+        ),
+        "image_size" => format_size(image.size_bytes),
         "image_width" => SharedString::from(
             image
                 .width

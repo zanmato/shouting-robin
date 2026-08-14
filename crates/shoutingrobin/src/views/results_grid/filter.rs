@@ -89,6 +89,8 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::MissingAltAttribute,
             IssueFilter::AltOver100,
             IssueFilter::MissingSizeAttributes,
+            IssueFilter::ImageOver100Kb,
+            IssueFilter::ImageBroken,
         ],
         ResultTab::Canonicals => &[
             IssueFilter::All,
@@ -413,6 +415,36 @@ pub(super) fn referrer_policy_leaks_url(value: &str) -> bool {
 /// alt text either, since the analyzer falls back to that alt for the anchor.
 pub(super) fn link_lacks_anchor_text(link: &crate::crawl::event::Outlink) -> bool {
     link.anchor.as_deref().is_none_or(|a| a.trim().is_empty())
+}
+
+/// The size above which an image is worth compressing. 100 kB is the figure the
+/// rule is named for, in decimal kilobytes, which is how image tooling reports
+/// file sizes.
+pub(super) const IMAGE_SIZE_LIMIT_BYTES: u64 = 100_000;
+
+/// What the post-crawl resource pass found for each checked URL, as a map, so a
+/// page's images resolve in constant time. Scanning the page set per image made
+/// the image rules quadratic in the crawl size.
+fn checked_resources(pages: &[PageRecord]) -> HashMap<&str, (Option<u16>, u64)> {
+    pages
+        .iter()
+        .filter(|page| page.is_resource)
+        .map(|page| (page.url.as_str(), (page.status, page.size_bytes)))
+        .collect()
+}
+
+/// True when any of the page's images matched `matches` once the resource pass
+/// had fetched it. Page-level, because the overview counts affected pages.
+fn page_has_image_matching(
+    page: &PageRecord,
+    checked: &HashMap<&str, (Option<u16>, u64)>,
+    matches: impl Fn(Option<u16>, u64) -> bool,
+) -> bool {
+    page.images.iter().any(|image| {
+        checked
+            .get(image.src.as_str())
+            .is_some_and(|&(status, size)| matches(status, size))
+    })
 }
 
 /// A page with fewer than this many words of body text counts as thin.
@@ -741,6 +773,22 @@ pub(super) fn filter_for_tab(
                     .iter()
                     .any(|img| img.width.is_none() || img.height.is_none())
             }),
+            IssueFilter::ImageOver100Kb => {
+                let checked = checked_resources(pages);
+                indices.retain(|&idx| {
+                    page_has_image_matching(&pages[idx], &checked, |_, size| {
+                        size > IMAGE_SIZE_LIMIT_BYTES
+                    })
+                });
+            }
+            IssueFilter::ImageBroken => {
+                let checked = checked_resources(pages);
+                indices.retain(|&idx| {
+                    page_has_image_matching(&pages[idx], &checked, |status, _| {
+                        status.is_some_and(|status| status >= 400)
+                    })
+                });
+            }
             IssueFilter::UrlsInSitemap => {
                 indices.retain(|&idx| pages[idx].in_sitemap == Some(true))
             }
@@ -1131,6 +1179,8 @@ pub(super) fn image_aggregate_matches_filter(
         IssueFilter::MissingAltAttribute => image.missing_alt_attr,
         IssueFilter::AltOver100 => image.alt_over_100,
         IssueFilter::MissingSizeAttributes => image.missing_size_attrs,
+        IssueFilter::ImageOver100Kb => image.size_bytes > IMAGE_SIZE_LIMIT_BYTES,
+        IssueFilter::ImageBroken => image.status.is_some_and(|status| status >= 400),
         _ => true,
     }
 }
@@ -1245,6 +1295,60 @@ mod counting_tests {
         assert_eq!(count_of(&counts, IssueFilter::All), 1);
         assert_eq!(count_of(&counts, IssueFilter::MissingAltText), 1);
         assert_eq!(count_of(&counts, IssueFilter::MissingAltAttribute), 0);
+    }
+
+    #[test]
+    fn an_images_status_and_size_come_from_the_resource_row() {
+        let mut page = internal_page("https://a.test/gallery");
+        page.images = vec![
+            image("https://a.test/heavy.png", Some("Heavy"), true),
+            image("https://a.test/gone.png", Some("Gone"), true),
+            image("https://a.test/fine.png", Some("Fine"), true),
+        ];
+        let resource = |url: &str, status: Option<u16>, size: u64| PageRecord {
+            url: url.into(),
+            status,
+            size_bytes: size,
+            is_internal: true,
+            is_page: false,
+            is_resource: true,
+            ..Default::default()
+        };
+        let pages = vec![
+            page,
+            resource("https://a.test/heavy.png", Some(200), 250_000),
+            resource("https://a.test/gone.png", Some(404), 0),
+            resource("https://a.test/fine.png", Some(200), 4_000),
+        ];
+
+        let rows = build_rows_for_tab(ResultTab::Images, &[0], &pages, &[], None);
+        let sizes: Vec<(String, Option<u16>, u64)> = rows
+            .iter()
+            .filter_map(|row| match row {
+                FlatRow::ImageAggregate(image) => {
+                    Some((image.src.clone(), image.status, image.size_bytes))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            sizes,
+            vec![
+                ("https://a.test/heavy.png".to_string(), Some(200), 250_000),
+                ("https://a.test/gone.png".to_string(), Some(404), 0),
+                ("https://a.test/fine.png".to_string(), Some(200), 4_000),
+            ]
+        );
+
+        let counts = compute_tab_filter_counts(ResultTab::Images, &pages, &[], None);
+        assert_eq!(count_of(&counts, IssueFilter::All), 3);
+        assert_eq!(count_of(&counts, IssueFilter::ImageOver100Kb), 1);
+        assert_eq!(count_of(&counts, IssueFilter::ImageBroken), 1);
+        // The page carrying both is what the overview rules count.
+        assert_eq!(
+            matching_urls(ResultTab::Images, IssueFilter::ImageOver100Kb, &pages),
+            vec!["https://a.test/gallery".to_string()]
+        );
     }
 
     #[test]

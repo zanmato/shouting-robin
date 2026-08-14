@@ -127,6 +127,8 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("image_src", "Src", 420., Some(ColumnFixed::Left)),
             col("image_alt", "Alt Text", 260., None),
             col("image_inlinks", "IMG Inlinks", 100., None),
+            col("image_status", "Code", 70., None),
+            col("image_size", "Size", 90., None),
             col("image_width", "Width", 80., None),
             col("image_height", "Height", 80., None),
             col("image_has_alt", "Has Alt", 80., None),
@@ -437,6 +439,7 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "image_width"
             | "image_height"
             | "image_inlinks"
+            | "image_status"
             | "url_length"
             | "hreflang_count"
             | "dir_page_count"
@@ -463,6 +466,7 @@ pub(super) fn is_tag_column(key: &str) -> bool {
             | "a11y_impact"
             | "near_duplicate_count"
             | "image_has_alt"
+            | "image_status"
             | "indexability_status"
             | "sec_https"
             | "sec_hsts"

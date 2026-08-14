@@ -157,6 +157,8 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Images Missing Size Attributes" => {
             Some((ResultTab::Images, IssueFilter::MissingSizeAttributes))
         }
+        "Images Over 100 kB" => Some((ResultTab::Images, IssueFilter::ImageOver100Kb)),
+        "Broken Images" => Some((ResultTab::Images, IssueFilter::ImageBroken)),
         "URLs with Parameters" => Some((ResultTab::Url, IssueFilter::UrlParameters)),
         "Missing X-Frame-Options" => Some((ResultTab::Security, IssueFilter::MissingFrameGuard)),
         "Missing X-Content-Type-Options" => {
@@ -868,6 +870,27 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
                removes the page from search.",
     },
     FilterDerivedRule {
+        name: "Images Over 100 kB",
+        tab: ResultTab::Images,
+        filter: IssueFilter::ImageOver100Kb,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages carrying an image over 100 kB, measured when it was fetched.",
+        hint: "Compress and resize the image, and serve a modern format such as WebP or AVIF.",
+    },
+    FilterDerivedRule {
+        name: "Broken Images",
+        tab: ResultTab::Images,
+        filter: IssueFilter::ImageBroken,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::High,
+        denominator: Denominator::Documents,
+        description: "Pages referencing an image that did not load when it was fetched.",
+        hint: "Fix the src or remove the image. A broken image is a wasted request and a \
+               visible hole in the page.",
+    },
+    FilterDerivedRule {
         name: "Images Missing Alt Attribute",
         tab: ResultTab::Images,
         filter: IssueFilter::MissingAltAttribute,
@@ -1147,6 +1170,14 @@ pub(super) fn is_inline_image(src: &str) -> bool {
 /// One row per unique image source across the given pages, carrying how many
 /// `img` tags point at it and which pages those are.
 pub(super) fn build_image_aggregates(page_indices: &[usize], pages: &[PageRecord]) -> Vec<FlatRow> {
+    // What the post-crawl resource pass found for each image URL. The images
+    // themselves are recorded on the pages that reference them and carry no
+    // status or size of their own.
+    let checked: HashMap<&str, (Option<u16>, u64)> = pages
+        .iter()
+        .filter(|page| page.is_resource)
+        .map(|page| (page.url.as_str(), (page.status, page.size_bytes)))
+        .collect();
     let mut by_src: HashMap<&str, ImageAggregateRow> = HashMap::new();
     // Insertion order, so the tab lists images in the order the crawl met them
     // rather than in hash order, which would reshuffle between runs.
@@ -1162,8 +1193,14 @@ pub(super) fn build_image_aggregates(page_indices: &[usize], pages: &[PageRecord
             }
             let entry = by_src.entry(image.src.as_str()).or_insert_with(|| {
                 order.push(image.src.as_str());
+                let (status, size_bytes) = checked
+                    .get(image.src.as_str())
+                    .copied()
+                    .unwrap_or((None, 0));
                 ImageAggregateRow {
                     src: image.src.clone(),
+                    status,
+                    size_bytes,
                     alt: None,
                     width: None,
                     height: None,

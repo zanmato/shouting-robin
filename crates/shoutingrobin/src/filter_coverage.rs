@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::crawl::CrawlConfig;
-use crate::crawl::event::{A11yIssue, CrawlEvent, Outlink, PageRecord};
+use crate::crawl::event::{A11yIssue, CrawlEvent, ImageRef, Outlink, PageRecord};
 use crate::crawl::render_mode::RenderMode;
 use crate::views::ResultTab;
 use crate::views::results_grid::{
@@ -979,6 +979,44 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             is_internal: false,
             ..Default::default()
         },
+        // An oversized and a broken image, as the post-crawl resource pass
+        // records them, with a page referencing both. The pass is off for the
+        // coverage crawl (the fixture links off-site on purpose), and a
+        // loopback fixture cannot be made to serve a 100 kB image cheaply.
+        PageRecord {
+            size_bytes: 250_000,
+            content_type: Some("image/png".to_string()),
+            is_page: false,
+            is_resource: true,
+            resource_initiator: Some("img".to_string()),
+            ..internal(format!("{base}/syn-heavy.png"))
+        },
+        PageRecord {
+            status: Some(404),
+            is_page: false,
+            is_resource: true,
+            resource_initiator: Some("img".to_string()),
+            ..internal(format!("{base}/syn-gone.png"))
+        },
+        PageRecord {
+            images: vec![
+                ImageRef {
+                    src: format!("{base}/syn-heavy.png"),
+                    alt: Some("Heavy".to_string()),
+                    width: Some(10),
+                    height: Some(10),
+                    has_alt_attr: true,
+                },
+                ImageRef {
+                    src: format!("{base}/syn-gone.png"),
+                    alt: Some("Gone".to_string()),
+                    width: Some(10),
+                    height: Some(10),
+                    has_alt_attr: true,
+                },
+            ],
+            ..internal(format!("{base}/syn-images"))
+        },
         // One page carrying a link of every kind the Links sub-filters select.
         // The live `/links` fixture covers broken and nofollow, but a followed
         // redirect cannot be produced against loopback (see `/syn-redirect`),
@@ -1200,6 +1238,15 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::DirectiveNoarchive => both(&["/robots-meta"], &["/"]),
         F::DirectiveNosnippet => both(&["/robots-meta"], &["/"]),
         F::DirectiveNone => both(&["/directive-none"], &["/robots-meta"]),
+
+        // Images the resource pass fetched: their size and status live on the
+        // resource row, not on the referencing page.
+        F::ImageOver100Kb => both(&["/syn-images"], &["/images"]),
+        // No negative: in Chrome mode the fixture's own images are fetched by
+        // the browser and recorded through Resource Timing, and they 404, so
+        // "/images" really does carry broken images there. The discriminating
+        // case is unit-tested in `filter::counting_tests`.
+        F::ImageBroken => both(&["/syn-images"], &[]),
 
         // Links: the tab lists one row per URL, so each sub-filter selects the
         // pages carrying at least one such link. `/external` carries a
