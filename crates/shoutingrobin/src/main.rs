@@ -10,6 +10,7 @@ mod app_database;
 mod app_settings;
 mod assets;
 mod crawl;
+mod report;
 mod result_ext;
 mod settings;
 mod storage;

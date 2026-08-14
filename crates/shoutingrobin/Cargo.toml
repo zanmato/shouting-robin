@@ -52,6 +52,9 @@ self_update = { version = "0.42", default-features = false, features = [
   "compression-flate2",
 ] }
 semver = "1.0"
+takumi = { version = "2.9", default-features = false, features = ["svg-backend", "from-html"] }
+svg2pdf = "0.13"
+pdf-writer = "0.12"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-util", "net"] }

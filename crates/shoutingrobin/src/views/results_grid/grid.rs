@@ -162,6 +162,11 @@ impl ResultsGrid {
         self.state.read(cx).delegate().export_csv()
     }
 
+    /// The loaded crawl, in the form the PDF report renders.
+    pub fn build_report(&self, render_mode: &str, cx: &App) -> crate::report::Report {
+        self.state.read(cx).delegate().build_report(render_mode)
+    }
+
     pub fn root_url(&self, cx: &App) -> Option<String> {
         self.state
             .read(cx)

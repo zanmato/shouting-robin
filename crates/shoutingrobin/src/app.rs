@@ -632,6 +632,76 @@ impl ShoutingRobinApp {
         .detach();
     }
 
+    /// Writes the crawl up as a PDF: the Overview's rules, in its order, each
+    /// with a sample of the URLs behind it.
+    ///
+    /// The CSV export is the data; this is the thing you send to whoever owns
+    /// the site.
+    fn export_pdf(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let render_mode = if self.active_render_mode.renders_javascript() {
+            "Chrome, JavaScript rendered"
+        } else {
+            "HTTP, no JavaScript"
+        };
+        let report = self.results_grid.read(cx).build_report(render_mode, cx);
+
+        let hostname_part = self
+            .results_grid
+            .read(cx)
+            .root_url(cx)
+            .and_then(|url| url::Url::parse(&url).ok())
+            .and_then(|parsed| parsed.host_str().map(|h| h.to_owned()))
+            .unwrap_or_else(|| "unknown".to_owned())
+            .replace('.', "-");
+        let date_part = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let filename = format!("{hostname_part}-seo-report-{date_part}.pdf");
+        let dir = dirs::download_dir()
+            .or_else(dirs::home_dir)
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+        let path = cx.prompt_for_new_path(&dir, Some(&filename));
+
+        cx.spawn_in(window, async move |_, cx| {
+            let file_path = match path.await {
+                Ok(Ok(Some(p))) => p,
+                Ok(Ok(None)) => return,
+                Ok(Err(e)) => {
+                    tracing::error!(error=%e, "file dialog error");
+                    return;
+                }
+                Err(_) => return,
+            };
+
+            // Laying out and converting every page takes long enough to drop a
+            // frame, and none of it touches the UI.
+            let rendered = cx
+                .background_spawn(async move { crate::report::render_pdf(&report) })
+                .await;
+            let result = rendered.and_then(|bytes| {
+                std::fs::write(&file_path, bytes)
+                    .map_err(|e| anyhow::anyhow!("failed to write {}: {e}", file_path.display()))
+            });
+
+            match result {
+                Ok(()) => tracing::info!(path = %file_path.display(), "PDF report exported"),
+                Err(e) => {
+                    tracing::error!(error=%e, "failed to export the PDF report");
+                    if let Err(e) = cx.update(|window, cx| {
+                        window.push_notification(
+                            Notification::new()
+                                .message(format!("Could not write the report: {e}"))
+                                .with_type(NotificationType::Error),
+                            cx,
+                        );
+                    }) {
+                        tracing::error!(error=%e, "failed to report the PDF failure");
+                    }
+                }
+            }
+        })
+        .detach();
+    }
+
     fn spawn_event_pump(&mut self, rx: Receiver<CrawlEvent>, cx: &mut Context<Self>) {
         let results_grid = self.results_grid.clone();
         let status_bar = self.status_bar.clone();
@@ -1002,6 +1072,19 @@ impl Render for ShoutingRobinApp {
         }
 
         filter_bar = filter_bar.child(filter_left);
+
+        if has_results && self.active_tab == ResultTab::Overview {
+            filter_bar = filter_bar.child(
+                Button::new("export-pdf")
+                    .xsmall()
+                    .outline()
+                    .flex_shrink_0()
+                    .label("Export PDF")
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.export_pdf(window, cx);
+                    })),
+            );
+        }
 
         if has_results {
             filter_bar = filter_bar.child(

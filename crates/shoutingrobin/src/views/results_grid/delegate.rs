@@ -24,17 +24,18 @@ use super::columns::{
     is_mono_column, is_numeric_column, is_right_aligned_column,
 };
 use super::data_build::{
-    build_change_entries, build_issues_entries, build_rows_for_tab, change_entry_matches,
-    dir_format_size, issue_entry_matches,
+    build_change_entries, build_image_aggregates, build_issues_entries, build_rows_for_tab,
+    change_entry_matches, dir_format_size, issue_entry_matches, overview_issue_target,
 };
 use super::filter::{
     compute_tab_filter_counts, filter_for_tab, flat_row_matches_filter,
     image_aggregate_matches_filter,
 };
 use super::types::{
-    ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, TabFilterCounts,
+    ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, IssueType, TabFilterCounts,
     flat_row_page_index, tab_is_flattened,
 };
+use crate::report::{Report, ReportIssue};
 
 fn format_delta(delta: i64) -> String {
     match delta.cmp(&0) {
@@ -324,6 +325,91 @@ impl ResultsDelegate {
     #[cfg(test)]
     pub(super) fn all_pages_for_test(&self) -> &[PageRecord] {
         &self.all_pages
+    }
+
+    /// Everything the PDF report says, gathered from the loaded crawl.
+    ///
+    /// The rules and their counts are the Overview's own, and each rule's URLs
+    /// come from the filter its row clicks through to, so the report cannot
+    /// disagree with the app about what a rule found.
+    pub fn build_report(&self, render_mode: &str) -> Report {
+        let documents = self
+            .all_pages
+            .iter()
+            .filter(|page| page.is_page && page.is_internal)
+            .count();
+        let indexable = self
+            .all_pages
+            .iter()
+            .filter(|page| page.is_page && page.indexability.as_deref() == Some("Indexable"))
+            .count();
+        let issues = build_issues_entries(&self.all_pages);
+        let issue_rows = issues
+            .iter()
+            .filter(|entry| entry.issue_type == IssueType::Issue)
+            .count();
+
+        Report {
+            site: self.root_url().unwrap_or_default().to_string(),
+            generated_at: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
+            render_mode: render_mode.to_string(),
+            summary: vec![
+                ("URLs recorded".into(), self.all_pages.len().to_string()),
+                ("Documents".into(), documents.to_string()),
+                ("Indexable".into(), indexable.to_string()),
+                ("Rules firing".into(), issues.len().to_string()),
+                ("Of those, issues".into(), issue_rows.to_string()),
+            ],
+            issues: issues
+                .iter()
+                .map(|entry| ReportIssue {
+                    name: entry.name.clone(),
+                    issue_type: entry.issue_type.label().to_string(),
+                    priority: entry.priority.label().to_string(),
+                    count: entry.count,
+                    pct: entry.pct,
+                    description: entry.description.clone(),
+                    hint: entry.hint.clone(),
+                    offenders: self.offenders_for(&entry.name),
+                })
+                .collect(),
+        }
+    }
+
+    /// The first few URLs a rule's own drill-down lands on.
+    ///
+    /// Goes through `filter_for_tab`, the same predicate the tab applies, so
+    /// these are the rows the reader would see after clicking the rule. On the
+    /// Images tab a row is an image source rather than a page, and the report
+    /// lists what the tab lists.
+    fn offenders_for(&self, rule: &str) -> Vec<String> {
+        let Some((tab, filter)) = overview_issue_target(rule) else {
+            return Vec::new();
+        };
+        let occurrences = build_occurrence_counts(tab, &self.all_pages);
+        let indices = filter_for_tab(tab, filter, &self.all_pages, &occurrences);
+
+        if tab == ResultTab::Images {
+            return build_image_aggregates(&indices, &self.all_pages)
+                .into_iter()
+                .filter_map(|row| match row {
+                    FlatRow::ImageAggregate(image)
+                        if image_aggregate_matches_filter(&image, filter) =>
+                    {
+                        Some(image.src)
+                    }
+                    _ => None,
+                })
+                .take(crate::report::MAX_OFFENDERS)
+                .collect();
+        }
+
+        indices
+            .iter()
+            .filter_map(|&index| self.all_pages.get(index))
+            .map(|page| page.url.clone())
+            .take(crate::report::MAX_OFFENDERS)
+            .collect()
     }
 
     fn rebuild_filter(&mut self) {
@@ -1064,6 +1150,67 @@ mod cache_tests {
             .map(|counts| counts.badge.total)
             .unwrap_or_default();
         assert_eq!(after, 0, "clearing the baseline must drop change rows");
+    }
+
+    /// The report is only worth sending if its URLs are the ones the app would
+    /// show for the same rule, so this asserts the two agree rather than that
+    /// the report merely produced something.
+    #[test]
+    fn the_report_lists_the_urls_each_rule_lands_on() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.set_root_url("https://a.test");
+        for index in 0..3 {
+            let mut page = internal_page(&format!("https://a.test/no-h1-{index}"));
+            page.title = Some("A title of a perfectly reasonable length".into());
+            page.compute_indexability();
+            delegate.push(page);
+        }
+
+        let report = delegate.build_report("HTTP, no JavaScript");
+        assert_eq!(report.site, "https://a.test");
+        assert_eq!(
+            report.summary.first().map(|(label, _)| label.as_str()),
+            Some("URLs recorded")
+        );
+
+        let missing_h1 = report
+            .issues
+            .iter()
+            .find(|issue| issue.name == "Missing H1")
+            .expect("three pages without an H1 is a rule that fires");
+        assert_eq!(missing_h1.count, 3);
+        assert_eq!(missing_h1.offenders.len(), 3);
+        for url in &missing_h1.offenders {
+            assert!(url.starts_with("https://a.test/no-h1-"), "got {url}");
+        }
+    }
+
+    #[test]
+    fn the_report_lists_no_more_urls_than_the_cap() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.set_root_url("https://a.test");
+        for index in 0..(crate::report::MAX_OFFENDERS + 5) {
+            let mut page = internal_page(&format!("https://a.test/page-{index}"));
+            page.compute_indexability();
+            delegate.push(page);
+        }
+
+        let report = delegate.build_report("HTTP, no JavaScript");
+        for issue in &report.issues {
+            assert!(
+                issue.offenders.len() <= crate::report::MAX_OFFENDERS,
+                "{} listed {} URLs",
+                issue.name,
+                issue.offenders.len()
+            );
+        }
+        // The count is the whole finding even where the list is a sample.
+        let missing_title = report
+            .issues
+            .iter()
+            .find(|issue| issue.name == "Missing Page Title")
+            .expect("none of these pages has a title");
+        assert_eq!(missing_title.count, crate::report::MAX_OFFENDERS + 5);
     }
 }
 
