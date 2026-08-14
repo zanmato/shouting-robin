@@ -332,6 +332,33 @@ fn extract_microdata(doc: &Html, record: &mut PageRecord) {
     }
 }
 
+/// Replaces an inline `data:` image's payload with its media type, a hash of
+/// the payload and its decoded size: `data:image/png;base64,#a1b2c3d4 (2048 B)`.
+///
+/// The payload itself is of no use to any report and is unbounded: these were
+/// inline SVG flag icons on the site this was found on, but a base64 PNG would
+/// put megabytes of string in SQLite and in the details panel for every page
+/// referencing it. The hash keeps two different inline images apart and the
+/// same one together, and the size is what an "image over 100 kB" rule needs.
+fn summarize_inline_image_src(src: &str) -> String {
+    let Some((prefix, payload)) = src.split_once(',') else {
+        return src.to_string();
+    };
+    let mut hasher = DefaultHasher::new();
+    payload.hash(&mut hasher);
+    let digest = hasher.finish();
+
+    // base64 carries 6 bits per character, less the padding.
+    let bytes = if prefix.to_ascii_lowercase().contains("base64") {
+        let padding = payload.bytes().rev().take_while(|&b| b == b'=').count();
+        (payload.len() / 4 * 3).saturating_sub(padding)
+    } else {
+        payload.len()
+    };
+
+    format!("{prefix},#{digest:016x} ({bytes} B)")
+}
+
 fn extract_images(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse("img") else {
         return;
@@ -340,10 +367,15 @@ fn extract_images(doc: &Html, record: &mut PageRecord) {
         let Some(src) = el.value().attr("src") else {
             continue;
         };
-        let src = src.trim().to_string();
+        let src = src.trim();
         if src.is_empty() {
             continue;
         }
+        let src = if src.to_ascii_lowercase().starts_with("data:") {
+            summarize_inline_image_src(src)
+        } else {
+            src.to_string()
+        };
         let has_alt_attr = el.value().attr("alt").is_some();
         let alt = el.value().attr("alt").map(|a| a.to_string());
         let width = el.value().attr("width").and_then(|w| w.parse().ok());
@@ -1578,6 +1610,42 @@ mod tests {
         assert_eq!(r.outlinks.len(), 2);
         assert!(!r.outlinks[0].csr_only);
         assert!(!r.outlinks[1].csr_only);
+    }
+
+    #[test]
+    fn inline_image_payloads_are_replaced_by_a_hash_and_a_size() {
+        let payload = "A".repeat(4000);
+        let r = analyze_at(
+            "https://example.com/page",
+            &format!(
+                r#"<html><head><title>T</title></head><body>
+                <img src="data:image/png;base64,{payload}" alt="Inline">
+                <img src="data:image/png;base64,{payload}" alt="Same again">
+                <img src="data:image/svg+xml,<svg/>" alt="Plain">
+                <img src="/real.png" alt="Fetchable">
+                </body></html>"#
+            ),
+        );
+        assert_eq!(r.images.len(), 4);
+        // The payload is gone, the media type and encoding stay, and 4000
+        // base64 characters are 3000 bytes.
+        assert!(
+            r.images[0].src.starts_with("data:image/png;base64,#"),
+            "got {}",
+            r.images[0].src
+        );
+        assert!(
+            r.images[0].src.ends_with("(3000 B)"),
+            "got {}",
+            r.images[0].src
+        );
+        assert!(r.images[0].src.len() < 60);
+        // The same payload summarises the same way, so one inline image stays
+        // one image rather than becoming two.
+        assert_eq!(r.images[0].src, r.images[1].src);
+        assert_ne!(r.images[0].src, r.images[2].src);
+        // A fetchable source is untouched.
+        assert_eq!(r.images[3].src, "/real.png");
     }
 
     #[test]
