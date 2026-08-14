@@ -57,6 +57,10 @@ pub struct PageRecord {
     pub closest_similarity: Option<u8>,
     pub near_duplicate_count: Option<u32>,
     pub near_duplicate_urls: Vec<String>,
+    /// Where this page's hreflang tags were found, in the order the sources are
+    /// consulted. Search engines accept all three and treat them as one set, so
+    /// the tags themselves are merged; this records which sources contributed.
+    pub hreflang_sources: Vec<HreflangSource>,
     pub in_sitemap: Option<bool>,
     pub sitemap_url: Option<String>,
     /// The `<lastmod>` the sitemap claims for this URL, verbatim. Sitemaps are
@@ -145,6 +149,24 @@ pub enum HreflangIssue {
     NonCanonicalUrl {
         hreflang_url: String,
     },
+}
+
+/// Where an hreflang annotation was found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum HreflangSource {
+    Html,
+    HttpHeader,
+    Sitemap,
+}
+
+impl HreflangSource {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Html => "HTML",
+            Self::HttpHeader => "HTTP",
+            Self::Sitemap => "Sitemap",
+        }
+    }
 }
 
 /// A non-anchor resource a page pulls in, with what pulled it in.

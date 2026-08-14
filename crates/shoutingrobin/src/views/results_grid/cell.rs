@@ -282,6 +282,17 @@ pub(super) fn cell_text(
             SharedString::from(count.to_string())
         }
         "hreflang_count" => SharedString::from(record.hreflang_tags.len().to_string()),
+        // Which of the three places the tags came from. Search engines accept
+        // all three and read them as one set, so the pairs beside this column
+        // are the union.
+        "hreflang_sources" => SharedString::from(
+            record
+                .hreflang_sources
+                .iter()
+                .map(|source| source.label())
+                .collect::<Vec<_>>()
+                .join(", "),
+        ),
         "hreflang_tags" => {
             let tags: Vec<String> = record
                 .hreflang_tags

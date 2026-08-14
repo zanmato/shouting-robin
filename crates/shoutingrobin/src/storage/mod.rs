@@ -106,6 +106,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0026_sitemap_lastmod",
         include_str!("../../migrations/0026_sitemap_lastmod.sql"),
     ),
+    (
+        "0027_hreflang_sources",
+        include_str!("../../migrations/0027_hreflang_sources.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -227,6 +231,11 @@ pub async fn insert_page(
     } else {
         serde_json::to_string(&record.hreflang_tags).ok()
     };
+    let hreflang_sources_json = if record.hreflang_sources.is_empty() {
+        None
+    } else {
+        serde_json::to_string(&record.hreflang_sources).ok()
+    };
     let sd_types_json = if record.sd_types.is_empty() {
         None
     } else {
@@ -251,8 +260,8 @@ pub async fn insert_page(
             title_pixel_width, meta_description_pixel_width,
             ssr_word_count, ssr_h1, ssr_content_missing,
             blocked_by_robots, is_resource, resource_initiator, is_page,
-            has_mixed_content
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            has_mixed_content, hreflang_sources_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
@@ -297,6 +306,7 @@ pub async fn insert_page(
     .bind(record.resource_initiator.as_deref())
     .bind(record.is_page as i64)
     .bind(record.has_mixed_content as i64)
+    .bind(hreflang_sources_json)
     .execute(pool)
     .await?;
 
@@ -924,10 +934,12 @@ pub async fn load_pages_for_crawl(
             Option<String>,
             Option<String>,
             Option<String>,
+            Option<String>,
         ),
     >(
         r#"
-        SELECT url, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, hreflang_issues_json
+        SELECT url, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, hreflang_issues_json,
+               hreflang_sources_json
         FROM pages WHERE crawl_id = ?
         ORDER BY id
         "#,
@@ -1321,6 +1333,7 @@ pub async fn load_pages_for_crawl(
                         hreflang_tags_json,
                         sd_types_json,
                         hreflang_issues_json,
+                        hreflang_sources_json,
                     ),
                 ),
                 (
@@ -1339,6 +1352,11 @@ pub async fn load_pages_for_crawl(
                         .cloned()
                         .unwrap_or((false, None, true, false));
                 let images = images_by_url.remove(&url).unwrap_or_default();
+                let hreflang_sources: Vec<crate::crawl::event::HreflangSource> =
+                    hreflang_sources_json
+                        .as_deref()
+                        .and_then(|j| serde_json::from_str(j).ok())
+                        .unwrap_or_default();
                 let hreflang_tags: Vec<(String, String)> = hreflang_tags_json
                     .as_deref()
                     .and_then(|j| serde_json::from_str(j).ok())
@@ -1432,6 +1450,7 @@ pub async fn load_pages_for_crawl(
                         .as_deref()
                         .and_then(|j| serde_json::from_str(j).ok())
                         .unwrap_or_default(),
+                    hreflang_sources,
                     in_sitemap: page_in_sitemap,
                     sitemap_url: page_sitemap_url,
                     sitemap_lastmod: page_sitemap_lastmod,

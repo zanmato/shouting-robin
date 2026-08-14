@@ -9,8 +9,8 @@ use scraper::{Html, Selector};
 use crate::crawl::url_norm::decode_entities;
 
 use crate::crawl::event::{
-    EcommerceAudit, ImageRef, Outlink, PageRecord, SdFormat, SdIssue, SdItem, SdSeverity,
-    Subresource, SubresourceKind,
+    EcommerceAudit, HreflangSource, ImageRef, Outlink, PageRecord, SdFormat, SdIssue, SdItem,
+    SdSeverity, Subresource, SubresourceKind,
 };
 use crate::crawl::font_metrics::{
     META_DESCRIPTION_FONT_SIZE_PX, TITLE_FONT_SIZE_PX, text_pixel_width,
@@ -203,6 +203,81 @@ fn extract_perf_metrics(doc: &Html, record: &mut PageRecord) {
     }
 }
 
+/// The hreflang alternates a `Link:` response header advertises.
+///
+/// A header carries comma-separated links, each a `<url>` followed by
+/// semicolon-separated parameters:
+/// `<https://a.test/de>; rel="alternate"; hreflang="de", <...>; ...`.
+/// Only `rel=alternate` entries carrying an `hreflang` are hreflang tags; the
+/// same header is also used for canonicals, preloads and pagination.
+pub fn parse_link_header_hreflang(header: &str, base: &url::Url) -> Vec<(String, String)> {
+    let mut tags = Vec::new();
+    // Splitting on commas is safe here because a URL is bracketed and a
+    // parameter value carrying a comma would have to be quoted; both are
+    // handled by only accepting a well-formed `<...>` at the start.
+    for entry in header.split(',') {
+        let entry = entry.trim();
+        let Some(rest) = entry.strip_prefix('<') else {
+            continue;
+        };
+        let Some((raw_url, params)) = rest.split_once('>') else {
+            continue;
+        };
+        let mut rel = None;
+        let mut lang = None;
+        for param in params.split(';') {
+            let Some((name, value)) = param.split_once('=') else {
+                continue;
+            };
+            let value = value.trim().trim_matches('"').to_string();
+            match name.trim().to_ascii_lowercase().as_str() {
+                "rel" => rel = Some(value),
+                "hreflang" => lang = Some(value),
+                _ => {}
+            }
+        }
+        let (Some(rel), Some(lang)) = (rel, lang) else {
+            continue;
+        };
+        if !rel
+            .split_whitespace()
+            .any(|value| value.eq_ignore_ascii_case("alternate"))
+        {
+            continue;
+        }
+        let Ok(url) = base.join(raw_url.trim()) else {
+            continue;
+        };
+        tags.push((lang, url.to_string()));
+    }
+    tags
+}
+
+/// Merges hreflang tags from another source into the page's set, recording the
+/// source when it contributed anything new. A tag already known from the HTML
+/// is not a second tag, so duplicates are dropped rather than stacked.
+pub fn merge_hreflang_tags(
+    record: &mut PageRecord,
+    tags: Vec<(String, String)>,
+    source: HreflangSource,
+) {
+    let mut added = false;
+    for (lang, url) in tags {
+        if record
+            .hreflang_tags
+            .iter()
+            .any(|(known_lang, known_url)| known_lang == &lang && known_url == &url)
+        {
+            continue;
+        }
+        record.hreflang_tags.push((lang, url));
+        added = true;
+    }
+    if added && !record.hreflang_sources.contains(&source) {
+        record.hreflang_sources.push(source);
+    }
+}
+
 fn extract_hreflang(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse(r#"link[rel="alternate"][hreflang]"#) else {
         return;
@@ -217,6 +292,9 @@ fn extract_hreflang(doc: &Html, record: &mut PageRecord) {
                 .hreflang_tags
                 .push((lang.trim().to_string(), href.to_string()));
         }
+    }
+    if !record.hreflang_tags.is_empty() {
+        record.hreflang_sources.push(HreflangSource::Html);
     }
 }
 
@@ -1660,6 +1738,61 @@ mod tests {
         assert_eq!(r.outlinks.len(), 2);
         assert!(!r.outlinks[0].csr_only);
         assert!(!r.outlinks[1].csr_only);
+    }
+
+    #[test]
+    fn link_headers_yield_hreflang_alternates() {
+        let base = url::Url::parse("https://a.test/se/").expect("base");
+        let header = r#"<https://a.test/de/>; rel="alternate"; hreflang="de", </fr/>; rel="alternate"; hreflang="fr""#;
+        assert_eq!(
+            parse_link_header_hreflang(header, &base),
+            vec![
+                ("de".to_string(), "https://a.test/de/".to_string()),
+                // Relative hrefs resolve against the page, like any other link.
+                ("fr".to_string(), "https://a.test/fr/".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn link_headers_without_an_alternate_hreflang_are_ignored() {
+        let base = url::Url::parse("https://a.test/se/").expect("base");
+        // A canonical, a preload and an alternate with no hreflang: the same
+        // header carries all of these.
+        let header = r#"<https://a.test/se>; rel="canonical", </app.css>; rel=preload; as=style, <https://a.test/feed>; rel="alternate"; type="application/rss+xml""#;
+        assert!(parse_link_header_hreflang(header, &base).is_empty());
+        assert!(parse_link_header_hreflang("", &base).is_empty());
+        assert!(parse_link_header_hreflang("not a link header", &base).is_empty());
+    }
+
+    #[test]
+    fn merging_another_source_dedups_and_records_it() {
+        let mut record = PageRecord {
+            url: "https://a.test/se/".into(),
+            hreflang_tags: vec![("sv".into(), "https://a.test/se/".into())],
+            hreflang_sources: vec![HreflangSource::Html],
+            ..Default::default()
+        };
+        // Already known from the HTML: not a second tag, and not a second
+        // source either.
+        merge_hreflang_tags(
+            &mut record,
+            vec![("sv".into(), "https://a.test/se/".into())],
+            HreflangSource::HttpHeader,
+        );
+        assert_eq!(record.hreflang_tags.len(), 1);
+        assert_eq!(record.hreflang_sources, vec![HreflangSource::Html]);
+
+        merge_hreflang_tags(
+            &mut record,
+            vec![("de".into(), "https://a.test/de/".into())],
+            HreflangSource::Sitemap,
+        );
+        assert_eq!(record.hreflang_tags.len(), 2);
+        assert_eq!(
+            record.hreflang_sources,
+            vec![HreflangSource::Html, HreflangSource::Sitemap]
+        );
     }
 
     #[test]

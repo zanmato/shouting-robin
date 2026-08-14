@@ -146,6 +146,7 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             let mut cols = vec![
                 col("address", "Address", 380., Some(ColumnFixed::Left)),
                 col("hreflang_count", "Tags", 70., None),
+                col("hreflang_sources", "Source", 110., None),
             ];
             for pair in 1..=hreflang_columns {
                 cols.push(col(

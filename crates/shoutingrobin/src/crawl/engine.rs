@@ -13,7 +13,7 @@ use spider::website::Website;
 use sqlx::SqlitePool;
 
 use crate::crawl::CrawlConfig;
-use crate::crawl::event::{A11yIssue, CrawlEvent, PageRecord, SubresourceKind};
+use crate::crawl::event::{A11yIssue, CrawlEvent, HreflangSource, PageRecord, SubresourceKind};
 use crate::crawl::render_mode::RenderMode;
 use crate::crawl::resources::ResourceKind;
 use crate::crawl::url_norm::urls_equivalent;
@@ -115,12 +115,17 @@ impl CrawlEngine {
                 Vec::new()
             };
 
-            let mut sitemap_lookup: std::collections::HashMap<String, (String, Option<String>)> =
-                std::collections::HashMap::new();
+            let mut sitemap_lookup: SitemapLookup = std::collections::HashMap::new();
             for entry in &sitemap_entries {
                 sitemap_lookup
                     .entry(entry.page_url.clone())
-                    .or_insert_with(|| (entry.sitemap_url.clone(), entry.lastmod.clone()));
+                    .or_insert_with(|| {
+                        (
+                            entry.sitemap_url.clone(),
+                            entry.lastmod.clone(),
+                            entry.hreflang.clone(),
+                        )
+                    });
             }
 
             let root_url = if config.list_mode && !config.seed_urls.is_empty() {
@@ -473,6 +478,26 @@ impl CrawlEngine {
                         );
                     }
 
+                    // hreflang can also arrive in a `Link:` response header,
+                    // which is how non-HTML documents annotate alternates and
+                    // how some sites annotate every page without touching the
+                    // markup. Merged into the same set the HTML produced.
+                    if !skip_analysis && let Ok(base) = url::Url::parse(&record.url) {
+                        let header_tags: Vec<(String, String)> = record
+                            .headers
+                            .iter()
+                            .filter(|(name, _)| name.eq_ignore_ascii_case("link"))
+                            .flat_map(|(_, value)| {
+                                crate::crawl::analyzers::parse_link_header_hreflang(value, &base)
+                            })
+                            .collect();
+                        crate::crawl::analyzers::merge_hreflang_tags(
+                            &mut record,
+                            header_tags,
+                            HreflangSource::HttpHeader,
+                        );
+                    }
+
                     let mut resource_timings: Vec<ResourceTiming> = Vec::new();
                     if chrome_mode {
                         if skip_analysis {
@@ -516,10 +541,17 @@ impl CrawlEngine {
 
                     record.compute_indexability();
                     record.is_internal = is_same_domain(&root_for_pump, &record.url);
-                    if let Some((sm_url, lastmod)) = sitemap_for_pump.get(&record.url) {
+                    if let Some((sm_url, lastmod, hreflang)) = sitemap_for_pump.get(&record.url) {
                         record.in_sitemap = Some(true);
                         record.sitemap_url = Some(sm_url.clone());
                         record.sitemap_lastmod = lastmod.clone();
+                        if !skip_analysis {
+                            crate::crawl::analyzers::merge_hreflang_tags(
+                                &mut record,
+                                hreflang.clone(),
+                                HreflangSource::Sitemap,
+                            );
+                        }
                     } else if !sitemap_for_pump.is_empty() {
                         record.in_sitemap = Some(false);
                     }
@@ -617,7 +649,7 @@ impl CrawlEngine {
                                 .then(|| resource.initiator.clone()),
                             ..Default::default()
                         };
-                        if let Some((sm_url, lastmod)) = sitemap_for_pump.get(&resource.url) {
+                        if let Some((sm_url, lastmod, _)) = sitemap_for_pump.get(&resource.url) {
                             resource_record.in_sitemap = Some(true);
                             resource_record.sitemap_url = Some(sm_url.clone());
                             resource_record.sitemap_lastmod = lastmod.clone();
@@ -832,6 +864,11 @@ async fn check_discovered_resources(
     })
     .await;
 }
+
+/// A page URL to the sitemap that lists it, the `<lastmod>` it claims and any
+/// `xhtml:link` alternates on the entry.
+type SitemapLookup =
+    std::collections::HashMap<String, (String, Option<String>, Vec<(String, String)>)>;
 
 pub fn channel() -> (Sender<CrawlEvent>, Receiver<CrawlEvent>) {
     flume::unbounded()

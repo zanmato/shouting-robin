@@ -735,3 +735,34 @@ fn test_sitemap_lastmod_is_recorded() {
     let home = find_page(&pages, "/index.html").expect("home should be crawled");
     assert_eq!(home.sitemap_lastmod, None);
 }
+
+/// A sitemap is one of the three places hreflang may live. A page annotated
+/// only there still carries its alternates.
+#[test]
+fn test_sitemap_hreflang_reaches_the_page() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+    write_sitemap(port);
+
+    let pages = crawl_test_site(&root_url);
+
+    server.kill();
+
+    let about = find_page(&pages, "/about.html").expect("about should be crawled");
+    let langs: Vec<&str> = about
+        .hreflang_tags
+        .iter()
+        .map(|(lang, _)| lang.as_str())
+        .collect();
+    assert!(
+        langs.contains(&"en") && langs.contains(&"sv"),
+        "the sitemap's alternates should reach the page, got {:?}",
+        about.hreflang_tags
+    );
+    assert_eq!(
+        about.hreflang_sources,
+        vec![shoutingrobin::crawl::event::HreflangSource::Sitemap],
+        "the page's own HTML has no hreflang, so the sitemap is the only source"
+    );
+}
