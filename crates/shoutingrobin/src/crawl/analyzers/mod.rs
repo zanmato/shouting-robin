@@ -368,8 +368,41 @@ fn resolve_href(base_url: &url::Url, href: &str) -> Option<String> {
     Some(dst)
 }
 
+/// Collapses runs of whitespace, returning `None` when nothing is left.
+fn collapse_whitespace(text: &str) -> Option<String> {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if collapsed.is_empty() {
+        None
+    } else {
+        Some(collapsed)
+    }
+}
+
+/// The anchor text of a link, falling back to the alt text of any image it
+/// wraps.
+///
+/// Search engines read an image link's `alt` as its anchor text, so a header
+/// logo linking home with `alt="ByLynga"` is not an anchorless link. Without
+/// the fallback a single templated image link is reported on every page of a
+/// site.
+fn anchor_text(el: &scraper::ElementRef, image_alt: &Selector) -> Option<String> {
+    let text = el.text().collect::<Vec<_>>().join(" ");
+    if let Some(anchor) = collapse_whitespace(&text) {
+        return Some(anchor);
+    }
+    let alt = el
+        .select(image_alt)
+        .filter_map(|img| img.value().attr("alt"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    collapse_whitespace(&alt)
+}
+
 fn extract_anchors(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse("a[href]") else {
+        return;
+    };
+    let Ok(image_alt) = Selector::parse("img[alt]") else {
         return;
     };
     let Some(base) = url::Url::parse(&record.url).ok() else {
@@ -382,12 +415,7 @@ fn extract_anchors(doc: &Html, record: &mut PageRecord) {
         let Some(dst) = resolve_href(&base, href) else {
             continue;
         };
-        let anchor: String = el.text().collect::<Vec<_>>().join(" ");
-        let anchor = if anchor.trim().is_empty() {
-            None
-        } else {
-            Some(anchor.split_whitespace().collect::<Vec<_>>().join(" "))
-        };
+        let anchor = anchor_text(&el, &image_alt);
         let rel = el.value().attr("rel").map(|r| r.to_string());
         record.outlinks.push(Outlink {
             dst_url: dst,
@@ -1550,5 +1578,37 @@ mod tests {
         assert_eq!(r.outlinks.len(), 2);
         assert!(!r.outlinks[0].csr_only);
         assert!(!r.outlinks[1].csr_only);
+    }
+
+    #[test]
+    fn image_alt_stands_in_for_missing_anchor_text() {
+        let r = analyze_at(
+            "https://example.com/page",
+            r#"<html><head><title>T</title></head><body>
+            <a href="https://example.com/home"><img src="/logo.svg" alt="ByLynga"></a>
+            <a href="https://example.com/cart"><img src="/cart.svg" alt=""></a>
+            <a href="https://example.com/menu"><img src="/menu.svg"></a>
+            <a href="https://example.com/about"><img src="/i.svg" alt="Icon"> About</a>
+            </body></html>"#,
+        );
+        assert_eq!(r.outlinks.len(), 4);
+        assert_eq!(r.outlinks[0].anchor.as_deref(), Some("ByLynga"));
+        // A decorative image carries no anchor text and neither does a missing alt.
+        assert_eq!(r.outlinks[1].anchor, None);
+        assert_eq!(r.outlinks[2].anchor, None);
+        // Real text wins over the alt of an icon sitting beside it.
+        assert_eq!(r.outlinks[3].anchor.as_deref(), Some("About"));
+    }
+
+    #[test]
+    fn multiple_image_alts_in_one_link_are_joined() {
+        let r = analyze_at(
+            "https://example.com/page",
+            r#"<html><head><title>T</title></head><body>
+            <a href="https://example.com/se"><img src="/f.svg" alt="Swedish">
+            <img src="/t.svg" alt="  flag  "></a>
+            </body></html>"#,
+        );
+        assert_eq!(r.outlinks[0].anchor.as_deref(), Some("Swedish flag"));
     }
 }
