@@ -12,9 +12,7 @@ use crate::crawl::event::{
     EcommerceAudit, HreflangSource, ImageRef, Outlink, PageRecord, SdFormat, SdIssue, SdItem,
     SdSeverity, Subresource, SubresourceKind,
 };
-use crate::crawl::font_metrics::{
-    META_DESCRIPTION_FONT_SIZE_PX, TITLE_FONT_SIZE_PX, text_pixel_width,
-};
+use crate::crawl::font_metrics::{meta_description_pixel_width, title_pixel_width};
 
 pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str) {
     let doc = Html::parse_document(html);
@@ -53,14 +51,11 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     record.h1_count = count_elements(&doc, "h1");
     record.h2_count = count_elements(&doc, "h2");
 
-    record.title_pixel_width = record
-        .title
-        .as_ref()
-        .map(|t| text_pixel_width(t, TITLE_FONT_SIZE_PX));
+    record.title_pixel_width = record.title.as_ref().map(|t| title_pixel_width(t));
     record.meta_description_pixel_width = record
         .meta_description
         .as_ref()
-        .map(|d| text_pixel_width(d, META_DESCRIPTION_FONT_SIZE_PX));
+        .map(|d| meta_description_pixel_width(d));
 
     extract_perf_metrics(&doc, record);
     extract_hreflang(&doc, record);

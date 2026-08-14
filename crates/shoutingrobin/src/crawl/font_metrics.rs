@@ -1,33 +1,167 @@
 //! Text width in pixels, as a search engine result page renders it.
 //!
-//! Google sets titles in Arial at 20px and descriptions at 14px on desktop, and
-//! truncates on rendered width rather than character count, which is why the
-//! over/under-pixel-width rules exist at all. Measuring therefore needs the real
-//! advance width of each glyph: the previous 4/8/10px bucket approximation
-//! understated widths by roughly 27%, consistently enough that every
-//! pixel-width rule fired on the wrong pages.
+//! Google truncates a title or description on rendered width rather than
+//! character count, which is why the over/under-pixel-width rules exist at all.
+//! Measuring therefore needs the real advance width of each glyph: the 4/8/10px
+//! bucket approximation this replaced understated widths by roughly 27%.
 //!
-//! The tables below are Arial's advance widths in font units (2048 per em),
-//! read straight out of the font. Widths are summed in font units and converted
-//! once at the end, so rounding happens a single time rather than per glyph.
+//! The two surfaces use different fonts, so this holds two tables:
+//!
+//! * **Titles**: Google Sans at 22px. Google sets its own font on the result
+//!   heading now, not Arial.
+//! * **Descriptions**: `sans-serif` at 14px, which resolves to Arial on the
+//!   desktop platforms this matters for.
+//!
+//! Both tables are advance widths in font units, read straight out of the font
+//! (Google Sans has 1000 to the em, Arial 2048). Widths are summed in font
+//! units and converted once at the end, so rounding happens a single time
+//! rather than per glyph.
+//!
+//! Note this deliberately parts company with the tool this crawler is compared
+//! against, which models titles as 20px: our title widths run about 11% wider
+//! than its. The pixel thresholds are container widths and do not move with the
+//! font, so a larger heading font legitimately means fewer characters fit.
 //!
 //! The remaining error against a rendered page is per-glyph rounding in the
-//! rasteriser, which no advance-width table can reproduce. It averages well
-//! under 2% and is widest in relative terms on very short strings, where a few
-//! pixels is a large share; both are far below the granularity of the
-//! thresholds this feeds.
+//! rasteriser, which no advance-width table can reproduce.
 
-/// Arial's em square. Every table entry is in these units.
-const UNITS_PER_EM: u32 = 2048;
+/// One font's advance widths.
+struct FontMetrics {
+    /// Font units per em, the divisor that turns an advance into a fraction of
+    /// the font size.
+    units_per_em: u32,
+    /// U+0020 (space) through U+007E (tilde).
+    ascii: &'static [u16; 95],
+    /// U+00A0 through U+00FF, the accented letters of the Western European
+    /// languages.
+    latin1: &'static [u16; 96],
+    /// Characters outside those blocks that turn up often enough to be worth a
+    /// real width: typographic quotes and dashes, the ellipsis, currency.
+    extra: &'static [(char, u16)],
+    /// Used for characters in none of the tables. Close to the width of a
+    /// lowercase Latin letter, so an unlisted accented letter lands near the
+    /// mark.
+    fallback: u16,
+}
+
+impl FontMetrics {
+    fn advance(&self, ch: char) -> u16 {
+        let code = ch as u32;
+        if (0x20..0x7F).contains(&code) {
+            return self.ascii[(code - 0x20) as usize];
+        }
+        if (0xA0..0x100).contains(&code) {
+            return self.latin1[(code - 0xA0) as usize];
+        }
+        if let Some((_, advance)) = self.extra.iter().find(|(candidate, _)| *candidate == ch) {
+            return *advance;
+        }
+        // Control characters and the zero-width formatting marks render as
+        // nothing.
+        if code < 0x20 || matches!(code, 0x200B..=0x200F | 0x2060 | 0xFEFF) {
+            return 0;
+        }
+        // CJK and fullwidth characters occupy the full em square. Neither font
+        // has glyphs for them, so a browser falls back to one that does, and
+        // charging them a Latin letter's width would understate an Asian title
+        // by roughly half.
+        if is_full_width(code) {
+            return self.units_per_em as u16;
+        }
+        self.fallback
+    }
+
+    fn width(&self, text: &str, font_size_px: f32) -> u32 {
+        let units: u64 = text.chars().map(|ch| u64::from(self.advance(ch))).sum();
+        let pixels = units as f64 * f64::from(font_size_px) / f64::from(self.units_per_em);
+        pixels.round() as u32
+    }
+}
 
 /// Google's desktop SERP title size.
-pub const TITLE_FONT_SIZE_PX: f32 = 20.0;
+pub const TITLE_FONT_SIZE_PX: f32 = 22.0;
 
 /// Google's desktop SERP description size.
 pub const META_DESCRIPTION_FONT_SIZE_PX: f32 = 14.0;
 
+static GOOGLE_SANS: FontMetrics = FontMetrics {
+    units_per_em: 1000,
+    ascii: &GOOGLE_SANS_ASCII,
+    latin1: &GOOGLE_SANS_LATIN1,
+    extra: GOOGLE_SANS_EXTRA,
+    // 'n'.
+    fallback: 559,
+};
+
+static ARIAL: FontMetrics = FontMetrics {
+    units_per_em: 2048,
+    ascii: &ARIAL_ASCII,
+    latin1: &ARIAL_LATIN1,
+    extra: ARIAL_EXTRA,
+    // 'n'.
+    fallback: 1139,
+};
+
+/// The rendered width of a page title in the search results.
+pub fn title_pixel_width(text: &str) -> u32 {
+    GOOGLE_SANS.width(text, TITLE_FONT_SIZE_PX)
+}
+
+/// The rendered width of a meta description in the search results.
+pub fn meta_description_pixel_width(text: &str) -> u32 {
+    ARIAL.width(text, META_DESCRIPTION_FONT_SIZE_PX)
+}
+
+static GOOGLE_SANS_ASCII: [u16; 95] = [
+    232, 236, 320, 640, 540, 828, 623, 177, 321, 321, 425, 556, 236, 439, 236, 300, 643, 430, 524,
+    533, 591, 559, 555, 527, 550, 555, 236, 236, 495, 566, 495, 487, 882, 670, 600, 736, 701, 544,
+    529, 806, 696, 243, 530, 627, 505, 864, 706, 822, 574, 822, 591, 555, 530, 667, 633, 944, 619,
+    585, 570, 316, 300, 316, 463, 476, 397, 531, 600, 540, 600, 561, 362, 595, 562, 209, 209, 504,
+    209, 873, 559, 594, 600, 600, 370, 471, 364, 559, 508, 775, 473, 508, 486, 311, 235, 311, 534,
+];
+
+static GOOGLE_SANS_LATIN1: [u16; 96] = [
+    232, 236, 529, 523, 609, 570, 235, 544, 392, 530, 472, 546, 571, 0, 530, 399, 322, 542, 298,
+    318, 397, 629, 612, 236, 403, 233, 513, 546, 677, 718, 770, 462, 670, 670, 670, 670, 670, 670,
+    953, 736, 544, 544, 544, 544, 243, 243, 243, 243, 713, 706, 822, 822, 822, 822, 822, 544, 822,
+    667, 667, 667, 667, 585, 574, 553, 531, 531, 531, 531, 531, 531, 919, 540, 561, 561, 561, 561,
+    209, 209, 209, 209, 566, 559, 594, 594, 594, 594, 594, 542, 594, 559, 559, 559, 559, 508, 600,
+    508,
+];
+
+static GOOGLE_SANS_EXTRA: &[(char, u16)] = &[
+    ('\u{152}', 1158),  // 'Œ'
+    ('\u{153}', 1001),  // 'œ'
+    ('\u{160}', 555),   // 'Š'
+    ('\u{161}', 471),   // 'š'
+    ('\u{178}', 585),   // 'Ÿ'
+    ('\u{17D}', 570),   // 'Ž'
+    ('\u{17E}', 486),   // 'ž'
+    ('\u{192}', 573),   // 'ƒ'
+    ('\u{2C6}', 395),   // 'ˆ'
+    ('\u{2DC}', 398),   // '˜'
+    ('\u{2013}', 600),  // '–'
+    ('\u{2014}', 900),  // '—'
+    ('\u{2018}', 222),  // '‘'
+    ('\u{2019}', 222),  // '’'
+    ('\u{201A}', 222),  // '‚'
+    ('\u{201C}', 391),  // '“'
+    ('\u{201D}', 391),  // '”'
+    ('\u{201E}', 391),  // '„'
+    ('\u{2020}', 432),  // '†'
+    ('\u{2021}', 432),  // '‡'
+    ('\u{2022}', 379),  // '•'
+    ('\u{2026}', 696),  // '…'
+    ('\u{2030}', 1093), // '‰'
+    ('\u{2039}', 346),  // '‹'
+    ('\u{203A}', 346),  // '›'
+    ('\u{20AC}', 634),  // '€'
+    ('\u{2122}', 497),  // '™'
+    ('\u{2212}', 556),  // '−'
+];
+
 /// U+0020 (space) through U+007E (tilde).
-static ASCII_ADVANCES: [u16; 95] = [
+static ARIAL_ASCII: [u16; 95] = [
     569, 569, 727, 1139, 1139, 1821, 1366, 391, 682, 682, 797, 1196, 569, 682, 569, 569, 1139,
     1139, 1139, 1139, 1139, 1139, 1139, 1139, 1139, 1139, 569, 569, 1196, 1196, 1196, 1139, 2079,
     1366, 1366, 1479, 1479, 1366, 1251, 1593, 1479, 569, 1024, 1366, 1139, 1706, 1479, 1593, 1366,
@@ -38,7 +172,7 @@ static ASCII_ADVANCES: [u16; 95] = [
 
 /// U+00A0 (no-break space) through U+00FF, which covers the accented letters of
 /// the Western European languages.
-static LATIN1_ADVANCES: [u16; 96] = [
+static ARIAL_LATIN1: [u16; 96] = [
     569, 682, 1139, 1139, 1139, 1139, 532, 1139, 682, 1509, 758, 1139, 1196, 682, 1509, 1131, 819,
     1124, 682, 682, 682, 1180, 1100, 569, 682, 682, 748, 1139, 1708, 1708, 1708, 1251, 1366, 1366,
     1366, 1366, 1366, 1366, 2048, 1479, 1366, 1366, 1366, 1366, 569, 569, 569, 569, 1479, 1479,
@@ -50,7 +184,7 @@ static LATIN1_ADVANCES: [u16; 96] = [
 /// Characters outside those two blocks that turn up in titles often enough to be
 /// worth a real width: typographic quotes and dashes, the ellipsis, currency and
 /// the trademark sign.
-static EXTRA_ADVANCES: &[(char, u16)] = &[
+static ARIAL_EXTRA: &[(char, u16)] = &[
     ('\u{152}', 2048),  // 'Œ'
     ('\u{153}', 1933),  // 'œ'
     ('\u{160}', 1366),  // 'Š'
@@ -81,48 +215,6 @@ static EXTRA_ADVANCES: &[(char, u16)] = &[
     ('\u{2212}', 1196), // '−'
 ];
 
-/// Used for characters not in the tables. `n` is close to the average width of a
-/// lowercase Latin letter, so an unlisted accented letter lands near the mark.
-const FALLBACK_ADVANCE: u16 = 1139;
-
-/// CJK and fullwidth characters occupy the full em square. Arial has no glyphs
-/// for them at all, so a browser falls back to a font where they do, and
-/// charging them a Latin letter's width would understate an Asian title by
-/// roughly half.
-const FULL_WIDTH_ADVANCE: u16 = 2048;
-
-/// The rendered width of `text` in pixels at `font_size_px`.
-pub fn text_pixel_width(text: &str, font_size_px: f32) -> u32 {
-    let units: u64 = text.chars().map(|ch| u64::from(advance_units(ch))).sum();
-    let pixels = units as f64 * f64::from(font_size_px) / f64::from(UNITS_PER_EM);
-    pixels.round() as u32
-}
-
-fn advance_units(ch: char) -> u16 {
-    let code = ch as u32;
-    if (0x20..0x7F).contains(&code) {
-        // The subtraction and index are both in range for this arm.
-        return ASCII_ADVANCES[(code - 0x20) as usize];
-    }
-    if (0xA0..0x100).contains(&code) {
-        return LATIN1_ADVANCES[(code - 0xA0) as usize];
-    }
-    if let Some((_, advance)) = EXTRA_ADVANCES
-        .iter()
-        .find(|(candidate, _)| *candidate == ch)
-    {
-        return *advance;
-    }
-    // Control characters and the zero-width formatting marks render as nothing.
-    if code < 0x20 || matches!(code, 0x200B..=0x200F | 0x2060 | 0xFEFF) {
-        return 0;
-    }
-    if is_full_width(code) {
-        return FULL_WIDTH_ADVANCE;
-    }
-    FALLBACK_ADVANCE
-}
-
 /// The East Asian Wide and Fullwidth blocks, coarsely: Hangul Jamo, the CJK
 /// blocks and their compatibility forms, and the fullwidth ASCII forms.
 fn is_full_width(code: u32) -> bool {
@@ -147,17 +239,17 @@ fn is_full_width(code: u32) -> bool {
 mod tests {
     use super::*;
 
-    /// Real titles paired with their known rendered width at the SERP title
-    /// size.
-    const TITLE_SAMPLES: &[(&str, u32)] = &[
-        ("Kvalitetsbett för dig och din häst | ByLynga", 379),
-        ("Boss Läder Mini Pelham 125mm | ByLynga", 379),
-        ("Touch Läder Lösa ringar 145mm | ByLynga", 379),
-        ("Ångra ditt köp | ByLynga", 214),
-        ("Bett | ByLynga", 126),
+    /// Titles measured in a browser on a real result page, which is the only
+    /// ground truth there is for this: the width a rendering engine gives the
+    /// string in the font and size Google actually sets.
+    const BROWSER_MEASURED_TITLES: &[(&str, f64)] = &[
+        ("Rust (programming language)", 293.58),
+        ("wikipedia - crates.io: Rust Package Registry", 427.08),
+        ("ByLynga: Kvalitetsbett för dig och din häst", 414.59),
     ];
 
-    /// The same, for real meta descriptions at the smaller SERP size.
+    /// Real meta descriptions with their known rendered width. Descriptions are
+    /// Arial at 14px for us and for the compared tool alike.
     const META_SAMPLES: &[(&str, u32)] = &[
         ("Bett från ByLynga. Alltid snabba leveranser!", 272),
         (
@@ -171,29 +263,18 @@ mod tests {
         (f64::from(measured) - f64::from(expected)).abs() / f64::from(expected) * 100.0
     }
 
+    /// The whole model in one assertion: font, size and table, against widths a
+    /// browser produced. 1% is tight enough that changing the font or moving
+    /// the size by a single pixel fails it (20px is 9% out, Arial at 22px is
+    /// 0.7% and would pass here but is three times further off on average).
     #[test]
-    fn title_widths_are_within_five_percent() {
-        // 5% rather than 3% because the short samples are the loose ones: on a
-        // 14-character title a 4px disagreement is already 3%. The long titles
-        // below are held to a tighter bound.
-        for (text, expected) in TITLE_SAMPLES {
-            let measured = text_pixel_width(text, TITLE_FONT_SIZE_PX);
-            let error = error_pct(measured, *expected);
+    fn titles_match_widths_measured_in_a_browser() {
+        for (text, expected) in BROWSER_MEASURED_TITLES {
+            let measured = f64::from(title_pixel_width(text));
+            let error = (measured - expected).abs() / expected * 100.0;
             assert!(
-                error < 5.0,
-                "{text:?}: measured {measured}, expected {expected}, {error:.1}% out"
-            );
-        }
-    }
-
-    #[test]
-    fn long_title_widths_are_within_two_percent() {
-        for (text, expected) in TITLE_SAMPLES.iter().filter(|(_, px)| *px >= 200) {
-            let measured = text_pixel_width(text, TITLE_FONT_SIZE_PX);
-            let error = error_pct(measured, *expected);
-            assert!(
-                error < 2.0,
-                "{text:?}: measured {measured}, expected {expected}, {error:.1}% out"
+                error < 1.0,
+                "{text:?}: measured {measured}, browser says {expected}, {error:.2}% out"
             );
         }
     }
@@ -201,7 +282,7 @@ mod tests {
     #[test]
     fn meta_description_widths_are_within_two_percent() {
         for (text, expected) in META_SAMPLES {
-            let measured = text_pixel_width(text, META_DESCRIPTION_FONT_SIZE_PX);
+            let measured = meta_description_pixel_width(text);
             let error = error_pct(measured, *expected);
             assert!(
                 error < 2.0,
@@ -212,43 +293,54 @@ mod tests {
 
     #[test]
     fn the_old_bucket_table_would_have_failed_these() {
-        // The 4/8/10px buckets measured the first sample at 280 rather than
-        // 379. Anything in that region is the old defect returning.
-        let measured = text_pixel_width(TITLE_SAMPLES[0].0, TITLE_FONT_SIZE_PX);
+        // The 4/8/10px buckets measured this at 280. Anything in that region
+        // is the old defect returning.
+        let measured = title_pixel_width("Kvalitetsbett för dig och din häst | ByLynga");
         assert!(measured > 350, "measured {measured}");
     }
 
     #[test]
-    fn accented_letters_are_wider_than_a_bucket_table_allows() {
-        // 'ä' and 'a' share an advance in Arial; 'i' does not.
-        assert_eq!(
-            text_pixel_width("häst", TITLE_FONT_SIZE_PX),
-            text_pixel_width("hast", TITLE_FONT_SIZE_PX)
+    fn the_two_surfaces_use_different_fonts() {
+        // The same string at the same size measured with each table: Google
+        // Sans is the narrower face, so this would only be equal if both
+        // surfaces were reading one table.
+        let text = "Kvalitetsbett för dig och din häst";
+        assert_ne!(
+            GOOGLE_SANS.width(text, 20.0),
+            ARIAL.width(text, 20.0),
+            "titles and descriptions must not share a table"
         );
-        assert!(
-            text_pixel_width("iiii", TITLE_FONT_SIZE_PX)
-                < text_pixel_width("mmmm", TITLE_FONT_SIZE_PX)
-        );
+    }
+
+    #[test]
+    fn accented_letters_carry_their_own_width() {
+        // 'ä' and 'a' share an advance in both faces; 'i' does not.
+        assert_eq!(title_pixel_width("häst"), title_pixel_width("hast"));
+        assert!(title_pixel_width("iiii") < title_pixel_width("mmmm"));
     }
 
     #[test]
     fn cjk_characters_take_a_full_em() {
-        // Four ideographs at 20px are four full em squares.
-        assert_eq!(text_pixel_width("日本語版", TITLE_FONT_SIZE_PX), 80);
+        // Four ideographs at the title size are four full em squares.
+        assert_eq!(
+            title_pixel_width("日本語版"),
+            (TITLE_FONT_SIZE_PX * 4.0) as u32
+        );
+        assert_eq!(
+            meta_description_pixel_width("日本語版"),
+            (META_DESCRIPTION_FONT_SIZE_PX * 4.0) as u32
+        );
     }
 
     #[test]
     fn zero_width_characters_add_nothing() {
-        assert_eq!(text_pixel_width("", TITLE_FONT_SIZE_PX), 0);
-        assert_eq!(
-            text_pixel_width("a\u{200B}b", TITLE_FONT_SIZE_PX),
-            text_pixel_width("ab", TITLE_FONT_SIZE_PX)
-        );
+        assert_eq!(title_pixel_width(""), 0);
+        assert_eq!(title_pixel_width("a\u{200B}b"), title_pixel_width("ab"));
     }
 
     #[test]
     fn an_unlisted_character_falls_back_rather_than_vanishing() {
         // Cyrillic isn't in the tables; it must still occupy space.
-        assert!(text_pixel_width("страница", TITLE_FONT_SIZE_PX) > 50);
+        assert!(title_pixel_width("страница") > 50);
     }
 }
