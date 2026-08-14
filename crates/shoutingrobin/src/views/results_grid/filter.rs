@@ -502,6 +502,8 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
             | IssueFilter::Duplicate
             | IssueFilter::OverLength
             | IssueFilter::UnderLength
+            | IssueFilter::OverPixelWidth
+            | IssueFilter::UnderPixelWidth
             | IssueFilter::Multiple
             | IssueFilter::SameAsH1
             | IssueFilter::MissingCanonical
