@@ -7,6 +7,8 @@ mod grid;
 mod types;
 
 pub use cell::ssr_diff_label;
+#[cfg(test)]
+pub use delegate::ResultsDelegate;
 pub use filter::filters_for_tab;
 #[cfg(test)]
 pub use filter::{matching_urls, tab_filter_counts_for_test};

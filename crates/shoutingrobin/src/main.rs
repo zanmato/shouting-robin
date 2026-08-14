@@ -20,6 +20,8 @@ mod views;
 
 #[cfg(test)]
 mod filter_coverage;
+#[cfg(test)]
+mod parity_export;
 
 use assets::Assets;
 use gpui::{AppContext, SharedString, WindowBounds, WindowOptions, px, size};
