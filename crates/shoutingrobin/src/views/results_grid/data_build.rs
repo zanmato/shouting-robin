@@ -1213,7 +1213,7 @@ pub(super) fn directory_path(url_path: &str) -> String {
 
 pub(super) fn dir_format_size(bytes: u64) -> String {
     if bytes == 0 {
-        return "-".into();
+        return String::new();
     }
     if bytes < 1024 {
         return format!("{bytes} B");

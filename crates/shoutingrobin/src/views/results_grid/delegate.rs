@@ -21,7 +21,7 @@ use super::cell::{
 };
 use super::columns::{
     build_occurrence_counts, columns_for_tab_with_baseline, compare_numeric, hreflang_column_count,
-    is_mono_column, is_numeric_column,
+    is_mono_column, is_numeric_column, is_right_aligned_column,
 };
 use super::data_build::{
     build_change_entries, build_issues_entries, build_rows_for_tab, change_entry_matches,
@@ -520,7 +520,7 @@ impl ResultsDelegate {
                         .baseline_issue_counts
                         .get(&entry.name)
                         .map(|(count, _)| count.to_string())
-                        .unwrap_or_else(|| "-".into()),
+                        .unwrap_or_default(),
                     "count_delta" => {
                         let previous = self
                             .baseline_issue_counts
@@ -603,11 +603,13 @@ impl TableDelegate for ResultsDelegate {
         cx: &mut Context<TableState<Self>>,
     ) -> impl IntoElement {
         let column = self.column(col_ix, cx);
-        div()
-            .flex()
-            .size_full()
-            .items_center()
-            .text_xs()
+        // The heading sits over its own column of digits, so it follows the
+        // cells rather than staying left while they move right.
+        let mut head = div().flex().size_full().items_center();
+        if is_right_aligned_column(&column.key) {
+            head = head.justify_end();
+        }
+        head.text_xs()
             .text_color(cx.theme().muted_foreground)
             .child(column.name)
     }
@@ -629,6 +631,11 @@ impl TableDelegate for ResultsDelegate {
         // wrapper is the element that carries the row height, so without it this
         // div shrinks to its content and everything sits at the top of the cell.
         let mut cell = div().flex().h_full().items_center().text_xs();
+        // Quantities line up on their last digit, so columns of them can be
+        // compared down the page rather than read one row at a time.
+        if is_right_aligned_column(&key) {
+            cell = cell.justify_end();
+        }
         if mono {
             cell = cell.font_family(cx.theme().mono_font_family.clone());
         }
@@ -650,11 +657,9 @@ impl TableDelegate for ResultsDelegate {
                         "priority" => SharedString::from(entry.priority.label()),
                         "count" => SharedString::from(entry.count.to_string()),
                         "pct" => SharedString::from(format!("{:.1}%", entry.pct)),
-                        "count_prev" => SharedString::from(
-                            previous
-                                .map(|c| c.to_string())
-                                .unwrap_or_else(|| "-".into()),
-                        ),
+                        "count_prev" => {
+                            SharedString::from(previous.map(|c| c.to_string()).unwrap_or_default())
+                        }
                         "count_delta" => SharedString::from(format_delta(delta)),
                         "description" => SharedString::from(entry.description.clone()),
                         "hint" => SharedString::from(entry.hint.clone()),

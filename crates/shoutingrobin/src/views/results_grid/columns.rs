@@ -454,6 +454,28 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
     )
 }
 
+/// Columns whose cells are read as quantities and so are right aligned, digits
+/// under digits.
+///
+/// Wider than [`is_numeric_column`], which also decides how a column sorts: a
+/// formatted size ("1.2 KB") and a percentage read as numbers but must not be
+/// compared as one, or 900 B would sort above 1.2 KB.
+pub(super) fn is_right_aligned_column(key: &str) -> bool {
+    is_numeric_column(key)
+        || matches!(
+            key,
+            "size"
+                | "image_size"
+                | "dir_total_size"
+                | "link_score"
+                | "count"
+                | "count_prev"
+                | "count_delta"
+                | "pct"
+                | "response_time"
+        )
+}
+
 pub(super) fn is_tag_column(key: &str) -> bool {
     matches!(
         key,

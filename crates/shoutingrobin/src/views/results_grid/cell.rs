@@ -11,6 +11,16 @@ use super::columns::{char_length, field_value, header_value, primary_field_key};
 use super::data_build::dir_format_size;
 use super::types::{FlatRow, ImageAggregateRow};
 
+/// What a cell shows when there is no value: nothing at all.
+///
+/// One convention across every tab, in the grid and in the CSV it exports. A
+/// dash is a character the reader has to notice and then dismiss, and it
+/// spends a column's width doing it. The distinction it looked like it was
+/// drawing, "absent" against "empty", is not one a cell can draw honestly
+/// anyway: a page with no `<h2>` and a page with an empty one both have nothing
+/// to show here, and the Missing filter is what tells them apart.
+pub(super) const NO_VALUE: &str = "";
+
 pub(super) fn page_address(record: &PageRecord, root_origin: Option<&str>) -> SharedString {
     if record.is_internal
         && let Some(origin) = root_origin
@@ -58,9 +68,12 @@ pub(super) fn flat_cell_text(
                 match col_key {
                     "address" => page_address(record, root_origin),
                     "indexability" => SharedString::from(
-                        record.indexability.clone().unwrap_or_else(|| "-".into()),
+                        record
+                            .indexability
+                            .clone()
+                            .unwrap_or_else(|| NO_VALUE.into()),
                     ),
-                    _ => SharedString::from("-"),
+                    _ => SharedString::from(NO_VALUE),
                 }
             }
         }
@@ -99,20 +112,20 @@ pub(super) fn image_aggregate_cell_text(image: &ImageAggregateRow, col_key: &str
             image
                 .status
                 .map(|status| status.to_string())
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "image_size" => format_size(image.size_bytes),
         "image_width" => SharedString::from(
             image
                 .width
                 .map(|w| w.to_string())
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "image_height" => SharedString::from(
             image
                 .height
                 .map(|h| h.to_string())
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         // "No" whenever any reference is missing the attribute, matching the
         // Missing Alt Attribute filter.
@@ -133,9 +146,12 @@ fn a11y_cell_text(
         "a11y_impact" => SharedString::from(issue.impact.clone()),
         "a11y_target" => SharedString::from(issue.target.clone().unwrap_or_default()),
         "a11y_html" => SharedString::from(issue.html.clone().unwrap_or_default()),
-        "indexability" => {
-            SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
-        }
+        "indexability" => SharedString::from(
+            record
+                .indexability
+                .clone()
+                .unwrap_or_else(|| NO_VALUE.into()),
+        ),
         _ => SharedString::default(),
     }
 }
@@ -155,9 +171,12 @@ fn sd_item_cell_text(
         "sd_type" => SharedString::from(sd_item.type_name.clone()),
         "sd_errors" => SharedString::from(record.sd_errors.to_string()),
         "sd_warnings" => SharedString::from(record.sd_warnings.to_string()),
-        "indexability" => {
-            SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
-        }
+        "indexability" => SharedString::from(
+            record
+                .indexability
+                .clone()
+                .unwrap_or_else(|| NO_VALUE.into()),
+        ),
         _ => SharedString::default(),
     }
 }
@@ -196,13 +215,16 @@ pub(super) fn cell_text(
                 record
                     .status
                     .map(|s| SharedString::from(s.to_string()))
-                    .unwrap_or_else(|| SharedString::from("-"))
+                    .unwrap_or_else(|| SharedString::from(NO_VALUE))
             }
         }
         "status" => status_label(record),
-        "indexability" => {
-            SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
-        }
+        "indexability" => SharedString::from(
+            record
+                .indexability
+                .clone()
+                .unwrap_or_else(|| NO_VALUE.into()),
+        ),
         "title" => SharedString::from(record.title.clone().unwrap_or_default()),
         "title_length" => record
             .title
@@ -212,7 +234,7 @@ pub(super) fn cell_text(
         "title_pixel_width" => record
             .title_pixel_width
             .map(|w| SharedString::from(w.to_string()))
-            .unwrap_or_else(|| SharedString::from("-")),
+            .unwrap_or_else(|| SharedString::from(NO_VALUE)),
         "meta_desc" => SharedString::from(record.meta_description.clone().unwrap_or_default()),
         "meta_desc_length" => record
             .meta_description
@@ -222,7 +244,7 @@ pub(super) fn cell_text(
         "meta_desc_pixel_width" => record
             .meta_description_pixel_width
             .map(|w| SharedString::from(w.to_string()))
-            .unwrap_or_else(|| SharedString::from("-")),
+            .unwrap_or_else(|| SharedString::from(NO_VALUE)),
         "h1" => SharedString::from(record.h1.clone().unwrap_or_default()),
         "h1_length" => record
             .h1
@@ -242,37 +264,37 @@ pub(super) fn cell_text(
             record
                 .word_count
                 .map(|w| w.to_string())
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "ssr_words" => SharedString::from(
             record
                 .ssr_word_count
                 .map(|w| w.to_string())
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "ssr_diff" => SharedString::from(ssr_diff_label(record)),
         "depth" => SharedString::from(
             record
                 .depth
                 .map(|d| d.to_string())
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "response_time" => SharedString::from(format!("{}ms", record.response_time.as_millis())),
         "closest_similarity" => SharedString::from(
             record
                 .closest_similarity
                 .map(|s| format!("{s}%"))
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "near_duplicate_count" => SharedString::from(
             record
                 .near_duplicate_count
                 .map(|c| c.to_string())
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "occurrences" => {
             let Some(field_key) = primary_field_key(tab) else {
-                return SharedString::from("-");
+                return SharedString::from(NO_VALUE);
             };
             let val = field_value(record, field_key).unwrap_or("");
             let count = occurrence_counts
@@ -311,36 +333,39 @@ pub(super) fn cell_text(
             record
                 .ttfb_ms
                 .map(|ms| format!("{ms}ms"))
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "lcp" => SharedString::from(
             record
                 .lcp_ms
                 .map(|ms| format!("{ms}ms"))
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "cls" => SharedString::from(
             record
                 .cls
                 .map(|v| format!("{v:.3}"))
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "fcp" => SharedString::from(
             record
                 .fcp_ms
                 .map(|ms| format!("{ms}ms"))
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         "in_sitemap" => SharedString::from(
             record
                 .in_sitemap
                 .map(|v| if v { "Yes" } else { "No" })
-                .unwrap_or("-"),
+                .unwrap_or(NO_VALUE),
         ),
         "sitemap_url" => SharedString::from(record.sitemap_url.clone().unwrap_or_default()),
-        "sitemap_lastmod" => {
-            SharedString::from(record.sitemap_lastmod.clone().unwrap_or_else(|| "-".into()))
-        }
+        "sitemap_lastmod" => SharedString::from(
+            record
+                .sitemap_lastmod
+                .clone()
+                .unwrap_or_else(|| NO_VALUE.into()),
+        ),
         "ecom_price" => SharedString::from(
             record
                 .ecommerce
@@ -388,14 +413,14 @@ pub(super) fn cell_text(
                 .ecommerce
                 .as_ref()
                 .map(|a| if a.has_image { "Yes" } else { "No" })
-                .unwrap_or("-"),
+                .unwrap_or(NO_VALUE),
         ),
         "ecom_has_review" => SharedString::from(
             record
                 .ecommerce
                 .as_ref()
                 .map(|a| if a.has_review_or_rating { "Yes" } else { "No" })
-                .unwrap_or("-"),
+                .unwrap_or(NO_VALUE),
         ),
         "inlinks" => SharedString::from(if record.inlinks_count > 0 {
             record.inlinks_count.to_string()
@@ -443,7 +468,7 @@ pub(super) fn cell_text(
                     .round() as u32;
                 SharedString::from(format!("{pct}%"))
             } else {
-                SharedString::from("-")
+                SharedString::from(NO_VALUE)
             }
         }
         "csr_outlinks_pct" => {
@@ -453,7 +478,7 @@ pub(super) fn cell_text(
                 let pct = (csr_out as f64 / total as f64 * 100.0).round() as u32;
                 SharedString::from(format!("{pct}%"))
             } else {
-                SharedString::from("-")
+                SharedString::from(NO_VALUE)
             }
         }
         "outlinks_count" => SharedString::from(record.outlinks.len().to_string()),
@@ -465,7 +490,7 @@ pub(super) fn cell_text(
             SharedString::from(depth.to_string())
         }
         "indexability_status" => SharedString::from(record.indexability_status()),
-        "content_hash" => SharedString::from(record.content_hash.as_deref().unwrap_or("-")),
+        "content_hash" => SharedString::from(record.content_hash.as_deref().unwrap_or(NO_VALUE)),
         "sec_https" => SharedString::from(if record.url.starts_with("https://") {
             "Yes"
         } else {
@@ -505,12 +530,12 @@ pub(super) fn cell_text(
             "No"
         }),
         "last_modified" => {
-            SharedString::from(header_value(&record.headers, "last-modified").unwrap_or("-"))
+            SharedString::from(header_value(&record.headers, "last-modified").unwrap_or(NO_VALUE))
         }
-        "redirect_url" => SharedString::from(record.redirect_url.as_deref().unwrap_or("-")),
+        "redirect_url" => SharedString::from(record.redirect_url.as_deref().unwrap_or(NO_VALUE)),
         "url_length" => SharedString::from(char_length(&record.url).to_string()),
         "x_robots_tag" => {
-            SharedString::from(header_value(&record.headers, "x-robots-tag").unwrap_or("-"))
+            SharedString::from(header_value(&record.headers, "x-robots-tag").unwrap_or(NO_VALUE))
         }
         "a11y_errors" => SharedString::from(if record.a11y_errors > 0 {
             record.a11y_errors.to_string()
@@ -526,17 +551,19 @@ pub(super) fn cell_text(
             record
                 .link_score
                 .map(|s| format!("{s:.1}"))
-                .unwrap_or_else(|| "-".into()),
+                .unwrap_or_else(|| NO_VALUE.into()),
         ),
         // The Hreflang tab's language/URL column pairs, one per tag, so their
         // keys carry the tag's position: "hreflang_2", "hreflang_2_url".
         key if key.starts_with("hreflang_") => {
             hreflang_pair_cell_text(record, key).unwrap_or_default()
         }
-        "title_2" => SharedString::from(record.title_2.as_deref().unwrap_or("-")),
-        "meta_desc_2" => SharedString::from(record.meta_description_2.as_deref().unwrap_or("-")),
-        "h1_2" => SharedString::from(record.h1_2.as_deref().unwrap_or("-")),
-        "h2_2" => SharedString::from(record.h2_2.as_deref().unwrap_or("-")),
+        "title_2" => SharedString::from(record.title_2.as_deref().unwrap_or(NO_VALUE)),
+        "meta_desc_2" => {
+            SharedString::from(record.meta_description_2.as_deref().unwrap_or(NO_VALUE))
+        }
+        "h1_2" => SharedString::from(record.h1_2.as_deref().unwrap_or(NO_VALUE)),
+        "h2_2" => SharedString::from(record.h2_2.as_deref().unwrap_or(NO_VALUE)),
         _ => SharedString::default(),
     }
 }
@@ -565,13 +592,13 @@ fn status_label(record: &PageRecord) -> SharedString {
         Some(c) if (300..400).contains(&c) => SharedString::from("Redirect"),
         Some(c) if (400..500).contains(&c) => SharedString::from("Client Err"),
         Some(c) if c >= 500 => SharedString::from("Server Err"),
-        _ => SharedString::from("-"),
+        _ => SharedString::from(NO_VALUE),
     }
 }
 
 fn format_size(bytes: u64) -> SharedString {
     if bytes == 0 {
-        return SharedString::from("-");
+        return SharedString::from(NO_VALUE);
     }
     if bytes < 1024 {
         return SharedString::from(format!("{bytes} B"));
@@ -622,7 +649,7 @@ pub(super) fn render_cell_tag(
         },
         "ssr_diff" => {
             let pct = ssr_diff_label(record);
-            if pct == "-" {
+            if pct.is_empty() {
                 return None;
             }
             let val: u32 = pct.trim_end_matches('%').parse().unwrap_or(0);
@@ -678,7 +705,7 @@ pub fn ssr_diff_label(record: &PageRecord) -> String {
             let diff_pct = (missing as f64 / csr as f64 * 100.0).round() as u32;
             format!("{diff_pct}%")
         }
-        _ => "-".into(),
+        _ => NO_VALUE.to_string(),
     }
 }
 
@@ -710,19 +737,19 @@ mod tests {
     #[test]
     fn ssr_diff_shows_dash_when_word_count_is_none() {
         let record = make_record(None, Some(50));
-        assert_eq!(ssr_diff_label(&record), "-");
+        assert_eq!(ssr_diff_label(&record), NO_VALUE);
     }
 
     #[test]
     fn ssr_diff_shows_dash_when_ssr_word_count_is_none() {
         let record = make_record(Some(200), None);
-        assert_eq!(ssr_diff_label(&record), "-");
+        assert_eq!(ssr_diff_label(&record), NO_VALUE);
     }
 
     #[test]
     fn ssr_diff_shows_dash_when_word_count_is_zero() {
         let record = make_record(Some(0), Some(0));
-        assert_eq!(ssr_diff_label(&record), "-");
+        assert_eq!(ssr_diff_label(&record), NO_VALUE);
     }
 
     #[test]
