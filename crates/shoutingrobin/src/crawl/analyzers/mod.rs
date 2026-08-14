@@ -52,6 +52,7 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     record.title_count = count_elements(&doc, "title");
     record.h1_count = count_elements(&doc, "h1");
     record.h2_count = count_elements(&doc, "h2");
+    record.h2_non_sequential = Some(h2_precedes_h1(&doc));
 
     record.title_pixel_width = record.title.as_ref().map(|t| title_pixel_width(t));
     record.meta_description_pixel_width = record
@@ -107,6 +108,25 @@ fn extract_mixed_content(doc: &Html, record: &mut PageRecord) {
             }
         }
     }
+}
+
+/// True when the page opens a section with an H2 before it has said what the
+/// page is about with its H1. Headings are a document outline, and one that
+/// starts at the second level asks every reader that walks it — search engine,
+/// screen reader, summariser — to guess where the top level went.
+///
+/// A page with no H1 at all is not counted here: nothing is out of order when
+/// there is no order, and `Missing H1` is the finding it has.
+fn h2_precedes_h1(doc: &Html) -> bool {
+    let Ok(selector) = Selector::parse("h1, h2") else {
+        return false;
+    };
+    // `select` walks the tree in document order, so the first match is the
+    // heading the reader meets first.
+    doc.select(&selector)
+        .next()
+        .is_some_and(|first| first.value().name() == "h2")
+        && count_elements(doc, "h1") > 0
 }
 
 /// True when the markup as served contains the named element's start tag.
@@ -1917,6 +1937,36 @@ mod tests {
             r#"<!doctype html><html><head><title>T</title></head><body><h1>H</h1></body></html>"#,
         );
         assert_eq!(with.has_body_tag, Some(true));
+    }
+
+    #[test]
+    fn an_h2_before_the_first_h1_is_out_of_order() {
+        let out_of_order = analyze_at(
+            "https://example.com/shell",
+            r#"<html><head><title>T</title></head><body>
+               <h2>A section</h2><h1>The page</h1><h2>Another section</h2></body></html>"#,
+        );
+        assert_eq!(out_of_order.h2_non_sequential, Some(true));
+
+        let in_order = analyze_at(
+            "https://example.com/page",
+            r#"<html><head><title>T</title></head><body>
+               <h1>The page</h1><h2>A section</h2></body></html>"#,
+        );
+        assert_eq!(in_order.h2_non_sequential, Some(false));
+    }
+
+    /// Nothing is out of order when there is no order: a page with no H1 has
+    /// `Missing H1` as its finding, and counting it here too would report the
+    /// same defect twice under two names.
+    #[test]
+    fn an_h2_on_a_page_with_no_h1_is_not_out_of_order() {
+        let r = analyze_at(
+            "https://example.com/page",
+            r#"<html><head><title>T</title></head><body>
+               <h2>A section</h2><p>No h1 anywhere.</p></body></html>"#,
+        );
+        assert_eq!(r.h2_non_sequential, Some(false));
     }
 
     #[test]

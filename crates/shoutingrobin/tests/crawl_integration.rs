@@ -31,6 +31,13 @@ fn test_http_crawl() {
         .expect("home page should be crawled");
     assert_eq!(home_body.has_body_tag, Some(true));
 
+    // Heading order: the page whose first heading is an H2 is out of order, and
+    // the home page, which opens with its H1, is not.
+    let heading_order =
+        find_page(&pages, "/heading-order.html").expect("the heading-order page should be crawled");
+    assert_eq!(heading_order.h2_non_sequential, Some(true));
+    assert_eq!(home_body.h2_non_sequential, Some(false));
+
     // Home
     let home = find_page(&pages, "/index.html")
         .or_else(|| find_page(&pages, &format!(":{port}/")))

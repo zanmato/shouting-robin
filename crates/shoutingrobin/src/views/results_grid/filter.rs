@@ -74,6 +74,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::Duplicate,
             IssueFilter::OverLength,
             IssueFilter::Multiple,
+            IssueFilter::NonSequential,
         ],
         ResultTab::Content => &[
             IssueFilter::All,
@@ -514,6 +515,7 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
             | IssueFilter::UnderPixelWidth
             | IssueFilter::Multiple
             | IssueFilter::SameAsH1
+            | IssueFilter::NonSequential
             | IssueFilter::MissingCanonical
             | IssueFilter::MissingHreflang
             | IssueFilter::HreflangMissingReturnTag
@@ -1034,6 +1036,11 @@ pub(super) fn filter_for_tab(
                     .is_none_or(referrer_policy_leaks_url)
             }),
             IssueFilter::MixedContent => indices.retain(|&idx| pages[idx].has_mixed_content),
+            // `Some(true)` only: a row with no document to read an outline from
+            // has no heading order to get wrong.
+            IssueFilter::NonSequential => {
+                indices.retain(|&idx| pages[idx].h2_non_sequential == Some(true))
+            }
             // `Some(false)` only: a row with no markup to read (a subresource,
             // or a URL nothing fetched) has nothing to be missing.
             IssueFilter::MissingBodyTag => {
@@ -1336,6 +1343,32 @@ mod counting_tests {
             height: Some(10),
             has_alt_attr,
         }
+    }
+
+    /// The H2 tab's Non-Sequential filter reads the analyzer's answer, and like
+    /// every other content issue it skips a page that is canonicalised
+    /// elsewhere: the outline of a page that is not in the index is not a
+    /// finding about the site.
+    #[test]
+    fn non_sequential_selects_out_of_order_documents_only() {
+        let mut out_of_order = internal_page("https://a.test/out-of-order");
+        out_of_order.h2 = Some("A section".into());
+        out_of_order.h2_non_sequential = Some(true);
+
+        let mut in_order = internal_page("https://a.test/in-order");
+        in_order.h2 = Some("A section".into());
+        in_order.h2_non_sequential = Some(false);
+
+        let mut canonicalised = internal_page("https://a.test/canonicalised");
+        canonicalised.h2 = Some("A section".into());
+        canonicalised.h2_non_sequential = Some(true);
+        canonicalised.canonical = Some("https://a.test/in-order".into());
+
+        let pages = vec![out_of_order, in_order, canonicalised];
+        assert_eq!(
+            matching_urls(ResultTab::H2, IssueFilter::NonSequential, &pages),
+            vec!["https://a.test/out-of-order".to_string()]
+        );
     }
 
     #[test]

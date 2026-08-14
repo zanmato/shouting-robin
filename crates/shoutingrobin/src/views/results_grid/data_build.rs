@@ -149,6 +149,9 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
             Some((ResultTab::MetaDesc, IssueFilter::UnderPixelWidth))
         }
         "Missing H2" => Some((ResultTab::H2, IssueFilter::Missing)),
+        "Duplicate H2" => Some((ResultTab::H2, IssueFilter::Duplicate)),
+        "H2 Over 70 Characters" => Some((ResultTab::H2, IssueFilter::OverLength)),
+        "Non-Sequential H2" => Some((ResultTab::H2, IssueFilter::NonSequential)),
         "Multiple H1" => Some((ResultTab::H1, IssueFilter::Multiple)),
         "Canonicalised" => Some((ResultTab::Canonicals, IssueFilter::Canonicalised)),
         "Noindex" => Some((ResultTab::Directives, IssueFilter::DirectiveNoindex)),
@@ -829,6 +832,42 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         denominator: Denominator::Documents,
         description: "Pages with no H2 subheading.",
         hint: "Break long pages into sections with descriptive H2 headings.",
+    },
+    FilterDerivedRule {
+        name: "Duplicate H2",
+        tab: ResultTab::H2,
+        filter: IssueFilter::Duplicate,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages sharing their first H2 with another page.",
+        hint: "Write each section heading for the page it sits on. A subheading repeated \
+               across the site describes none of them.",
+    },
+    FilterDerivedRule {
+        name: "H2 Over 70 Characters",
+        tab: ResultTab::H2,
+        filter: IssueFilter::OverLength,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages whose H2 runs past 70 characters.",
+        hint: "A subheading is a label for the section under it. Move the detail into the \
+               paragraph and keep the heading scannable.",
+    },
+    FilterDerivedRule {
+        // Not "a page with no H1": nothing is out of order when there is no
+        // order, and `Missing H1` is that page's finding. See
+        // `analyzers::h2_precedes_h1`.
+        name: "Non-Sequential H2",
+        tab: ResultTab::H2,
+        filter: IssueFilter::NonSequential,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages that open a section with an H2 before their first H1.",
+        hint: "Put the H1 first. Headings are the page's outline, and one that starts at \
+               the second level leaves every reader that walks it guessing.",
     },
     FilterDerivedRule {
         name: "Multiple H1",

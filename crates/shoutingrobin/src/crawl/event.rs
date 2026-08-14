@@ -38,6 +38,10 @@ pub struct PageRecord {
     pub indexability: Option<String>,
     pub h1_count: u32,
     pub h2_count: u32,
+    /// Whether an H2 opens the document before its first H1. `None` for a row
+    /// with no parsed document to read an outline from: a subresource, or a URL
+    /// nothing was fetched for.
+    pub h2_non_sequential: Option<bool>,
     pub title_count: u32,
     pub hreflang_tags: Vec<(String, String)>,
     pub sd_types: Vec<String>,

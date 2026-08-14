@@ -54,6 +54,7 @@ fn linked_paths() -> Vec<String> {
         "/near-dup-b",
         "/low-content",
         "/no-body",
+        "/h2-before-h1",
         "/large",
         "/images",
         "/canonical-self",
@@ -210,6 +211,22 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                  straight into content, the way a JavaScript shell often does.\"></head>\
                  <h1>No body tag</h1><h2>Recovered by the parser</h2><p>{}</p></html>",
                 lorem(120)
+            ),
+        ),
+        // An outline that starts at the second level: the H2 opens the document
+        // and the H1 arrives after it.
+        "/h2-before-h1" => (
+            ok,
+            no_headers,
+            doc(
+                "A page whose first heading is an H2 rather than an H1",
+                "<meta name=\"description\" content=\"The section heading comes first and \
+                 the page's own heading after it.\">",
+                &format!(
+                    "<h2>Section heading before the page has said what it is</h2>\
+                     <h1>Heading order</h1><p>{}</p>",
+                    lorem(120)
+                ),
             ),
         ),
         "/robots.txt" => (
@@ -1246,6 +1263,10 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::MissingContentTypeOptions => both(&["/"], &["/syn-secure"]),
         F::MissingReferrerPolicy => both(&["/"], &["/syn-secure"]),
         F::MixedContent => both(&["/syn-mixed"], &["/"]),
+
+        // Heading order, off the document outline. The negative is a page that
+        // opens with its H1, which is every other page on the fixture site.
+        F::NonSequential => both(&["/h2-before-h1"], &["/"]),
 
         // Markup validity: read off the source, since a parser invents the
         // element when the server omits it.

@@ -114,6 +114,7 @@ pub enum IssueFilter {
     UnderLength,
     Multiple,
     SameAsH1,
+    NonSequential,
     NonIndexable,
     Html,
     #[allow(dead_code)]
@@ -241,6 +242,7 @@ impl IssueFilter {
             IssueFilter::UnderLength => "Under Length",
             IssueFilter::Multiple => "Multiple",
             IssueFilter::SameAsH1 => "Same as H1",
+            IssueFilter::NonSequential => "Non-Sequential",
             IssueFilter::NonIndexable => "Non-Indexable",
             IssueFilter::Html => "HTML",
             IssueFilter::Images => "Images",
@@ -428,6 +430,7 @@ impl IssueFilter {
             | Self::UnderLength
             | Self::Multiple
             | Self::SameAsH1
+            | Self::NonSequential
             | Self::Canonicalised
             | Self::MissingCanonical
             | Self::MissingHreflang

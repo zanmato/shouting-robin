@@ -114,6 +114,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0028_body_tag",
         include_str!("../../migrations/0028_body_tag.sql"),
     ),
+    (
+        "0029_h2_non_sequential",
+        include_str!("../../migrations/0029_h2_non_sequential.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -264,8 +268,9 @@ pub async fn insert_page(
             title_pixel_width, meta_description_pixel_width,
             ssr_word_count, ssr_h1, ssr_content_missing,
             blocked_by_robots, is_resource, resource_initiator, is_page,
-            has_mixed_content, hreflang_sources_json, has_body_tag
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            has_mixed_content, hreflang_sources_json, has_body_tag,
+            h2_non_sequential
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
@@ -312,6 +317,7 @@ pub async fn insert_page(
     .bind(record.has_mixed_content as i64)
     .bind(hreflang_sources_json)
     .bind(record.has_body_tag.map(|has| has as i64))
+    .bind(record.h2_non_sequential.map(|out_of_order| out_of_order as i64))
     .execute(pool)
     .await?;
 
@@ -951,13 +957,14 @@ pub async fn load_pages_for_crawl(
             Option<String>,
             Option<i64>,
             Option<i64>,
+            Option<i64>,
         ),
     >(
         r#"
         SELECT url, title_2, meta_description_2, h1_2, h2_2,
                title_pixel_width, meta_description_pixel_width,
                ssr_word_count, ssr_h1, ssr_content_missing,
-               blocked_by_robots
+               blocked_by_robots, h2_non_sequential
         FROM pages WHERE crawl_id = ?
         ORDER BY id
         "#,
@@ -1345,6 +1352,7 @@ pub async fn load_pages_for_crawl(
         ssr_h1: Option<String>,
         ssr_content_missing: Option<bool>,
         blocked_by_robots: Option<bool>,
+        h2_non_sequential: Option<bool>,
     }
     let secondary_by_url: std::collections::HashMap<String, SecondaryData> = secondary_rows
         .into_iter()
@@ -1361,6 +1369,7 @@ pub async fn load_pages_for_crawl(
                 ssr_h1,
                 ssr_content_missing,
                 blocked_by_robots,
+                h2_non_sequential,
             )| {
                 (
                     url,
@@ -1375,6 +1384,7 @@ pub async fn load_pages_for_crawl(
                         ssr_h1,
                         ssr_content_missing: ssr_content_missing.map(|b| b != 0),
                         blocked_by_robots: blocked_by_robots.map(|b| b != 0),
+                        h2_non_sequential: h2_non_sequential.map(|b| b != 0),
                     },
                 )
             },
@@ -1562,6 +1572,7 @@ pub async fn load_pages_for_crawl(
                     ssr_h1: page_secondary.and_then(|s| s.ssr_h1.clone()),
                     ssr_content_missing: page_secondary.and_then(|s| s.ssr_content_missing),
                     blocked_by_robots: page_secondary.and_then(|s| s.blocked_by_robots),
+                    h2_non_sequential: page_secondary.and_then(|s| s.h2_non_sequential),
                     link_score: page_link_score,
                     backlinks: page_backlinks,
                     hreflang_issues,

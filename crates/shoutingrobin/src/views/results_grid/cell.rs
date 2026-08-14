@@ -555,6 +555,13 @@ pub(super) fn cell_text(
                 _ => "No",
             })
         }
+        // The finding is the out-of-order page, so the cell says what the
+        // outline does rather than yes or no to a question nobody asked.
+        "h2_sequence" => match record.h2_non_sequential {
+            Some(true) => SharedString::from("H2 before H1"),
+            Some(false) => SharedString::from("Sequential"),
+            None => SharedString::from(NO_VALUE),
+        },
         "body_tag" => match record.has_body_tag {
             Some(true) => SharedString::from("Yes"),
             Some(false) => SharedString::from("No"),
@@ -718,6 +725,11 @@ pub(super) fn render_cell_tag(
         | "sec_referrer_policy" => match text.as_ref() {
             "Yes" => Tone::Ok,
             "No" => Tone::Warn,
+            _ => return None,
+        },
+        "h2_sequence" => match text.as_ref() {
+            "Sequential" => Tone::Ok,
+            "H2 before H1" => Tone::Warn,
             _ => return None,
         },
         // A missing body inverts it too: "No" is the finding.

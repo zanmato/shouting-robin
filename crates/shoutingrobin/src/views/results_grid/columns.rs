@@ -105,6 +105,7 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("h2", "H2", 300., None),
             col("h2_2", "H2-2", 300., None),
             col("h2_length", "H2 Len", 80., None),
+            col("h2_sequence", "Sequence", 110., None),
             col("occurrences", "Occurrences", 100., None),
             col("indexability", "Indexability", 110., None),
         ],
@@ -520,6 +521,7 @@ pub(super) fn is_tag_column(key: &str) -> bool {
             | "sec_referrer_policy"
             | "sec_mixed_content"
             | "body_tag"
+            | "h2_sequence"
     )
 }
 
