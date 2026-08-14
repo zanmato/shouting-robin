@@ -151,6 +151,7 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Missing H2" => Some((ResultTab::H2, IssueFilter::Missing)),
         "Multiple H1" => Some((ResultTab::H1, IssueFilter::Multiple)),
         "Canonicalised" => Some((ResultTab::Canonicals, IssueFilter::Canonicalised)),
+        "Noindex" => Some((ResultTab::Directives, IssueFilter::DirectiveNoindex)),
         "Images Missing Alt Attribute" => {
             Some((ResultTab::Images, IssueFilter::MissingAltAttribute))
         }
@@ -1013,6 +1014,21 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
                discard the whole set.",
     },
     FilterDerivedRule {
+        name: "Noindex",
+        tab: ResultTab::Directives,
+        filter: IssueFilter::DirectiveNoindex,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        // Deliberately narrower than `Non-Indexable Pages`, which also counts
+        // canonicalised and redirected URLs. A page is noindex because someone
+        // wrote it, so this rule answers "which pages did we tell search
+        // engines to drop", and nothing else.
+        description: "Pages carrying a noindex directive, in meta robots or X-Robots-Tag.",
+        hint: "Confirm each is deliberate. A noindex left behind from staging removes the \
+               page from search entirely.",
+    },
+    FilterDerivedRule {
         name: "Missing Content-Security-Policy",
         tab: ResultTab::Security,
         filter: IssueFilter::MissingCsp,
@@ -1564,6 +1580,57 @@ mod filter_derived_rule_tests {
         let count = names.len();
         names.dedup();
         assert_eq!(names.len(), count, "duplicate rule name");
+    }
+
+    /// The Noindex rule is the narrow one: `Non-Indexable Pages` also counts
+    /// canonicalised and redirected URLs, which nobody wrote a directive for.
+    #[test]
+    fn noindex_counts_directives_and_not_every_non_indexable_url() {
+        let mut noindex = PageRecord {
+            url: "https://a.test/staging".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            robots: Some("noindex, nofollow".into()),
+            ..Default::default()
+        };
+        noindex.compute_indexability();
+        let mut header_noindex = PageRecord {
+            url: "https://a.test/pdf-page".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            headers: vec![("x-robots-tag".into(), "noindex".into())],
+            ..Default::default()
+        };
+        header_noindex.compute_indexability();
+        let mut canonicalised = PageRecord {
+            url: "https://a.test/variant".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            canonical: Some("https://a.test/".into()),
+            ..Default::default()
+        };
+        canonicalised.compute_indexability();
+
+        let entries = build_issues_entries(&[noindex, header_noindex, canonicalised]);
+        assert_eq!(
+            entries
+                .iter()
+                .find(|e| e.name == "Noindex")
+                .map(|e| e.count),
+            Some(2),
+            "both directive sources count, the canonicalised page does not"
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .find(|e| e.name == "Non-Indexable Pages")
+                .map(|e| e.count),
+            Some(3),
+            "the broader rule still covers all three"
+        );
     }
 
     #[test]
