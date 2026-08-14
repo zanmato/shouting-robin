@@ -52,9 +52,13 @@ self_update = { version = "0.42", default-features = false, features = [
   "compression-flate2",
 ] }
 semver = "1.0"
-takumi = { version = "2.9", default-features = false, features = ["svg-backend", "from-html"] }
-svg2pdf = "0.13"
-pdf-writer = "0.12"
+# The PDF report. takumi-pdf is not published to crates.io, so all three come
+# from one pinned revision of the repository: the facade crate on crates.io
+# would bring a second, incompatible copy of takumi-core, and the `Fonts` a
+# render takes has to be the one takumi-pdf was built against.
+takumi-pdf = { git = "https://github.com/kane50613/takumi", rev = "871f534c6080933577014e3562296f1564fa77d1" }
+takumi-core = { git = "https://github.com/kane50613/takumi", rev = "871f534c6080933577014e3562296f1564fa77d1" }
+takumi-html = { git = "https://github.com/kane50613/takumi", rev = "871f534c6080933577014e3562296f1564fa77d1" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-util", "net"] }

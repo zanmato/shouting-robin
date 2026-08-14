@@ -724,6 +724,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72b3254f16251a8381aa12e40e3c4d2f0199f8c6508fbecb9d91f575e0fbb8c6"
 
 [[package]]
+name = "base64"
+version = "0.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
+
+[[package]]
 name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1094,7 +1100,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9aa5dfd55c002af6059875eff143c033dd2cf444436e502bd65bcf38b3f6e209"
 dependencies = [
  "aho-corasick",
- "base64",
+ "base64 0.22.1",
  "case_insensitive_string",
  "dunce",
  "fnv",
@@ -2373,6 +2379,9 @@ name = "float-cmp"
 version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "98de4bbd547a563b716d8dfa9aad1cb19bfab00f4fa09a6a4ed21dbcf44ce9c4"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "float-ord"
@@ -3687,7 +3696,7 @@ version = "0.1.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "96547c2556ec9d12fb1578c4eaf448b04993e7fb79cbaad930a656880a6bdfa0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "futures-channel",
  "futures-util",
@@ -5658,9 +5667,9 @@ dependencies = [
 
 [[package]]
 name = "pdf-writer"
-version = "0.12.1"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5df03c7d216de06f93f398ef06f1385a60f2c597bb96f8195c8d98e08a26b1d5"
+checksum = "f5e456864a7a304047bff84977dc6fb162bd956475d40ba50b2dcecaada7f753"
 dependencies = [
  "bitflags 2.13.1",
  "itoa",
@@ -6151,15 +6160,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "quick-xml"
-version = "0.41.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "quick_cache"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6435,16 +6435,6 @@ dependencies = [
 
 [[package]]
 name = "read-fonts"
-version = "0.39.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4ed38b89c2c77ff968c524145ad65fb010f38af5c7a224b53b81d47ac2daa81"
-dependencies = [
- "bytemuck",
- "font-types 0.11.3",
-]
-
-[[package]]
-name = "read-fonts"
 version = "0.40.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "487889119a5f19ff7c0a20637196bdc76b9f54ebec17e3588b5d75e4999f8773"
@@ -6563,7 +6553,7 @@ version = "0.12.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "futures-channel",
  "futures-core",
@@ -6604,7 +6594,7 @@ version = "0.13.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "cookie",
  "cookie_store",
@@ -7274,7 +7264,7 @@ checksum = "7bd22781911de0ca6debda95f073c8f18bec65d1a94f1fa9573f3102e514cea4"
 dependencies = [
  "ahash",
  "annotate-snippets",
- "base64",
+ "base64 0.22.1",
  "encoding_rs_io",
  "getrandom 0.3.4",
  "granit-parser",
@@ -7477,7 +7467,6 @@ dependencies = [
  "gpui_platform",
  "gpui_tokio",
  "md5",
- "pdf-writer",
  "quick-xml 0.37.5",
  "reqwest 0.12.28",
  "rust-embed",
@@ -7490,8 +7479,9 @@ dependencies = [
  "smol",
  "spider",
  "sqlx",
- "svg2pdf",
- "takumi",
+ "takumi-core",
+ "takumi-html",
+ "takumi-pdf",
  "thiserror 1.0.69",
  "tikv-jemallocator",
  "tokio",
@@ -7601,16 +7591,6 @@ dependencies = [
 
 [[package]]
 name = "skrifa"
-version = "0.42.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0c34617370ae968efb7161bb2beb517d9084659aae19e24b89e3db25b46e4564"
-dependencies = [
- "bytemuck",
- "read-fonts 0.39.2",
-]
-
-[[package]]
-name = "skrifa"
 version = "0.43.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4cbe997d0f2480442d727488fbe2150779114cbe480ecdbadef58b33e0318ffb"
@@ -7700,7 +7680,7 @@ dependencies = [
  "arc-swap",
  "async-trait",
  "auto_encoder",
- "base64",
+ "base64 0.22.1",
  "bytes",
  "case_insensitive_string",
  "chromey",
@@ -7885,7 +7865,7 @@ checksum = "ee6798b1838b6a0f69c007c133b8df5866302197e404e8b6ee8ed3e3a5e68dc6"
 dependencies = [
  "async-io 1.13.0",
  "async-std",
- "base64",
+ "base64 0.22.1",
  "bytes",
  "chrono",
  "crc",
@@ -7957,7 +7937,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "aa003f0038df784eb8fecbbac13affe3da23b45194bd57dba231c8f48199c526"
 dependencies = [
  "atoi",
- "base64",
+ "base64 0.22.1",
  "bitflags 2.13.1",
  "byteorder",
  "bytes",
@@ -8000,7 +7980,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "db58fcd5a53cf07c184b154801ff91347e4c30d17a3562a635ff028ad5deda46"
 dependencies = [
  "atoi",
- "base64",
+ "base64 0.22.1",
  "bitflags 2.13.1",
  "byteorder",
  "chrono",
@@ -8243,18 +8223,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subsetter"
-version = "0.2.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "38803281d1c23166c5ebcb455439a5d2afe711cc909cf88af72448c297756ad6"
-dependencies = [
- "kurbo 0.13.1",
- "rustc-hash 2.1.2",
- "skrifa 0.42.1",
- "write-fonts",
-]
-
-[[package]]
 name = "subtle"
 version = "2.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8348,26 +8316,6 @@ dependencies = [
  "serde_core",
  "sval",
  "sval_nested",
-]
-
-[[package]]
-name = "svg2pdf"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e50dc062439cc1a396181059c80932a6e6bd731b130e674c597c0c8874b6df22"
-dependencies = [
- "fontdb",
- "image",
- "log",
- "miniz_oxide",
- "once_cell",
- "pdf-writer",
- "resvg 0.45.1",
- "siphasher",
- "subsetter",
- "tiny-skia 0.11.4",
- "ttf-parser",
- "usvg 0.45.1",
 ]
 
 [[package]]
@@ -8529,21 +8477,9 @@ dependencies = [
 ]
 
 [[package]]
-name = "takumi"
-version = "2.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7aaa46a7f7a2200d0dfae028758164a12635fd4f31269a9050b825737ed42977"
-dependencies = [
- "takumi-core",
- "takumi-html",
- "takumi-svg",
-]
-
-[[package]]
 name = "takumi-core"
 version = "0.23.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20b14f8de11e2149a54ca37c771e6a4029339575245c9fa7f24cddff725e80ba"
+source = "git+https://github.com/kane50613/takumi?rev=871f534c6080933577014e3562296f1564fa77d1#871f534c6080933577014e3562296f1564fa77d1"
 dependencies = [
  "bitflags 2.13.1",
  "bytemuck",
@@ -8585,8 +8521,7 @@ dependencies = [
 [[package]]
 name = "takumi-html"
 version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "db96ba1673160c1f8f61d3d418361e388cfb3c93a997da107a4d602e6a98c6d7"
+source = "git+https://github.com/kane50613/takumi?rev=871f534c6080933577014e3562296f1564fa77d1#871f534c6080933577014e3562296f1564fa77d1"
 dependencies = [
  "html5ever 0.39.0",
  "markup5ever_rcdom 0.39.0+unofficial",
@@ -8596,15 +8531,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "takumi-svg"
-version = "0.3.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2938ff17d8cfe79c9c7e79fbaed0cde8f16a42c3e747325cc495d513d726685f"
+name = "takumi-pdf"
+version = "0.0.0"
+source = "git+https://github.com/kane50613/takumi?rev=871f534c6080933577014e3562296f1564fa77d1#871f534c6080933577014e3562296f1564fa77d1"
 dependencies = [
- "quick-xml 0.41.0",
+ "base64 0.23.1",
+ "bumpalo",
+ "flate2",
+ "float-cmp",
+ "gif 0.14.2",
+ "image-webp",
+ "imagesize 0.15.0",
+ "indexmap",
+ "kurbo 0.13.1",
+ "pdf-writer",
+ "png 0.18.1",
+ "rustc-hash 2.1.2",
+ "siphasher",
+ "skrifa 0.43.2",
+ "smallvec",
  "takumi-core",
- "tiny-skia 0.12.0",
+ "tiny-skia-path 0.12.0",
  "typed-builder",
+ "write-fonts",
+ "xmp-writer",
+ "yoke",
+ "zune-jpeg 0.5.15",
 ]
 
 [[package]]
@@ -9416,7 +9368,7 @@ version = "0.45.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "80be9b06fbae3b8b303400ab20778c80bbaf338f563afe567cf3c9eea17b47ef"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "data-url",
  "flate2",
  "fontdb",
@@ -9443,7 +9395,7 @@ version = "0.46.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e419dff010bb12512b0ae9e3d2f318dfbdf0167fde7eb05465134d4e8756076f"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "data-url",
  "flate2",
  "fontdb",
@@ -10905,15 +10857,15 @@ checksum = "beffa227304dbaea3ad6a06ac674f9bc83a3dec3b7f63eeb442de37e7cb6bb01"
 
 [[package]]
 name = "write-fonts"
-version = "0.48.1"
+version = "0.49.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cb731d4c4d93eacc69a1ad2f270f905788a98e4a3438267bcafbe08d3431c8d8"
+checksum = "c7f3a5b8704f80b1cbe2fa5590b8aeda7e4b7c715de0a4266674a2f899fcf2a8"
 dependencies = [
- "font-types 0.11.3",
+ "font-types 0.12.3",
  "indexmap",
  "kurbo 0.13.1",
  "log",
- "read-fonts 0.39.2",
+ "read-fonts 0.40.2",
 ]
 
 [[package]]
@@ -11067,6 +11019,12 @@ name = "xmlwriter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
+
+[[package]]
+name = "xmp-writer"
+version = "0.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9440ea3e5aeabb0ac63af70daf835274065238cdd0cec83418f417eae38bacee"
 
 [[package]]
 name = "xxhash-rust"
@@ -11246,7 +11204,7 @@ name = "zed-reqwest"
 version = "0.12.15-zed"
 source = "git+https://github.com/zed-industries/reqwest.git?rev=c15662463bda39148ba154100dd44d3fba5873a4#c15662463bda39148ba154100dd44d3fba5873a4"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "bytes",
  "encoding_rs",
  "futures-core",
@@ -11444,7 +11402,7 @@ version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dba6063ff82cdbd9a765add16d369abe81e520f836054e997c2db217ceca40c0"
 dependencies = [
- "base64",
+ "base64 0.22.1",
  "ed25519-dalek",
  "thiserror 2.0.18",
 ]
