@@ -1249,6 +1249,23 @@ pub async fn load_pages_for_crawl(
         .map(|(url, count)| (url, count as u32))
         .collect();
 
+    // How many *pages* link here only after rendering, as against how many
+    // such links there are. A nav rendered by JavaScript on every page is one
+    // link from each of them, and the unique figure is the one that says how
+    // much of this page's discoverability depends on that nav running.
+    let unique_csr_inlink_rows = sqlx::query_as::<_, (String, i64)>(
+        "SELECT dst_url, COUNT(DISTINCT src_url) FROM links
+         WHERE crawl_id = ? AND csr_only = 1 GROUP BY dst_url",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+
+    let unique_csr_inlink_counts: std::collections::HashMap<String, u32> = unique_csr_inlink_rows
+        .into_iter()
+        .map(|(url, count)| (url, count as u32))
+        .collect();
+
     let link_score_rows = sqlx::query_as::<_, (String, Option<f32>)>(
         "SELECT url, link_score FROM pages WHERE crawl_id = ? ORDER BY id",
     )
@@ -1460,6 +1477,8 @@ pub async fn load_pages_for_crawl(
                 let page_inlinks = inlink_counts.get(&url).copied().unwrap_or(0);
                 let page_unique_inlinks = unique_inlink_counts.get(&url).copied().unwrap_or(0);
                 let page_csr_inlinks = csr_inlink_counts.get(&url).copied().unwrap_or(0);
+                let page_unique_csr_inlinks =
+                    unique_csr_inlink_counts.get(&url).copied().unwrap_or(0);
                 let page_sd_items = sd_items_by_url.remove(&url).unwrap_or_default();
                 let page_a11y_issues = a11y_by_url.remove(&url).unwrap_or_default();
                 let page_sd_issues = sd_issues_by_url.remove(&url).unwrap_or_default();
@@ -1526,6 +1545,7 @@ pub async fn load_pages_for_crawl(
                     inlinks_count: page_inlinks,
                     unique_inlinks_count: page_unique_inlinks,
                     csr_inlinks_count: page_csr_inlinks,
+                    unique_csr_inlinks_count: page_unique_csr_inlinks,
                     sd_items: page_sd_items,
                     sd_issues: page_sd_issues,
                     headers: page_headers,

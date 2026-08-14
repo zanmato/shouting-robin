@@ -462,6 +462,37 @@ pub(super) fn cell_text(
             let csr_out = record.outlinks.iter().filter(|o| o.csr_only).count();
             SharedString::from(csr_out.to_string())
         }
+        // The CSR half of the four link counts beside them: how much of what
+        // this page links to exists only once JavaScript has run. Counted off
+        // the same `csr_only` flag the analyzer sets when a link is in the
+        // rendered DOM and not in the served HTML.
+        "unique_csr_inlinks" => SharedString::from(record.unique_csr_inlinks_count.to_string()),
+        "unique_csr_outlinks" => {
+            let unique: std::collections::HashSet<&str> = record
+                .outlinks
+                .iter()
+                .filter(|link| link.csr_only)
+                .map(|link| link.dst_url.as_str())
+                .collect();
+            SharedString::from(unique.len().to_string())
+        }
+        "external_csr_outlinks" => {
+            let count = record
+                .outlinks
+                .iter()
+                .filter(|link| link.csr_only && is_external_link(record, link))
+                .count();
+            SharedString::from(count.to_string())
+        }
+        "unique_external_csr_outlinks" => {
+            let unique: std::collections::HashSet<&str> = record
+                .outlinks
+                .iter()
+                .filter(|link| link.csr_only && is_external_link(record, link))
+                .map(|link| link.dst_url.as_str())
+                .collect();
+            SharedString::from(unique.len().to_string())
+        }
         "csr_inlinks_pct" => {
             if record.inlinks_count > 0 && record.csr_inlinks_count > 0 {
                 let pct = (record.csr_inlinks_count as f64 / record.inlinks_count as f64 * 100.0)

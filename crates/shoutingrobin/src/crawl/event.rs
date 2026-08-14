@@ -80,6 +80,9 @@ pub struct PageRecord {
     /// three times counts as three inlinks but one unique inlink.
     pub unique_inlinks_count: u32,
     pub csr_inlinks_count: u32,
+    /// Pages linking here only after rendering. The count above is links; this
+    /// is how many distinct pages they come from.
+    pub unique_csr_inlinks_count: u32,
     pub a11y_errors: u32,
     pub a11y_warnings: u32,
     pub a11y_issues: Vec<A11yIssue>,

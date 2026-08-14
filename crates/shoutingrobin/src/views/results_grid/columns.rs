@@ -250,14 +250,29 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
         // these figures are the details panel's Inlinks and Outlinks sections:
         // a row per link instance put a 50k-page site's million-odd links in
         // one in-memory grid, and the counts are what the tab is read for.
+        // Each link count is followed by its CSR half: how much of it exists
+        // only after rendering. The pair reads as one question — "how much of
+        // this page's link graph does a crawler without JavaScript see?" — so
+        // the columns sit together rather than in a block of their own.
         ResultTab::Links => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
             col("inlinks", "Inlinks", 80., None),
             col("unique_inlinks", "Unique In", 90., None),
+            col("csr_inlinks", "CSR In", 80., None),
+            col("unique_csr_inlinks", "Unique CSR In", 115., None),
             col("outlinks_count", "Outlinks", 80., None),
             col("unique_outlinks", "Unique Out", 95., None),
+            col("csr_outlinks", "CSR Out", 85., None),
+            col("unique_csr_outlinks", "Unique CSR Out", 120., None),
             col("external_outlinks", "Ext. Out", 80., None),
             col("unique_external_outlinks", "Unique Ext. Out", 120., None),
+            col("external_csr_outlinks", "Ext. CSR Out", 110., None),
+            col(
+                "unique_external_csr_outlinks",
+                "Unique Ext. CSR Out",
+                145.,
+                None,
+            ),
             col("indexability", "Indexability", 110., None),
         ],
         ResultTab::SiteStructure => vec![
@@ -428,6 +443,10 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "unique_external_outlinks"
             | "csr_inlinks"
             | "csr_outlinks"
+            | "unique_csr_inlinks"
+            | "unique_csr_outlinks"
+            | "external_csr_outlinks"
+            | "unique_external_csr_outlinks"
             | "csr_inlinks_pct"
             | "csr_outlinks_pct"
             | "closest_similarity"

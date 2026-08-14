@@ -18,3 +18,14 @@ p2.textContent = 'This second paragraph adds more client-rendered content to ' +
   'the SSR content missing flag more reliable and the SSR CSR diff percentage ' +
   'more pronounced in the test assertions.';
 app.appendChild(p2);
+
+// Links that exist only after this script runs. A crawler reading the served
+// markup sees one link out of this page; a crawler that renders sees four,
+// three of them from here: two to the same page (so the unique count differs
+// from the total) and one off-site.
+var nav = document.createElement('nav');
+nav.innerHTML =
+  '<a href="/about.html">About, injected</a> ' +
+  '<a href="/about.html">About again, injected</a> ' +
+  '<a href="https://rendered.invalid/page">Off-site, injected</a>';
+app.appendChild(nav);

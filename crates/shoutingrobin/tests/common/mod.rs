@@ -249,6 +249,16 @@ pub fn crawl_test_site_reloaded(root_url: &str) -> Vec<shoutingrobin::crawl::eve
     )
 }
 
+/// [`crawl_test_site_reloaded`] in Chrome mode, for the counts that only exist
+/// once a page has been rendered *and* the whole link graph has been walked.
+pub fn crawl_test_site_reloaded_with_mode(
+    root_url: &str,
+    render_mode: shoutingrobin::crawl::render_mode::RenderMode,
+    timeout: Duration,
+) -> Vec<shoutingrobin::crawl::event::PageRecord> {
+    crawl_test_site_inner(root_url, render_mode, timeout, true, false)
+}
+
 pub fn crawl_test_site_with_mode(
     root_url: &str,
     render_mode: shoutingrobin::crawl::render_mode::RenderMode,

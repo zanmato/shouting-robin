@@ -357,6 +357,42 @@ fn test_chrome_crawl() {
         "SPA SSR diff should be >= 90%, got {spa_pct}%"
     );
 
+    // -- Links only JavaScript produces --
+    //
+    // The SPA serves one link and its script writes three more, two of them to
+    // the same page and one off-site. The counts beside each link total say how
+    // much of the graph a crawler without JavaScript would never see.
+    let csr_out = spa.outlinks.iter().filter(|link| link.csr_only).count();
+    let unique_csr_out: std::collections::HashSet<&str> = spa
+        .outlinks
+        .iter()
+        .filter(|link| link.csr_only)
+        .map(|link| link.dst_url.as_str())
+        .collect();
+    let external_csr_out: Vec<&str> = spa
+        .outlinks
+        .iter()
+        .filter(|link| link.csr_only && !link.dst_url.contains(&format!("127.0.0.1:{port}")))
+        .map(|link| link.dst_url.as_str())
+        .collect();
+    assert_eq!(csr_out, 3, "three links are written by the script");
+    assert_eq!(
+        unique_csr_out.len(),
+        2,
+        "two of the three point at the same page, got {unique_csr_out:?}"
+    );
+    assert_eq!(
+        external_csr_out,
+        vec!["https://rendered.invalid/page"],
+        "one of them leaves the site"
+    );
+    assert!(
+        spa.outlinks
+            .iter()
+            .any(|link| !link.csr_only && link.dst_url.ends_with("/index.html")),
+        "the link in the served markup is not a rendered-only one"
+    );
+
     // About: server-rendered content matches
     let about = find_page(&pages, "/about.html").expect("about should be crawled");
     assert_eq!(
@@ -538,6 +574,60 @@ fn test_reload_after_finish_carries_post_crawl_analysis() {
         reloaded.iter().any(|p| p.link_score.is_some()),
         "reloaded records should carry the link scores the PageRank pass persisted"
     );
+}
+
+/// The CSR half of the link counts: how much of a page's link graph exists
+/// only once JavaScript has run.
+///
+/// Needs both a rendered crawl and the post-crawl reload — a rendered crawl to
+/// see the links at all, and the reload because an inlink count is a property
+/// of the whole graph rather than of the page that streamed through.
+#[test]
+fn test_csr_link_counts_cover_what_only_rendering_produces() {
+    // No chrome guard here: the crawl helper takes it, and the mutex behind it
+    // is not reentrant, so taking it twice on one thread deadlocks the test.
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+
+    let pages = crawl_test_site_reloaded_with_mode(
+        &root_url,
+        shoutingrobin::crawl::render_mode::RenderMode::Chrome,
+        Duration::from_secs(120),
+    );
+    server.kill();
+
+    // The SPA's script writes two links to this page and one off-site; the
+    // served markup links only home.
+    let about = find_page(&pages, "/about.html").expect("about should be crawled");
+    assert!(
+        about.csr_inlinks_count >= 2,
+        "the script writes two links here, got {}",
+        about.csr_inlinks_count
+    );
+    assert_eq!(
+        about.unique_csr_inlinks_count, 1,
+        "both come from one page, got {}",
+        about.unique_csr_inlinks_count
+    );
+    assert!(
+        about.unique_csr_inlinks_count < about.csr_inlinks_count,
+        "two links from one page is one unique inlink, got {} of {}",
+        about.unique_csr_inlinks_count,
+        about.csr_inlinks_count
+    );
+
+    // A page nothing links to after rendering has none of either, rather than
+    // inheriting its plain inlink count.
+    let home = find_page(&pages, "/index.html")
+        .or_else(|| find_page(&pages, &format!(":{port}/")))
+        .expect("home should be crawled");
+    assert!(
+        home.inlinks_count > 0,
+        "the fixture links home from several pages"
+    );
+    assert_eq!(home.csr_inlinks_count, 0);
+    assert_eq!(home.unique_csr_inlinks_count, 0);
 }
 
 /// Inlink counts must reflect the whole link graph, not just the pages that
