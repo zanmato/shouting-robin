@@ -387,22 +387,6 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let missing_canonical = documents
-        .iter()
-        .filter(|p| p.canonical.as_deref() == Some(""))
-        .count();
-    if missing_canonical > 0 {
-        entries.push(IssueEntry {
-            name: "Missing Canonical Tag".into(),
-            issue_type: IssueType::Opportunity,
-            priority: IssuePriority::Medium,
-            count: missing_canonical,
-            pct: missing_canonical as f32 / doc_total * 100.0,
-            description: "Pages without a self-referencing canonical link element.".into(),
-            hint: "Add a canonical tag to every page to prevent duplicate content issues.".into(),
-        });
-    }
-
     let status_errors = pages
         .iter()
         .filter(|p| p.status.is_some_and(|c| c >= 400))
@@ -1028,6 +1012,22 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
                discard the whole set.",
     },
     FilterDerivedRule {
+        // Was hand-written, and counted `Some("")` — the canonical parsed as
+        // empty — while a page carrying no canonical element at all has `None`.
+        // The rule read 0 on a site where every page was missing one, and its
+        // own drill-down would have shown all of them. Derived from the filter
+        // now, so the count and the click-through are one predicate.
+        name: "Missing Canonical Tag",
+        tab: ResultTab::Canonicals,
+        filter: IssueFilter::MissingCanonical,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages with no canonical link element.",
+        hint: "Add a self-referencing canonical to every page, so a URL that picks up \
+               parameters or a tracking suffix still points at one address.",
+    },
+    FilterDerivedRule {
         name: "Noindex",
         tab: ResultTab::Directives,
         filter: IssueFilter::DirectiveNoindex,
@@ -1594,6 +1594,48 @@ mod filter_derived_rule_tests {
         let count = names.len();
         names.dedup();
         assert_eq!(names.len(), count, "duplicate rule name");
+    }
+
+    /// A page with no canonical element at all has `None`, not an empty string.
+    /// The rule used to count the latter, so it read 0 on a site where every
+    /// page was missing one while the tab it points at held them all.
+    #[test]
+    fn a_page_with_no_canonical_element_counts_as_missing_one() {
+        let mut absent = PageRecord {
+            url: "https://a.test/absent".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            canonical: None,
+            ..Default::default()
+        };
+        absent.compute_indexability();
+        let mut present = PageRecord {
+            url: "https://a.test/present".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            canonical: Some("https://a.test/present".into()),
+            ..Default::default()
+        };
+        present.compute_indexability();
+        let pages = vec![absent, present];
+
+        let entries = build_issues_entries(&pages);
+        let rule = entries
+            .iter()
+            .find(|entry| entry.name == "Missing Canonical Tag")
+            .expect("one page has no canonical");
+        assert_eq!(rule.count, 1);
+        // The figure on the row is the number of rows clicking it lands on.
+        assert_eq!(
+            super::super::filter::matching_urls(
+                ResultTab::Canonicals,
+                IssueFilter::MissingCanonical,
+                &pages
+            ),
+            vec!["https://a.test/absent".to_string()]
+        );
     }
 
     /// The Noindex rule is the narrow one: `Non-Indexable Pages` also counts

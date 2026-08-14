@@ -885,6 +885,7 @@ async fn check_discovered_resources(
             status: check.status,
             size_bytes: check.size_bytes,
             content_type: check.content_type.clone(),
+            headers: check.headers.clone(),
             response_time: check.response_time,
             is_internal: is_same_domain(root_url, &check.url),
             is_resource: true,

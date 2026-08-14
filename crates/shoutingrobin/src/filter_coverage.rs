@@ -968,6 +968,10 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         // filter synthetically.
         PageRecord {
             has_mixed_content: true,
+            // Headers, because the Security tab only judges a row whose
+            // headers it has: a real page answering 200 always has some, and a
+            // fixture without them is not the thing it stands in for.
+            headers: vec![("content-type".to_string(), "text/html".to_string())],
             ..internal(format!("{base}/syn-mixed"))
         },
         // External resources/URLs (other origin) are recorded with

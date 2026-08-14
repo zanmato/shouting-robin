@@ -545,10 +545,22 @@ pub(super) fn filter_for_tab(
         // Tabs that list every internal URL, including subresources. The
         // Internal tab has its own resource-type filters; URL-quality checks
         // apply equally to assets.
-        ResultTab::Internal | ResultTab::Security | ResultTab::Url => pages
+        ResultTab::Internal | ResultTab::Url => pages
             .iter()
             .enumerate()
             .filter(|(_, p)| p.is_internal && was_fetched(p))
+            .map(|(i, _)| i)
+            .collect(),
+        // Same set, minus the rows whose headers we never saw. Chrome reports a
+        // subresource through the Resource Timing API, which carries timings and
+        // a status but no headers, and "this row has no Referrer-Policy header"
+        // and "we never looked at this row's headers" are not the same claim.
+        // Every rule on this tab asks whether a header is present, so a row that
+        // cannot answer does not belong on it.
+        ResultTab::Security => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.is_internal && was_fetched(p) && !p.headers.is_empty())
             .map(|(i, _)| i)
             .collect(),
         // Tabs whose data is parsed from the navigated document. Harvested
@@ -1910,5 +1922,60 @@ mod tab_membership_tests {
         });
         let urls = matching_urls(ResultTab::ResponseCodes, IssueFilter::All, &pages);
         assert!(urls.contains(&"https://other.invalid/asset.png".to_string()));
+    }
+}
+
+#[cfg(test)]
+mod security_membership_tests {
+    use super::*;
+
+    fn asset(url: &str, headers: Vec<(String, String)>) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_resource: true,
+            status: Some(200),
+            headers,
+            ..Default::default()
+        }
+    }
+
+    /// A row whose headers we never saw cannot answer "is this header
+    /// missing", and answering "yes" for it invented nine findings on a site
+    /// whose server was sending the header all along.
+    #[test]
+    fn a_row_with_no_recorded_headers_is_left_off_the_security_tab() {
+        let pages = vec![
+            asset(
+                "https://a.test/checked.css",
+                vec![(
+                    "strict-transport-security".into(),
+                    "max-age=31536000".into(),
+                )],
+            ),
+            asset("https://a.test/timing-only.css", Vec::new()),
+        ];
+        assert_eq!(
+            matching_urls(ResultTab::Security, IssueFilter::All, &pages),
+            vec!["https://a.test/checked.css".to_string()]
+        );
+        assert!(
+            matching_urls(ResultTab::Security, IssueFilter::MissingHsts, &pages).is_empty(),
+            "the header is present on the one row we can judge"
+        );
+    }
+
+    /// The rest of the app still lists it: we know it exists and what it
+    /// answered, just not what it answered with.
+    #[test]
+    fn that_row_is_still_on_the_internal_and_url_tabs() {
+        let pages = vec![asset("https://a.test/timing-only.css", Vec::new())];
+        for tab in [ResultTab::Internal, ResultTab::Url] {
+            assert_eq!(
+                matching_urls(tab, IssueFilter::All, &pages).len(),
+                1,
+                "{tab:?} dropped a URL it knows about"
+            );
+        }
     }
 }

@@ -75,6 +75,11 @@ pub struct ResourceCheck {
     pub status: Option<u16>,
     pub content_type: Option<String>,
     pub size_bytes: u64,
+    /// The response headers, as sent. Kept for the same reason a page's are:
+    /// the security rules read them, and a row with none is indistinguishable
+    /// from a URL whose server sends none — which is how every asset came to
+    /// report a missing HSTS header it was in fact being served.
+    pub headers: Vec<(String, String)>,
     pub response_time: Duration,
     /// Where the resource redirected to, when it did.
     pub redirect_url: Option<String>,
@@ -162,6 +167,7 @@ async fn check_one(client: &reqwest::Client, url: String, kind: ResourceKind) ->
         kind,
         status: None,
         content_type: None,
+        headers: Vec::new(),
         size_bytes: 0,
         response_time: Duration::ZERO,
         redirect_url: None,
@@ -220,6 +226,16 @@ async fn check_one(client: &reqwest::Client, url: String, kind: ResourceKind) ->
 
 fn apply_response(check: &mut ResourceCheck, response: &reqwest::Response) {
     check.status = Some(response.status().as_u16());
+    check.headers = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.to_string(), value.to_string()))
+        })
+        .collect();
     if let Some(value) = response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
