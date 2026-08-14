@@ -714,7 +714,7 @@ impl CrawlEngine {
             });
             tracing::info!(total, "page pump finished");
 
-            resolve_unknown_redirects(&pool, crawl_id, &tx, &config, &root_url, &cancel_flag).await;
+            resolve_redirect_chains(&pool, crawl_id, &tx, &config, &root_url, &cancel_flag).await;
 
             fetch_declared_canonical_targets(
                 &pool,
@@ -913,16 +913,27 @@ async fn check_discovered_resources(
     .await;
 }
 
-/// Resolves redirects whose target the crawler could not report, and crawls
-/// the targets it did not already reach.
+/// How many hops one redirect chain is followed for. Chains longer than this
+/// are broken by any browser too, so the cap is a real limit rather than a
+/// safety valve.
+const MAX_REDIRECT_HOPS: usize = 10;
+
+/// Walks every redirect to its destination, recording each hop as a row and
+/// crawling the page at the end of it.
 ///
-/// spider hands back a final URL only for a redirect it followed, so a 3xx it
-/// declined to follow arrives as "something redirected, destination unknown".
-/// The destination is then reachable no other way: it is not linked from
-/// anywhere else, so the page it points at never enters the crawl at all.
+/// Two things spider leaves out. A 3xx it declined to follow arrives as
+/// "something redirected, destination unknown", and the destination is
+/// reachable no other way. And a chain it *did* follow arrives as a single row
+/// pointing at the *final* URL, so `/` → `/sv/` → `/sv` is recorded as
+/// `/` → `/sv` and the hop in between is not recorded at all — while a chain is
+/// itself worth reporting, since every hop spends crawl budget and dilutes what
+/// passes through it.
 ///
-/// One request each, with redirects disabled, reading `Location` ourselves.
-async fn resolve_unknown_redirects(
+/// So each 3xx row is walked from the start with redirects disabled, reading
+/// `Location` ourselves: every row ends up pointing at its own immediate
+/// target, every intermediate hop becomes a row of its own, and the page the
+/// chain ends at is fetched and analysed like any other.
+async fn resolve_redirect_chains(
     pool: &SqlitePool,
     crawl_id: i64,
     tx: &Sender<CrawlEvent>,
@@ -933,14 +944,14 @@ async fn resolve_unknown_redirects(
     if cancel.load(Ordering::Relaxed) {
         return;
     }
-    let unresolved = match storage::load_unresolved_redirects(pool, crawl_id).await {
+    let redirects = match storage::load_redirects(pool, crawl_id).await {
         Ok(rows) => rows,
         Err(e) => {
-            tracing::warn!(error=%e, "failed to read unresolved redirects");
+            tracing::warn!(error=%e, "failed to read redirects");
             return;
         }
     };
-    if unresolved.is_empty() {
+    if redirects.is_empty() {
         return;
     }
     let client = match build_redirect_client(config) {
@@ -958,32 +969,54 @@ async fn resolve_unknown_redirects(
         }
     };
 
-    for (url, status) in unresolved {
-        if cancel.load(Ordering::Relaxed) {
-            return;
-        }
-        let Some(target) = fetch_redirect_target(&client, &url).await else {
-            continue;
-        };
-        if let Err(e) = storage::set_redirect_target(pool, crawl_id, &url, &target, status).await {
-            tracing::warn!(error=%e, url=%url, "failed to record redirect target");
-        }
-        tracing::info!(from = %url, to = %target, "resolved a redirect the crawler could not");
+    for (start, start_status) in redirects {
+        let mut url = start;
+        let mut status = start_status;
 
-        // The target is a page of the site that nothing else links to, so it is
-        // crawled here or not at all. External targets are left to the resource
-        // pass, which status-checks them without auditing them.
-        if !is_same_domain(root_url, &target) || !recorded.insert(target.clone()) {
-            continue;
-        }
-        let Some(record) = fetch_uncrawled_page(&client, &target, config, root_url).await else {
-            continue;
-        };
-        if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
-            tracing::warn!(error=%e, url=%record.url, "failed to persist redirect target");
-        }
-        if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
-            tracing::error!(error=%e, "failed to send redirect target page event");
+        for _ in 0..MAX_REDIRECT_HOPS {
+            if cancel.load(Ordering::Relaxed) {
+                return;
+            }
+            let Some(target) = fetch_redirect_target(&client, &url).await else {
+                break;
+            };
+            // The row points at the hop it actually serves, which is not
+            // necessarily where the chain ends.
+            if let Err(e) =
+                storage::set_redirect_target(pool, crawl_id, &url, &target, status).await
+            {
+                tracing::warn!(error=%e, url=%url, "failed to record redirect target");
+            }
+            tracing::info!(from = %url, to = %target, "followed a redirect");
+
+            // Off-site targets are left to the resource pass, which
+            // status-checks them without auditing them, and a target already
+            // recorded ends the walk: that is either a URL the crawl reached
+            // by another route or a loop closing on itself.
+            if !is_same_domain(root_url, &target) || !recorded.insert(target.clone()) {
+                break;
+            }
+            let Some(record) = fetch_uncrawled_page(&client, &target, config, root_url).await
+            else {
+                break;
+            };
+            let next_status = record.status;
+            if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
+                tracing::warn!(error=%e, url=%record.url, "failed to persist redirect target");
+            }
+            if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+                tracing::error!(error=%e, "failed to send redirect target page event");
+            }
+
+            // Another 3xx is another hop; anything else is the end of the
+            // chain, and it has just been recorded as the page it is.
+            match next_status {
+                Some(code) if (300..400).contains(&code) => {
+                    url = target;
+                    status = code;
+                }
+                _ => break,
+            }
         }
     }
 }
@@ -2257,7 +2290,11 @@ mod out_of_band_fetch_tests {
                                 .and_then(|line| line.split_whitespace().nth(1))
                                 .unwrap_or("/")
                                 .to_string();
-                            let response = if path == "/moved" {
+                            let response = if path == "/chain1" {
+                                "HTTP/1.1 301 Moved Permanently\r\nLocation: /chain2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                            } else if path == "/chain2" {
+                                "HTTP/1.1 301 Moved Permanently\r\nLocation: /target\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                            } else if path == "/moved" {
                                 "HTTP/1.1 301 Moved Permanently\r\nLocation: /target?a=1&b=2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
                             } else if path.starts_with("/target") {
                                 let body = "<!doctype html><html><head><title>Target Page Title</title></head>\
@@ -2444,6 +2481,85 @@ mod out_of_band_fetch_tests {
             target.is_page,
             "the authoritative URL is audited like any other document"
         );
+    }
+
+    /// spider reports the *final* URL of a chain it followed, so the hops in
+    /// between are missing entirely and the first row claims to point two hops
+    /// away. Each row should point at the hop it serves, and each hop should be
+    /// a row.
+    #[test]
+    fn every_hop_of_a_redirect_chain_becomes_a_row() {
+        let (port, stop) = spawn_redirect_server();
+        let base = format!("http://127.0.0.1:{port}");
+        let rt = runtime();
+
+        let stored = rt.block_on(async {
+            let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").expect("pool");
+            sqlx::query(
+                "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
+            )
+            .execute(&pool)
+            .await
+            .expect("migrations table");
+            storage::run_migrations(&pool).await.expect("migrations");
+            let crawl_id = storage::create_crawl(&pool, &base, "http", &config())
+                .await
+                .expect("crawl");
+
+            // What the crawler leaves behind: the head of the chain, already
+            // carrying the destination two hops away.
+            let head = PageRecord {
+                url: format!("{base}/chain1"),
+                status: Some(301),
+                redirect_url: Some(format!("{base}/target")),
+                redirect_status: Some(301),
+                is_page: true,
+                is_internal: true,
+                ..Default::default()
+            };
+            storage::insert_page(&pool, crawl_id, &head)
+                .await
+                .expect("insert head");
+
+            let (tx, _rx) = channel();
+            resolve_redirect_chains(
+                &pool,
+                crawl_id,
+                &tx,
+                &config(),
+                &base,
+                &Arc::new(AtomicBool::new(false)),
+            )
+            .await;
+
+            storage::load_pages_for_crawl(&pool, crawl_id, &base)
+                .await
+                .expect("load")
+        });
+
+        stop.store(true, Ordering::Relaxed);
+        let find = |url: String| {
+            stored
+                .iter()
+                .find(|record| record.url == url)
+                .unwrap_or_else(|| panic!("{url} is missing"))
+        };
+
+        let first = find(format!("{base}/chain1"));
+        assert_eq!(
+            first.redirect_url.as_deref(),
+            Some(format!("{base}/chain2").as_str()),
+            "a row points at the hop it serves, not at the end of the chain"
+        );
+        let second = find(format!("{base}/chain2"));
+        assert_eq!(second.status, Some(301));
+        assert_eq!(
+            second.redirect_url.as_deref(),
+            Some(format!("{base}/target").as_str())
+        );
+        let end = find(format!("{base}/target"));
+        assert_eq!(end.status, Some(200));
+        assert_eq!(end.title.as_deref(), Some("Target Page Title"));
     }
 
     fn recorded(urls: &[&str]) -> std::collections::HashSet<String> {

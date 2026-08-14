@@ -483,16 +483,19 @@ pub async fn load_declared_canonicals(
     .await
 }
 
-/// The 3xx rows of a crawl whose target is unknown, as (url, status). spider
-/// reports no final URL for a redirect it did not follow, so these are the
-/// redirects we know happened but not where they went.
-pub async fn load_unresolved_redirects(
+/// Every 3xx row of a crawl, as (url, status).
+///
+/// All of them, not only the ones with no known target: spider reports the
+/// *final* URL of a chain it followed, so a row can carry a destination two
+/// hops away and the hop in between is missing entirely. The chain pass walks
+/// each one and records what it finds.
+pub async fn load_redirects(
     pool: &SqlitePool,
     crawl_id: i64,
 ) -> Result<Vec<(String, u16)>, sqlx::Error> {
     let rows: Vec<(String, i64)> = sqlx::query_as(
         "SELECT url, status FROM pages
-         WHERE crawl_id = ? AND redirect_url IS NULL AND status >= 300 AND status < 400",
+         WHERE crawl_id = ? AND status >= 300 AND status < 400 ORDER BY url",
     )
     .bind(crawl_id)
     .fetch_all(pool)
