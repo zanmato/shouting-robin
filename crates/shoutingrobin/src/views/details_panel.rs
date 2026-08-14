@@ -45,8 +45,40 @@ pub enum DetailsSelection {
     Image(Box<ImageDetails>),
 }
 
+/// One pane of the details panel.
+///
+/// The panel used to be a single scrolling column with each long list scrolling
+/// inside it. Two scroll areas under one pointer cannot be aimed at: the wheel
+/// drives whichever is under it and the other moves too. One list per tab means
+/// one scrollable region on screen at a time.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DetailsTab {
+    /// Everything that is a fact about the URL rather than a list.
+    Overview,
+    NearDuplicates,
+    Images,
+    Inlinks,
+    Outlinks,
+    /// The pages referencing a selected image.
+    References,
+}
+
+impl DetailsTab {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Overview => "Overview",
+            Self::NearDuplicates => "Duplicates",
+            Self::Images => "Images",
+            Self::Inlinks => "Inlinks",
+            Self::Outlinks => "Outlinks",
+            Self::References => "Referenced by",
+        }
+    }
+}
+
 pub struct DetailsPanel {
     selected: Option<DetailsSelection>,
+    active_tab: DetailsTab,
     json_views: Vec<Option<JsonView>>,
     html_views: Vec<Option<HtmlView>>,
     /// One handle per virtualised section, held here rather than built during
@@ -69,6 +101,7 @@ impl DetailsPanel {
     pub fn new() -> Self {
         Self {
             selected: None,
+            active_tab: DetailsTab::Overview,
             json_views: Vec::new(),
             html_views: Vec::new(),
             inlinks_scroll: VirtualListScrollHandle::new(),
@@ -128,6 +161,9 @@ impl DetailsPanel {
             handle.set_offset(gpui::point(px(0.), px(0.)));
         }
         self.selected = selection;
+        // A new URL is a new set of tabs, and the one that was open may not
+        // exist for it.
+        self.active_tab = DetailsTab::Overview;
         cx.notify();
     }
 }
@@ -910,15 +946,7 @@ fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> 
     )
 }
 
-fn link_metrics_section(
-    panel: &Entity<DetailsPanel>,
-    scroll: &VirtualListScrollHandle,
-    rec: &PageRecord,
-    muted: Hsla,
-    fg: Hsla,
-    border: Hsla,
-    cx: &App,
-) -> AnyElement {
+fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
     let link_score_str = rec
         .link_score
         .map(|s| format!("{s:.1}"))
@@ -1011,55 +1039,6 @@ fn link_metrics_section(
             ),
             muted,
         ))
-        .when(!rec.near_duplicate_urls.is_empty(), |el| {
-            // A page on a large templated site can be near-duplicate with
-            // hundreds of others, so this list is virtualised and capped like
-            // the link lists rather than built in full every frame.
-            let count = rec.near_duplicate_urls.len();
-            let mono = cx.theme().mono_font_family.clone();
-            el.child(
-                div()
-                    .pt_1()
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .pb_0p5()
-                            .child(SharedString::from(format!("Duplicate Pages ({count}):"))),
-                    )
-                    .child(
-                        div().h(duplicate_list_height(count)).child(
-                            v_virtual_list(
-                                panel.clone(),
-                                "near-duplicates",
-                                duplicate_row_sizes(count),
-                                move |this, range, _window, _cx| {
-                                    let Some(rec) = selected_page(this) else {
-                                        return Vec::new();
-                                    };
-                                    rec.near_duplicate_urls
-                                        .get(range)
-                                        .unwrap_or_default()
-                                        .iter()
-                                        .map(|dup_url| {
-                                            div()
-                                                .h(DUPLICATE_ROW_HEIGHT)
-                                                .flex()
-                                                .items_center()
-                                                .text_xs()
-                                                .font_family(mono.clone())
-                                                .text_color(fg)
-                                                .truncate()
-                                                .child(SharedString::from(dup_url.clone()))
-                                        })
-                                        .collect()
-                                },
-                            )
-                            .track_scroll(scroll),
-                        ),
-                    ),
-            )
-        })
         .child(row(
             "Closest Similarity",
             SharedString::from(
@@ -1290,9 +1269,6 @@ fn hreflang_section(
 /// one block of text.
 const LINK_ROW_HEIGHT: Pixels = px(46.);
 
-/// How many rows a virtualised section shows before it scrolls on its own.
-const MAX_VISIBLE_LINK_ROWS: usize = 8;
-
 fn link_row(
     url: SharedString,
     detail: SharedString,
@@ -1332,12 +1308,6 @@ fn link_row(
         .into_any_element()
 }
 
-/// The height a virtualised section takes: its rows, up to a cap, after which
-/// it scrolls within itself.
-fn link_list_height(row_count: usize) -> Pixels {
-    LINK_ROW_HEIGHT * row_count.min(MAX_VISIBLE_LINK_ROWS) as f32
-}
-
 fn link_row_sizes(row_count: usize) -> Rc<Vec<Size<Pixels>>> {
     Rc::new(vec![
         Size {
@@ -1350,14 +1320,6 @@ fn link_row_sizes(row_count: usize) -> Rc<Vec<Size<Pixels>>> {
 
 /// One duplicate URL is a single line, so its rows are shorter than a link's.
 const DUPLICATE_ROW_HEIGHT: Pixels = px(18.);
-
-/// How many duplicate URLs are shown before the list scrolls on its own. Higher
-/// than the link cap because the rows are half the height.
-const MAX_VISIBLE_DUPLICATE_ROWS: usize = 12;
-
-fn duplicate_list_height(row_count: usize) -> Pixels {
-    DUPLICATE_ROW_HEIGHT * row_count.min(MAX_VISIBLE_DUPLICATE_ROWS) as f32
-}
 
 fn duplicate_row_sizes(row_count: usize) -> Rc<Vec<Size<Pixels>>> {
     Rc::new(vec![
@@ -1377,147 +1339,6 @@ fn selected_page(panel: &DetailsPanel) -> Option<&PageRecord> {
         Some(DetailsSelection::Page(rec)) => Some(rec),
         _ => None,
     }
-}
-
-fn inlinks_section(
-    panel: &Entity<DetailsPanel>,
-    scroll: &VirtualListScrollHandle,
-    rec: &PageRecord,
-    muted: Hsla,
-    fg: Hsla,
-    border: Hsla,
-) -> Option<AnyElement> {
-    let count = rec.backlinks.len();
-    if count == 0 {
-        return None;
-    }
-    let body = div()
-        .h(link_list_height(count))
-        .child(
-            v_virtual_list(
-                panel.clone(),
-                "inlinks",
-                link_row_sizes(count),
-                move |this, range, _window, cx| {
-                    let Some(rec) = selected_page(this) else {
-                        return Vec::new();
-                    };
-                    rec.backlinks
-                        .get(range)
-                        .unwrap_or_default()
-                        .iter()
-                        .map(|backlink| {
-                            let anchor = backlink
-                                .anchor
-                                .as_deref()
-                                .filter(|a| !a.trim().is_empty())
-                                .unwrap_or("No anchor");
-                            let detail = match backlink.rel.as_deref() {
-                                Some(rel) => format!("{anchor} · rel={rel}"),
-                                None => anchor.to_string(),
-                            };
-                            link_row(
-                                SharedString::from(backlink.source_url.clone()),
-                                SharedString::from(detail),
-                                None,
-                                muted,
-                                fg,
-                                border,
-                                cx,
-                            )
-                        })
-                        .collect()
-                },
-            )
-            .track_scroll(scroll),
-        )
-        .into_any_element();
-    Some(section(
-        "Inlinks (From)",
-        None,
-        Some(
-            div()
-                .text_xs()
-                .child(SharedString::from(format!("{count} links")))
-                .into_any_element(),
-        ),
-        muted,
-        border,
-        body,
-    ))
-}
-
-fn outlinks_section(
-    panel: &Entity<DetailsPanel>,
-    scroll: &VirtualListScrollHandle,
-    rec: &PageRecord,
-    muted: Hsla,
-    fg: Hsla,
-    border: Hsla,
-) -> Option<AnyElement> {
-    let count = rec.outlinks.len();
-    if count == 0 {
-        return None;
-    }
-    let body = div()
-        .h(link_list_height(count))
-        .child(
-            v_virtual_list(
-                panel.clone(),
-                "outlinks",
-                link_row_sizes(count),
-                move |this, range, _window, cx| {
-                    let Some(rec) = selected_page(this) else {
-                        return Vec::new();
-                    };
-                    rec.outlinks
-                        .get(range)
-                        .unwrap_or_default()
-                        .iter()
-                        .map(|link| {
-                            let is_nofollow = link
-                                .rel
-                                .as_deref()
-                                .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
-                            let trailing = is_nofollow.then(|| {
-                                tone_tag(Tone::Warn, cx)
-                                    .child(SharedString::from("nofollow"))
-                                    .into_any_element()
-                            });
-                            let anchor = link
-                                .anchor
-                                .as_deref()
-                                .filter(|a| !a.trim().is_empty())
-                                .unwrap_or("No anchor text");
-                            link_row(
-                                SharedString::from(link.dst_url.clone()),
-                                SharedString::from(anchor.to_string()),
-                                trailing,
-                                muted,
-                                fg,
-                                border,
-                                cx,
-                            )
-                        })
-                        .collect()
-                },
-            )
-            .track_scroll(scroll),
-        )
-        .into_any_element();
-    Some(section(
-        "Outlinks (To)",
-        None,
-        Some(
-            div()
-                .text_xs()
-                .child(SharedString::from(format!("{count} links")))
-                .into_any_element(),
-        ),
-        muted,
-        border,
-        body,
-    ))
 }
 
 fn headers_section(
@@ -1659,23 +1480,280 @@ fn image_information_section(image: &ImageDetails, muted: Hsla, border: Hsla) ->
     section("Image Information", None, None, muted, border, body)
 }
 
-fn image_references_section(
+/// The tabs a selection has, in order, with the number of rows behind each.
+/// A tab with nothing in it is not offered.
+fn tabs_for(selection: &DetailsSelection, panel: &DetailsPanel) -> Vec<(DetailsTab, usize)> {
+    let mut tabs = vec![(DetailsTab::Overview, 0)];
+    match selection {
+        DetailsSelection::Page(rec) => {
+            for (tab, count) in [
+                (DetailsTab::NearDuplicates, rec.near_duplicate_urls.len()),
+                (DetailsTab::Images, rec.images.len()),
+                (DetailsTab::Inlinks, rec.backlinks.len()),
+                (DetailsTab::Outlinks, rec.outlinks.len()),
+            ] {
+                if count > 0 {
+                    tabs.push((tab, count));
+                }
+            }
+        }
+        DetailsSelection::Image(image) => {
+            if !image.references.is_empty() {
+                tabs.push((DetailsTab::References, image.references.len()));
+            }
+        }
+    }
+    let _ = panel;
+    tabs
+}
+
+/// The strip of tabs under the header. Styled like the grid's filter segments,
+/// so the two rows of tabs in the window read as the same control.
+fn tab_strip(
+    tabs: &[(DetailsTab, usize)],
+    active: DetailsTab,
+    panel: &Entity<DetailsPanel>,
+    cx: &App,
+) -> AnyElement {
+    let mut strip = div()
+        .flex()
+        .flex_row()
+        .gap(px(2.))
+        .px_2()
+        .py_1p5()
+        .border_b_1()
+        .border_color(cx.theme().border);
+
+    for &(tab, count) in tabs {
+        let is_active = tab == active;
+        let segment = div()
+            .id(SharedString::from(format!("details-tab-{:?}", tab)))
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_1p5()
+            .py_0p5()
+            .rounded(cx.theme().radius)
+            .cursor_pointer()
+            .text_xs()
+            .when(is_active, |el| {
+                el.bg(cx.theme().tab_bar_segmented)
+                    .text_color(cx.theme().tab_active_foreground)
+            })
+            .when(!is_active, |el| {
+                el.text_color(cx.theme().tab_foreground)
+                    .hover(|el| el.text_color(cx.theme().tab_active_foreground))
+            })
+            .child(SharedString::from(tab.label()))
+            .when(count > 0, |el| {
+                el.child(
+                    div()
+                        .text_color(cx.theme().muted_foreground)
+                        .child(SharedString::from(count.to_string())),
+                )
+            })
+            .on_click({
+                let panel = panel.clone();
+                move |_, _window, cx| {
+                    panel.update(cx, |this, cx| {
+                        this.active_tab = tab;
+                        cx.notify();
+                    });
+                }
+            });
+        strip = strip.child(segment);
+    }
+    strip.into_any_element()
+}
+
+/// A list that fills the pane and scrolls on its own. The only scrollable
+/// region in the panel while its tab is open.
+fn list_pane(
+    id: &'static str,
     panel: &Entity<DetailsPanel>,
     scroll: &VirtualListScrollHandle,
-    image: &ImageDetails,
-    muted: Hsla,
-    fg: Hsla,
-    border: Hsla,
+    sizes: Rc<Vec<Size<Pixels>>>,
+    render: impl 'static + Fn(&mut DetailsPanel, std::ops::Range<usize>, &mut App) -> Vec<AnyElement>,
 ) -> AnyElement {
-    let count = image.references.len();
-    let body = div()
-        .h(link_list_height(count))
+    div()
+        .flex_1()
+        .min_h(px(0.))
+        .px_3()
         .child(
-            v_virtual_list(
-                panel.clone(),
+            v_virtual_list(panel.clone(), id, sizes, move |this, range, _window, cx| {
+                render(this, range, cx)
+            })
+            .track_scroll(scroll),
+        )
+        .into_any_element()
+}
+
+impl Render for DetailsPanel {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The virtualised lists render against the panel itself rather than a
+        // captured copy of the records, so they need a handle to it.
+        let panel = cx.entity();
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let fg = theme.foreground;
+        let border = theme.border;
+        let panel2 = theme.secondary;
+
+        let Some(selection) = self.selected.clone() else {
+            return div()
+                .w(px(420.))
+                .h_full()
+                .border_l_1()
+                .border_color(border)
+                .rounded_br(crate::app::PANEL_RADIUS)
+                .child(
+                    div()
+                        .p_4()
+                        .text_sm()
+                        .text_color(muted)
+                        .child("Select a URL to inspect details."),
+                );
+        };
+
+        let tabs = tabs_for(&selection, self);
+        // The selection can change under an open tab, and a page with no
+        // inlinks does not offer one.
+        let active = if tabs.iter().any(|(tab, _)| *tab == self.active_tab) {
+            self.active_tab
+        } else {
+            DetailsTab::Overview
+        };
+
+        let header = match &selection {
+            DetailsSelection::Page(rec) => header_block(rec, muted, border),
+            DetailsSelection::Image(image) => image_header_block(image, muted, border),
+        };
+
+        // Every pane either scrolls itself or is a virtual list that does; the
+        // panel around them never scrolls, so there is only ever one scrollable
+        // region under the pointer.
+        let pane = match (&selection, active) {
+            (DetailsSelection::Page(rec), DetailsTab::NearDuplicates) => {
+                let mono = cx.theme().mono_font_family.clone();
+                list_pane(
+                    "near-duplicates",
+                    &panel,
+                    &self.duplicates_scroll,
+                    duplicate_row_sizes(rec.near_duplicate_urls.len()),
+                    move |this, range, _cx| {
+                        let Some(rec) = selected_page(this) else {
+                            return Vec::new();
+                        };
+                        rec.near_duplicate_urls
+                            .get(range)
+                            .unwrap_or_default()
+                            .iter()
+                            .map(|dup_url| {
+                                div()
+                                    .h(DUPLICATE_ROW_HEIGHT)
+                                    .flex()
+                                    .items_center()
+                                    .text_xs()
+                                    .font_family(mono.clone())
+                                    .text_color(fg)
+                                    .truncate()
+                                    .child(SharedString::from(dup_url.clone()))
+                                    .into_any_element()
+                            })
+                            .collect()
+                    },
+                )
+            }
+            (DetailsSelection::Page(rec), DetailsTab::Images) => div()
+                .id("details-images")
+                .flex_1()
+                .min_h(px(0.))
+                .overflow_y_scrollbar()
+                .child(images_section(rec, muted, fg, border, cx))
+                .into_any_element(),
+            (DetailsSelection::Page(rec), DetailsTab::Inlinks) => list_pane(
+                "inlinks",
+                &panel,
+                &self.inlinks_scroll,
+                link_row_sizes(rec.backlinks.len()),
+                move |this, range, cx| {
+                    let Some(rec) = selected_page(this) else {
+                        return Vec::new();
+                    };
+                    rec.backlinks
+                        .get(range)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|backlink| {
+                            let anchor = backlink
+                                .anchor
+                                .as_deref()
+                                .filter(|a| !a.trim().is_empty())
+                                .unwrap_or("No anchor");
+                            let detail = match backlink.rel.as_deref() {
+                                Some(rel) => format!("{anchor} · rel={rel}"),
+                                None => anchor.to_string(),
+                            };
+                            link_row(
+                                SharedString::from(backlink.source_url.clone()),
+                                SharedString::from(detail),
+                                None,
+                                muted,
+                                fg,
+                                border,
+                                cx,
+                            )
+                        })
+                        .collect()
+                },
+            ),
+            (DetailsSelection::Page(rec), DetailsTab::Outlinks) => list_pane(
+                "outlinks",
+                &panel,
+                &self.outlinks_scroll,
+                link_row_sizes(rec.outlinks.len()),
+                move |this, range, cx| {
+                    let Some(rec) = selected_page(this) else {
+                        return Vec::new();
+                    };
+                    rec.outlinks
+                        .get(range)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|link| {
+                            let is_nofollow = link
+                                .rel
+                                .as_deref()
+                                .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
+                            let trailing = is_nofollow.then(|| {
+                                tone_tag(Tone::Warn, cx)
+                                    .child(SharedString::from("nofollow"))
+                                    .into_any_element()
+                            });
+                            let anchor = link
+                                .anchor
+                                .as_deref()
+                                .filter(|a| !a.trim().is_empty())
+                                .unwrap_or("No anchor text");
+                            link_row(
+                                SharedString::from(link.dst_url.clone()),
+                                SharedString::from(anchor.to_string()),
+                                trailing,
+                                muted,
+                                fg,
+                                border,
+                                cx,
+                            )
+                        })
+                        .collect()
+                },
+            ),
+            (DetailsSelection::Image(image), DetailsTab::References) => list_pane(
                 "image-references",
-                link_row_sizes(count),
-                move |this, range, _window, cx| {
+                &panel,
+                &self.image_references_scroll,
+                link_row_sizes(image.references.len()),
+                move |this, range, cx| {
                     let Some(DetailsSelection::Image(image)) = &this.selected else {
                         return Vec::new();
                     };
@@ -1710,69 +1788,19 @@ fn image_references_section(
                         })
                         .collect()
                 },
-            )
-            .track_scroll(scroll),
-        )
-        .into_any_element();
-    section(
-        "Referenced By",
-        None,
-        Some(
-            div()
-                .text_xs()
-                .child(SharedString::from(format!("{count} pages")))
-                .into_any_element(),
-        ),
-        muted,
-        border,
-        body,
-    )
-}
-
-impl Render for DetailsPanel {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        // The virtualised sections render against the panel itself rather than
-        // a captured copy of the records, so they need a handle to it.
-        let panel = cx.entity();
-        let theme = cx.theme();
-        let muted = theme.muted_foreground;
-        let fg = theme.foreground;
-        let border = theme.border;
-        let panel2 = theme.secondary;
-
-        let body = match &self.selected {
-            None => div()
-                .id("details-scroll")
-                .overflow_y_scrollbar()
-                .p_4()
-                .text_sm()
-                .text_color(muted)
-                .child("Select a URL to inspect details.")
-                .into_any_element(),
-            Some(DetailsSelection::Image(image)) => div()
-                .id("details-scroll")
+            ),
+            // Every page tab that is not a list. Also the fallback, so a
+            // tab that does not apply to this selection lands somewhere real.
+            (DetailsSelection::Page(rec), _) => div()
+                .id("details-overview")
+                .flex_1()
+                .min_h(px(0.))
                 .overflow_y_scrollbar()
                 .flex()
                 .flex_col()
-                .child(image_header_block(image, muted, border))
-                .child(image_information_section(image, muted, border))
-                .child(image_references_section(
-                    &panel,
-                    &self.image_references_scroll,
-                    image,
-                    muted,
-                    fg,
-                    border,
-                ))
-                .into_any_element(),
-            Some(DetailsSelection::Page(rec)) => div()
-                .id("details-scroll")
-                .overflow_y_scrollbar()
-                .flex()
-                .flex_col()
-                .child(header_block(rec, muted, border))
                 .child(url_information_section(rec, muted, border, cx))
                 .child(page_content_section(rec, muted, border))
+                .child(serp_section(rec, muted, border, cx))
                 .child(structured_data_section(
                     rec,
                     &self.json_views,
@@ -1794,40 +1822,35 @@ impl Render for DetailsPanel {
                     ))
                     .child(vitals_section(rec, muted, border, panel2))
                 })
-                .child(link_metrics_section(
-                    &panel,
-                    &self.duplicates_scroll,
-                    rec,
-                    muted,
-                    fg,
-                    border,
-                    cx,
-                ))
-                .child(images_section(rec, muted, fg, border, cx))
-                .child(serp_section(rec, muted, border, cx))
+                .child(link_metrics_section(rec, muted, border))
                 .when_some(hreflang_section(rec, muted, fg, border, cx), |el, s| {
                     el.child(s)
                 })
-                .when_some(
-                    inlinks_section(&panel, &self.inlinks_scroll, rec, muted, fg, border),
-                    |el, s| el.child(s),
-                )
-                .when_some(
-                    outlinks_section(&panel, &self.outlinks_scroll, rec, muted, fg, border),
-                    |el, s| el.child(s),
-                )
                 .when_some(headers_section(rec, muted, fg, border, cx), |el, s| {
                     el.child(s)
                 })
                 .into_any_element(),
+            (DetailsSelection::Image(image), _) => div()
+                .id("details-image-overview")
+                .flex_1()
+                .min_h(px(0.))
+                .overflow_y_scrollbar()
+                .child(image_information_section(image, muted, border))
+                .into_any_element(),
         };
 
         div()
-            .w(gpui::px(420.))
+            .w(px(420.))
             .h_full()
+            .flex()
+            .flex_col()
             .border_l_1()
             .border_color(border)
             .rounded_br(crate::app::PANEL_RADIUS)
-            .child(body)
+            .child(header)
+            .when(tabs.len() > 1, |el| {
+                el.child(tab_strip(&tabs, active, &panel, cx))
+            })
+            .child(pane)
     }
 }
