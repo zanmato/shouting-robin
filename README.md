@@ -7,7 +7,11 @@
 
 A modern, desktop SEO crawler built with [GPUI](https://www.gpui.rs) and [gpui-component](https://github.com/longbridge/gpui-component), offering fast performance and a clean interface. [Spider](https://github.com/spider-rs/spider) is used for the crawling and scraping.
 
-![shouting-robin](docs/images/screenshot.webp)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshot-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/screenshot-light.webp">
+  <img alt="Shouting Robin" src="docs/images/screenshot-light.webp">
+</picture>
 
 ## Features
 
