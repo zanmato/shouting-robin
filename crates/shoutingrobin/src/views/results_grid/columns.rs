@@ -179,6 +179,7 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("status", "Status", 90., None),
             col("indexability", "Indexability", 110., None),
             col("in_sitemap", "In Sitemap", 90., None),
+            col("sitemap_lastmod", "Last Mod", 130., None),
             col("sitemap_url", "Sitemap URL", 300., None),
         ],
         ResultTab::Accessibility => vec![
@@ -489,6 +490,7 @@ pub(super) fn is_mono_column(key: &str) -> bool {
                 | "a11y_target"
                 | "a11y_html"
                 | "last_modified"
+                | "sitemap_lastmod"
                 | "redirect_url"
                 | "dir_path"
                 | "change_url"

@@ -702,3 +702,36 @@ fn test_discovered_resources_are_status_checked() {
         "a crawled page should not also appear as a resource row"
     );
 }
+
+/// A sitemap's `<lastmod>` is captured for the URLs it advertises, both for
+/// pages the crawl reached and for the ones it never linked to.
+#[test]
+fn test_sitemap_lastmod_is_recorded() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+    write_sitemap(port);
+
+    let pages = crawl_test_site(&root_url);
+
+    server.kill();
+
+    let about = find_page(&pages, "/about.html").expect("about should be crawled");
+    assert_eq!(about.in_sitemap, Some(true));
+    assert_eq!(about.sitemap_lastmod.as_deref(), Some("2026-08-01"));
+
+    // The sitemap lists a page nothing links to, so it arrives as an orphan
+    // row after the crawl, carrying its lastmod like any other entry.
+    let orphan = pages
+        .iter()
+        .find(|page| page.url.ends_with("/orphan-page.html"))
+        .expect("the sitemap orphan should be reported");
+    assert_eq!(
+        orphan.sitemap_lastmod.as_deref(),
+        Some("2026-07-15T09:30:00+02:00")
+    );
+
+    // An entry with no lastmod stays empty rather than borrowing a neighbour's.
+    let home = find_page(&pages, "/index.html").expect("home should be crawled");
+    assert_eq!(home.sitemap_lastmod, None);
+}

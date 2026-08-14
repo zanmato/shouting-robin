@@ -115,12 +115,12 @@ impl CrawlEngine {
                 Vec::new()
             };
 
-            let mut sitemap_lookup: std::collections::HashMap<String, String> =
+            let mut sitemap_lookup: std::collections::HashMap<String, (String, Option<String>)> =
                 std::collections::HashMap::new();
             for entry in &sitemap_entries {
                 sitemap_lookup
                     .entry(entry.page_url.clone())
-                    .or_insert_with(|| entry.sitemap_url.clone());
+                    .or_insert_with(|| (entry.sitemap_url.clone(), entry.lastmod.clone()));
             }
 
             let root_url = if config.list_mode && !config.seed_urls.is_empty() {
@@ -516,9 +516,10 @@ impl CrawlEngine {
 
                     record.compute_indexability();
                     record.is_internal = is_same_domain(&root_for_pump, &record.url);
-                    if let Some(sm_url) = sitemap_for_pump.get(&record.url) {
+                    if let Some((sm_url, lastmod)) = sitemap_for_pump.get(&record.url) {
                         record.in_sitemap = Some(true);
                         record.sitemap_url = Some(sm_url.clone());
+                        record.sitemap_lastmod = lastmod.clone();
                     } else if !sitemap_for_pump.is_empty() {
                         record.in_sitemap = Some(false);
                     }
@@ -616,9 +617,10 @@ impl CrawlEngine {
                                 .then(|| resource.initiator.clone()),
                             ..Default::default()
                         };
-                        if let Some(sm_url) = sitemap_for_pump.get(&resource.url) {
+                        if let Some((sm_url, lastmod)) = sitemap_for_pump.get(&resource.url) {
                             resource_record.in_sitemap = Some(true);
                             resource_record.sitemap_url = Some(sm_url.clone());
+                            resource_record.sitemap_lastmod = lastmod.clone();
                         } else if !sitemap_for_pump.is_empty() {
                             resource_record.in_sitemap = Some(false);
                         }
@@ -708,6 +710,7 @@ impl CrawlEngine {
                     let record = PageRecord {
                         url: orphan.page_url.clone(),
                         sitemap_url: Some(orphan.sitemap_url.clone()),
+                        sitemap_lastmod: orphan.lastmod.clone(),
                         in_sitemap: Some(true),
                         is_internal: is_same_domain(&root_url, &orphan.page_url),
                         ..Default::default()

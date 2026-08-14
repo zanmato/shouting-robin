@@ -327,6 +327,9 @@ pub(super) fn cell_text(
                 .unwrap_or("-"),
         ),
         "sitemap_url" => SharedString::from(record.sitemap_url.clone().unwrap_or_default()),
+        "sitemap_lastmod" => {
+            SharedString::from(record.sitemap_lastmod.clone().unwrap_or_else(|| "-".into()))
+        }
         "ecom_price" => SharedString::from(
             record
                 .ecommerce

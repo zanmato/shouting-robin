@@ -161,6 +161,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::UrlsNotInSitemap,
             IssueFilter::SitemapOrphans,
             IssueFilter::NonIndexableInSitemap,
+            IssueFilter::SitemapNon200,
         ],
         ResultTab::Security => &[
             IssueFilter::All,
@@ -792,6 +793,15 @@ pub(super) fn filter_for_tab(
             IssueFilter::UrlsInSitemap => {
                 indices.retain(|&idx| pages[idx].in_sitemap == Some(true))
             }
+            // A URL a sitemap advertises should answer 200. A 3xx sends the
+            // crawler somewhere else and a 4xx/5xx wastes the request entirely,
+            // so both belong in the sitemap's own report. Orphans have no
+            // status at all and are counted by their own filter.
+            IssueFilter::SitemapNon200 => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.in_sitemap == Some(true)
+                    && (page.is_redirect() || page.status.is_some_and(|status| status != 200))
+            }),
             IssueFilter::UrlsNotInSitemap => {
                 indices.retain(|&idx| pages[idx].in_sitemap == Some(false))
             }

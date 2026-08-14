@@ -205,8 +205,9 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
             let xml = format!(
                 "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\
                  <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\
-                 <url><loc>{base}/</loc></url>\
+                 <url><loc>{base}/</loc><lastmod>2026-08-01</lastmod></url>\
                  <url><loc>{base}/robots-meta</loc></url>\
+                 <url><loc>{base}/not-found</loc></url>\
                  </urlset>"
             );
             (ok, no_headers, xml)
@@ -1213,6 +1214,9 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::UrlsNotInSitemap => both(&["/images"], &["/"]),
         F::SitemapOrphans => both(&["/sitemap-orphan"], &[]),
         F::NonIndexableInSitemap => both(&["/robots-meta"], &[]),
+        // The sitemap advertises a URL that 404s, which is the point of the
+        // rule: a sitemap should list URLs that answer 200.
+        F::SitemapNon200 => both(&["/not-found"], &["/"]),
 
         // Security
         F::MissingHttps => both(&["/"], &[]),

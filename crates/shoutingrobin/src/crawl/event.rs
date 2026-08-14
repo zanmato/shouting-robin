@@ -59,6 +59,9 @@ pub struct PageRecord {
     pub near_duplicate_urls: Vec<String>,
     pub in_sitemap: Option<bool>,
     pub sitemap_url: Option<String>,
+    /// The `<lastmod>` the sitemap claims for this URL, verbatim. Sitemaps are
+    /// free to give a date or a full timestamp, so it is not parsed.
+    pub sitemap_lastmod: Option<String>,
     pub og_type: Option<String>,
     pub ecommerce: Option<EcommerceAudit>,
     pub outlinks: Vec<Outlink>,

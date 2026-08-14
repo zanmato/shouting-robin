@@ -174,8 +174,8 @@ pub fn write_sitemap(port: u16) {
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>{base}/</loc></url>
   <url><loc>{base}/index.html</loc></url>
-  <url><loc>{base}/about.html</loc></url>
-  <url><loc>{base}/orphan-page.html</loc></url>
+  <url><loc>{base}/about.html</loc><lastmod>2026-08-01</lastmod></url>
+  <url><loc>{base}/orphan-page.html</loc><lastmod>2026-07-15T09:30:00+02:00</lastmod></url>
 </urlset>
 "#
     );

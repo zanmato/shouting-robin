@@ -155,6 +155,7 @@ pub enum IssueFilter {
     UrlsNotInSitemap,
     SitemapOrphans,
     NonIndexableInSitemap,
+    SitemapNon200,
     IsProductPage,
     MissingPrice,
     MissingAvailability,
@@ -279,6 +280,7 @@ impl IssueFilter {
             IssueFilter::UrlsNotInSitemap => "Not in Sitemap",
             IssueFilter::SitemapOrphans => "Orphan URLs",
             IssueFilter::NonIndexableInSitemap => "Non-Indexable in Sitemap",
+            IssueFilter::SitemapNon200 => "Non-200 in Sitemap",
             IssueFilter::IsProductPage => "Product Pages",
             IssueFilter::MissingPrice => "Missing Price",
             IssueFilter::MissingAvailability => "Missing Availability",
@@ -405,6 +407,7 @@ impl IssueFilter {
             | Self::SdErrors
             | Self::ParseErrors
             | Self::SitemapOrphans
+            | Self::SitemapNon200
             | Self::RedirectLoop
             | Self::MissingHttps
             | Self::MixedContent

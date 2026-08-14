@@ -3,10 +3,12 @@ use std::collections::HashSet;
 use quick_xml::Reader;
 use quick_xml::events::Event;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SitemapUrl {
     pub sitemap_url: String,
     pub page_url: String,
+    /// The entry's `<lastmod>`, verbatim, when it has one.
+    pub lastmod: Option<String>,
 }
 
 pub async fn discover_sitemaps(root_url: &str) -> Vec<String> {
@@ -75,11 +77,12 @@ async fn expand_sitemap(
         return;
     }
 
-    if let Some(page_urls) = parse_urlset(&body) {
-        for page_url in page_urls {
+    if let Some(entries) = parse_urlset(&body) {
+        for (page_url, lastmod) in entries {
             results.push(SitemapUrl {
                 sitemap_url: root_sitemap.to_string(),
                 page_url,
+                lastmod,
             });
         }
     }
@@ -184,30 +187,69 @@ fn parse_sitemap_index(xml: &str) -> Option<Vec<String>> {
     }
 }
 
-fn parse_urlset(xml: &str) -> Option<Vec<String>> {
+/// The `<loc>` of each entry in a `<urlset>`, with its `<lastmod>` when it has
+/// one. `None` when the document is not a urlset at all.
+fn parse_urlset(xml: &str) -> Option<Vec<(String, Option<String>)>> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
 
-    let mut in_loc = false;
-    let mut urls = Vec::new();
+    let mut entries: Vec<(String, Option<String>)> = Vec::new();
+    let mut field: Option<Field> = None;
+    // The entry being read. A urlset is a flat list of <url> elements, so a
+    // <lastmod> belongs to the <loc> most recently seen.
+    let mut current: Option<(String, Option<String>)> = None;
     let mut buf = Vec::new();
+
+    enum Field {
+        Loc,
+        LastMod,
+    }
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
                 let local = e.local_name();
-                let name: &[u8] = local.as_ref();
-                in_loc = name == b"loc";
+                field = match local.as_ref() {
+                    b"loc" => Some(Field::Loc),
+                    b"lastmod" => Some(Field::LastMod),
+                    _ => None,
+                };
             }
-            Ok(Event::End(_)) => {
-                in_loc = false;
+            Ok(Event::End(e)) => {
+                // Closing a <url> flushes the entry it described.
+                if e.local_name().as_ref() == b"url"
+                    && let Some(entry) = current.take()
+                {
+                    entries.push(entry);
+                }
+                field = None;
             }
-            Ok(Event::Text(e)) if in_loc => {
-                if let Ok(text) = e.unescape() {
-                    let url = text.trim().to_string();
-                    if !url.is_empty() {
-                        urls.push(url);
+            Ok(Event::Text(e)) => {
+                let Ok(text) = e.unescape() else {
+                    buf.clear();
+                    continue;
+                };
+                let text = text.trim().to_string();
+                if text.is_empty() {
+                    buf.clear();
+                    continue;
+                }
+                match field {
+                    Some(Field::Loc) => {
+                        // A second <loc> without a closing </url> in between
+                        // means the document is not nesting entries; keep the
+                        // first rather than losing it.
+                        if let Some(entry) = current.take() {
+                            entries.push(entry);
+                        }
+                        current = Some((text, None));
                     }
+                    Some(Field::LastMod) => {
+                        if let Some(entry) = current.as_mut() {
+                            entry.1 = Some(text);
+                        }
+                    }
+                    None => {}
                 }
             }
             Ok(Event::Eof) => break,
@@ -216,8 +258,15 @@ fn parse_urlset(xml: &str) -> Option<Vec<String>> {
         }
         buf.clear();
     }
+    if let Some(entry) = current.take() {
+        entries.push(entry);
+    }
 
-    if urls.is_empty() { None } else { Some(urls) }
+    if entries.is_empty() {
+        None
+    } else {
+        Some(entries)
+    }
 }
 
 #[cfg(test)]
@@ -234,8 +283,35 @@ mod tests {
         </urlset>"#;
         let urls = parse_urlset(xml).unwrap();
         assert_eq!(urls.len(), 3);
-        assert_eq!(urls[0], "https://example.com/");
-        assert_eq!(urls[2], "https://example.com/contact");
+        assert_eq!(urls[0], ("https://example.com/".to_string(), None));
+        assert_eq!(urls[2], ("https://example.com/contact".to_string(), None));
+    }
+
+    #[test]
+    fn parses_lastmod_alongside_each_loc() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+            <url><loc>https://example.com/</loc><lastmod>2026-08-01</lastmod></url>
+            <url><loc>https://example.com/about</loc></url>
+            <url>
+                <lastmod>2026-07-15T09:30:00+02:00</lastmod>
+                <loc>https://example.com/contact</loc>
+            </url>
+        </urlset>"#;
+        let urls = parse_urlset(xml).unwrap();
+        assert_eq!(
+            urls,
+            vec![
+                (
+                    "https://example.com/".to_string(),
+                    Some("2026-08-01".to_string())
+                ),
+                ("https://example.com/about".to_string(), None),
+                // A lastmod before its loc belongs to no entry yet, so it is
+                // dropped rather than attached to the previous URL.
+                ("https://example.com/contact".to_string(), None),
+            ]
+        );
     }
 
     #[test]
@@ -302,7 +378,13 @@ mod tests {
 
         let body = decode_sitemap_body(&gzipped);
         let urls = parse_urlset(&body).expect("gzipped sitemap should parse");
-        assert_eq!(urls, vec!["https://example.com/a", "https://example.com/b"]);
+        assert_eq!(
+            urls,
+            vec![
+                ("https://example.com/a".to_string(), None),
+                ("https://example.com/b".to_string(), None),
+            ]
+        );
     }
 
     #[test]

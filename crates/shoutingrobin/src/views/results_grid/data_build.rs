@@ -158,6 +158,11 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
             Some((ResultTab::Images, IssueFilter::MissingSizeAttributes))
         }
         "Images Over 100 kB" => Some((ResultTab::Images, IssueFilter::ImageOver100Kb)),
+        "Non-200 URLs in Sitemap" => Some((ResultTab::Sitemaps, IssueFilter::SitemapNon200)),
+        "Non-Indexable URLs in Sitemap" => {
+            Some((ResultTab::Sitemaps, IssueFilter::NonIndexableInSitemap))
+        }
+        "Sitemap URLs Not Crawled" => Some((ResultTab::Sitemaps, IssueFilter::SitemapOrphans)),
         "Broken Images" => Some((ResultTab::Images, IssueFilter::ImageBroken)),
         "URLs with Parameters" => Some((ResultTab::Url, IssueFilter::UrlParameters)),
         "Missing X-Frame-Options" => Some((ResultTab::Security, IssueFilter::MissingFrameGuard)),
@@ -868,6 +873,36 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
                       the index.",
         hint: "Confirm each is deliberate. A canonical pointing at the wrong URL silently \
                removes the page from search.",
+    },
+    FilterDerivedRule {
+        name: "Non-200 URLs in Sitemap",
+        tab: ResultTab::Sitemaps,
+        filter: IssueFilter::SitemapNon200,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::High,
+        denominator: Denominator::Documents,
+        description: "URLs a sitemap advertises that answered with a redirect or an error.",
+        hint: "A sitemap should list the final, indexable URL. Update the entry or drop it.",
+    },
+    FilterDerivedRule {
+        name: "Non-Indexable URLs in Sitemap",
+        tab: ResultTab::Sitemaps,
+        filter: IssueFilter::NonIndexableInSitemap,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "URLs a sitemap advertises that are noindex, canonicalised or redirected.",
+        hint: "A sitemap is a list of URLs you want indexed. Remove the ones you don't.",
+    },
+    FilterDerivedRule {
+        name: "Sitemap URLs Not Crawled",
+        tab: ResultTab::Sitemaps,
+        filter: IssueFilter::SitemapOrphans,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "URLs listed in a sitemap that no page on the site links to.",
+        hint: "Either link to them so they can be found, or drop them from the sitemap.",
     },
     FilterDerivedRule {
         name: "Images Over 100 kB",

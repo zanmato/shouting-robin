@@ -102,6 +102,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0025_mixed_content",
         include_str!("../../migrations/0025_mixed_content.sql"),
     ),
+    (
+        "0026_sitemap_lastmod",
+        include_str!("../../migrations/0026_sitemap_lastmod.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -1062,19 +1066,19 @@ pub async fn load_pages_for_crawl(
             });
     }
 
-    let sitemap_rows = sqlx::query_as::<_, (String, String)>(
-        "SELECT page_url, sitemap_url FROM sitemap_urls WHERE crawl_id = ?",
+    let sitemap_rows = sqlx::query_as::<_, (String, String, Option<String>)>(
+        "SELECT page_url, sitemap_url, lastmod FROM sitemap_urls WHERE crawl_id = ?",
     )
     .bind(crawl_id)
     .fetch_all(pool)
     .await?;
 
-    let mut sitemap_by_url: std::collections::HashMap<String, String> =
+    let mut sitemap_by_url: std::collections::HashMap<String, (String, Option<String>)> =
         std::collections::HashMap::new();
-    for (page_url, sitemap_url) in &sitemap_rows {
+    for (page_url, sitemap_url, lastmod) in &sitemap_rows {
         sitemap_by_url
             .entry(page_url.clone())
-            .or_insert_with(|| sitemap_url.clone());
+            .or_insert_with(|| (sitemap_url.clone(), lastmod.clone()));
     }
 
     let ecom_rows = sqlx::query_as::<
@@ -1366,7 +1370,11 @@ pub async fn load_pages_for_crawl(
                 } else {
                     None
                 };
-                let page_sitemap_url = sitemap_by_url.get(&url).cloned();
+                let page_sitemap = sitemap_by_url.get(&url).cloned();
+                let page_sitemap_url = page_sitemap.as_ref().map(|(url, _)| url.clone());
+                let page_sitemap_lastmod = page_sitemap
+                    .as_ref()
+                    .and_then(|(_, lastmod)| lastmod.clone());
                 let page_ecommerce = ecom_by_url.remove(&url);
                 let page_inlinks = inlink_counts.get(&url).copied().unwrap_or(0);
                 let page_unique_inlinks = unique_inlink_counts.get(&url).copied().unwrap_or(0);
@@ -1426,6 +1434,7 @@ pub async fn load_pages_for_crawl(
                         .unwrap_or_default(),
                     in_sitemap: page_in_sitemap,
                     sitemap_url: page_sitemap_url,
+                    sitemap_lastmod: page_sitemap_lastmod,
                     og_type,
                     ecommerce: page_ecommerce,
                     a11y_errors: a11y_errors as u32,
@@ -1516,12 +1525,15 @@ pub async fn insert_sitemap_urls(
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     for entry in sitemap_urls {
-        sqlx::query("INSERT INTO sitemap_urls (crawl_id, sitemap_url, page_url) VALUES (?, ?, ?)")
-            .bind(crawl_id)
-            .bind(&entry.sitemap_url)
-            .bind(&entry.page_url)
-            .execute(&mut *tx)
-            .await?;
+        sqlx::query(
+            "INSERT INTO sitemap_urls (crawl_id, sitemap_url, page_url, lastmod) VALUES (?, ?, ?, ?)",
+        )
+        .bind(crawl_id)
+        .bind(&entry.sitemap_url)
+        .bind(&entry.page_url)
+        .bind(entry.lastmod.as_deref())
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
     Ok(())
@@ -1531,36 +1543,16 @@ pub async fn insert_sitemap_urls(
 pub struct SitemapStatus {
     pub page_url: String,
     pub sitemap_url: String,
-}
-
-#[allow(dead_code)]
-pub async fn load_sitemap_status(
-    pool: &SqlitePool,
-    crawl_id: i64,
-) -> Result<Vec<SitemapStatus>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (String, String)>(
-        "SELECT page_url, sitemap_url FROM sitemap_urls WHERE crawl_id = ?",
-    )
-    .bind(crawl_id)
-    .fetch_all(pool)
-    .await?;
-
-    Ok(rows
-        .into_iter()
-        .map(|(page_url, sitemap_url)| SitemapStatus {
-            page_url,
-            sitemap_url,
-        })
-        .collect())
+    pub lastmod: Option<String>,
 }
 
 pub async fn load_sitemap_orphans(
     pool: &SqlitePool,
     crawl_id: i64,
 ) -> Result<Vec<SitemapStatus>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (String, String)>(
+    let rows = sqlx::query_as::<_, (String, String, Option<String>)>(
         r#"
-        SELECT su.page_url, su.sitemap_url
+        SELECT su.page_url, su.sitemap_url, su.lastmod
         FROM sitemap_urls su
         LEFT JOIN pages p ON p.crawl_id = su.crawl_id AND p.url = su.page_url
         WHERE su.crawl_id = ? AND p.id IS NULL
@@ -1572,9 +1564,10 @@ pub async fn load_sitemap_orphans(
 
     Ok(rows
         .into_iter()
-        .map(|(page_url, sitemap_url)| SitemapStatus {
+        .map(|(page_url, sitemap_url, lastmod)| SitemapStatus {
             page_url,
             sitemap_url,
+            lastmod,
         })
         .collect())
 }
