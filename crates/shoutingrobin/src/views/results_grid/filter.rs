@@ -392,12 +392,6 @@ fn is_fetch_xhr(page: &PageRecord) -> bool {
     )
 }
 
-/// True when a record is a navigated, parsed document (from spider's page
-/// callback) rather than a harvested subresource (CSS/JS/image/font/XHR).
-/// Document-derived tabs key off this instead of `content_type`: spider can
-/// report a misleading `Content-Type` for the document itself (e.g. SPAs
-/// serving `application/javascript` for the request it actually issued), which
-/// would otherwise hide real pages from these tabs.
 /// True when we actually requested the URL and got an answer.
 ///
 /// A sitemap orphan and a robots.txt-blocked URL are recorded so they can be
@@ -408,8 +402,21 @@ fn was_fetched(page: &PageRecord) -> bool {
     page.status.is_some() || page.redirect_url.is_some()
 }
 
+/// True when a record is a navigated, parsed document (from spider's page
+/// callback) rather than a harvested subresource (CSS/JS/image/font/XHR).
+/// Document-derived tabs key off this instead of `content_type`: spider can
+/// report a misleading `Content-Type` for the document itself (e.g. SPAs
+/// serving `application/javascript` for the request it actually issued), which
+/// would otherwise hide real pages from these tabs.
+///
+/// A redirect is not one either. A 3xx response carries no document, so a tab
+/// describing what a document says can only show it as a row of empty cells —
+/// which is what it was doing: three 301s appeared on Page Titles, Meta Desc,
+/// H1, H2, Content, Canonicals and Hreflang, on tabs whose rules already knew
+/// to skip them. A redirect belongs on Response Codes, where its status is the
+/// point.
 fn is_page_document(page: &PageRecord) -> bool {
-    page.is_page && !page.is_resource
+    page.is_page && !page.is_resource && !page.is_redirect()
 }
 
 /// True when a Referrer-Policy value still hands the full URL to other origins,
@@ -488,7 +495,7 @@ pub(super) fn is_low_content(page: &PageRecord) -> bool {
 /// statuses, and in Chrome mode the document status is unreliable (a
 /// sub-resource's 404 can leak onto a perfectly good page).
 pub(crate) fn is_content_eligible(page: &PageRecord) -> bool {
-    is_page_document(page) && !page.is_redirect() && !page.is_noindex() && !page.is_canonicalised()
+    is_page_document(page) && !page.is_noindex() && !page.is_canonicalised()
 }
 
 /// The issue filters that represent an on-page content problem (as opposed to
@@ -610,6 +617,15 @@ pub(super) fn filter_for_tab(
             .iter()
             .enumerate()
             .filter(|(_, p)| p.is_internal && (is_page_document(p) || p.in_sitemap == Some(true)))
+            .map(|(i, _)| i)
+            .collect(),
+        // Every URL that answered, internal or external. It used to be every
+        // row, which put the sitemap orphans on it: 316 lines with an empty
+        // code, for URLs nothing had requested.
+        ResultTab::ResponseCodes => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| was_fetched(p))
             .map(|(i, _)| i)
             .collect(),
         ResultTab::Ecommerce | ResultTab::SiteStructure => pages
@@ -1778,5 +1794,121 @@ mod new_rule_tests {
             .len(),
             1
         );
+    }
+}
+
+#[cfg(test)]
+mod tab_membership_tests {
+    use super::*;
+
+    fn document(url: &str) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            title: Some("A title".into()),
+            ..Default::default()
+        }
+    }
+
+    fn redirect(url: &str, target: &str) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(301),
+            redirect_url: Some(target.into()),
+            redirect_status: Some(301),
+            ..Default::default()
+        }
+    }
+
+    /// A URL a sitemap lists and nothing ever requested.
+    fn orphan(url: &str) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            in_sitemap: Some(true),
+            ..Default::default()
+        }
+    }
+
+    fn pages() -> Vec<PageRecord> {
+        vec![
+            document("https://a.test/"),
+            redirect("https://a.test/old", "https://a.test/new"),
+            orphan("https://a.test/listed-only"),
+        ]
+    }
+
+    /// A 3xx carries no document, so a tab describing what a document says can
+    /// only show it as a row of empty cells.
+    #[test]
+    fn a_redirect_is_not_listed_on_the_content_tabs() {
+        let pages = pages();
+        for tab in [
+            ResultTab::PageTitles,
+            ResultTab::MetaDesc,
+            ResultTab::H1,
+            ResultTab::H2,
+            ResultTab::Content,
+            ResultTab::Canonicals,
+            ResultTab::Hreflang,
+            ResultTab::StructuredData,
+            ResultTab::Directives,
+        ] {
+            let urls = matching_urls(tab, IssueFilter::All, &pages);
+            assert_eq!(
+                urls,
+                vec!["https://a.test/".to_string()],
+                "{tab:?} lists something other than the one document"
+            );
+        }
+    }
+
+    /// It is still a response, and its code is the whole point of it.
+    #[test]
+    fn a_redirect_is_listed_on_response_codes() {
+        let urls = matching_urls(ResultTab::ResponseCodes, IssueFilter::All, &pages());
+        assert!(urls.contains(&"https://a.test/old".to_string()));
+        assert_eq!(
+            matching_urls(ResultTab::ResponseCodes, IssueFilter::Redirects, &pages()),
+            vec!["https://a.test/old".to_string()]
+        );
+    }
+
+    /// Nothing was requested for it, so there is no response to describe.
+    #[test]
+    fn a_url_that_was_never_fetched_is_not_listed_on_response_codes() {
+        let urls = matching_urls(ResultTab::ResponseCodes, IssueFilter::All, &pages());
+        assert!(
+            !urls.contains(&"https://a.test/listed-only".to_string()),
+            "got {urls:?}"
+        );
+        assert_eq!(urls.len(), 2, "the document and the redirect, got {urls:?}");
+    }
+
+    /// The tab that exists to report it still does.
+    #[test]
+    fn a_sitemap_orphan_stays_on_the_sitemaps_tab() {
+        let urls = matching_urls(ResultTab::Sitemaps, IssueFilter::All, &pages());
+        assert!(urls.contains(&"https://a.test/listed-only".to_string()));
+    }
+
+    /// External URLs answer too, and their codes are the reason the tab exists
+    /// for them.
+    #[test]
+    fn response_codes_covers_external_urls() {
+        let mut pages = pages();
+        pages.push(PageRecord {
+            url: "https://other.invalid/asset.png".into(),
+            is_internal: false,
+            is_resource: true,
+            status: Some(404),
+            ..Default::default()
+        });
+        let urls = matching_urls(ResultTab::ResponseCodes, IssueFilter::All, &pages);
+        assert!(urls.contains(&"https://other.invalid/asset.png".to_string()));
     }
 }
