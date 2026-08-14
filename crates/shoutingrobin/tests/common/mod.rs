@@ -191,6 +191,22 @@ pub fn crawl_test_site(root_url: &str) -> Vec<shoutingrobin::crawl::event::PageR
     )
 }
 
+/// Crawls with the post-crawl resource pass enabled, which is off for every
+/// other test: it requests each discovered image, stylesheet, script and
+/// external link. The fixture's off-site URLs are all `.invalid`, which cannot
+/// resolve, so nothing leaves the machine.
+pub fn crawl_test_site_checking_resources(
+    root_url: &str,
+) -> Vec<shoutingrobin::crawl::event::PageRecord> {
+    crawl_test_site_inner(
+        root_url,
+        shoutingrobin::crawl::render_mode::RenderMode::Http,
+        Duration::from_secs(30),
+        false,
+        true,
+    )
+}
+
 pub fn chrome_test_guard() -> std::sync::MutexGuard<'static, ()> {
     static CHROME_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     let guard = CHROME_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -213,6 +229,7 @@ pub fn crawl_test_site_reloaded(root_url: &str) -> Vec<shoutingrobin::crawl::eve
         shoutingrobin::crawl::render_mode::RenderMode::Http,
         Duration::from_secs(30),
         true,
+        false,
     )
 }
 
@@ -221,7 +238,7 @@ pub fn crawl_test_site_with_mode(
     render_mode: shoutingrobin::crawl::render_mode::RenderMode,
     timeout: Duration,
 ) -> Vec<shoutingrobin::crawl::event::PageRecord> {
-    crawl_test_site_inner(root_url, render_mode, timeout, false)
+    crawl_test_site_inner(root_url, render_mode, timeout, false, false)
 }
 
 fn crawl_test_site_inner(
@@ -229,6 +246,7 @@ fn crawl_test_site_inner(
     render_mode: shoutingrobin::crawl::render_mode::RenderMode,
     timeout: Duration,
     reload_after_finish: bool,
+    check_resources: bool,
 ) -> Vec<shoutingrobin::crawl::event::PageRecord> {
     let _chrome_guard = matches!(
         render_mode,
@@ -280,6 +298,7 @@ fn crawl_test_site_inner(
                 crawl_subdomains: false,
                 list_mode: false,
                 seed_urls: Vec::new(),
+                check_resources,
             },
         )
     };

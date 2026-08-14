@@ -62,6 +62,12 @@ pub struct PageRecord {
     pub og_type: Option<String>,
     pub ecommerce: Option<EcommerceAudit>,
     pub outlinks: Vec<Outlink>,
+    /// Stylesheet and script URLs the page pulls in, absolute and resolved.
+    ///
+    /// Not persisted: these exist so the post-crawl resource pass knows what to
+    /// status-check, and the resources it finds are recorded as rows of their
+    /// own. A record loaded back from storage carries an empty list.
+    pub subresources: Vec<Subresource>,
     pub inlinks_count: u32,
     /// Number of distinct source URLs linking here. A page linking to this one
     /// three times counts as three inlinks but one unique inlink.
@@ -136,6 +142,19 @@ pub enum HreflangIssue {
     NonCanonicalUrl {
         hreflang_url: String,
     },
+}
+
+/// A non-anchor resource a page pulls in, with what pulled it in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Subresource {
+    pub url: String,
+    pub kind: SubresourceKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubresourceKind {
+    Stylesheet,
+    Script,
 }
 
 #[derive(Debug, Clone)]

@@ -805,6 +805,9 @@ fn crawl_and_load(root_url: &str, render_mode: RenderMode, timeout: Duration) ->
                 crawl_subdomains: false,
                 list_mode: false,
                 seed_urls: Vec::new(),
+                // The fixture links to other origins on purpose; a filter test
+                // must not send requests to them.
+                check_resources: false,
             },
         )
     };

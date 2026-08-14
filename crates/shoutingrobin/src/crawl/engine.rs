@@ -13,8 +13,9 @@ use spider::website::Website;
 use sqlx::SqlitePool;
 
 use crate::crawl::CrawlConfig;
-use crate::crawl::event::{A11yIssue, CrawlEvent, PageRecord};
+use crate::crawl::event::{A11yIssue, CrawlEvent, PageRecord, SubresourceKind};
 use crate::crawl::render_mode::RenderMode;
+use crate::crawl::resources::ResourceKind;
 use crate::crawl::url_norm::urls_equivalent;
 use crate::storage;
 
@@ -313,6 +314,9 @@ impl CrawlEngine {
                 // we record each one once.
                 let mut seen_resources: std::collections::HashSet<String> =
                     std::collections::HashSet::new();
+                // Every resource URL the pages point at, in discovery order,
+                // for the status-check pass once the crawl is done.
+                let mut discovered_resources: Vec<(String, ResourceKind)> = Vec::new();
                 tracing::info!("page pump started, waiting for pages...");
                 loop {
                     let mut page = match rx.recv().await {
@@ -521,7 +525,21 @@ impl CrawlEngine {
                     if let Err(e) = storage::insert_page(&pool_pages, crawl_id, &record).await {
                         tracing::warn!(error=%e, url=%record.url, "failed to persist page");
                     }
+                    for image in &record.images {
+                        discovered_resources.push((image.src.clone(), ResourceKind::Image));
+                    }
+                    for subresource in &record.subresources {
+                        let kind = match subresource.kind {
+                            SubresourceKind::Stylesheet => ResourceKind::Stylesheet,
+                            SubresourceKind::Script => ResourceKind::Script,
+                        };
+                        discovered_resources.push((subresource.url.clone(), kind));
+                    }
                     for link in &record.outlinks {
+                        if !is_same_domain(&root_for_pump, &link.dst_url) {
+                            discovered_resources
+                                .push((link.dst_url.clone(), ResourceKind::ExternalLink));
+                        }
                         let entry = inlink_counts.entry(link.dst_url.clone()).or_insert((
                             0,
                             0,
@@ -628,7 +646,7 @@ impl CrawlEngine {
                         tracing::warn!(error=%e, "failed to send progress event");
                     }
                 }
-                total
+                (total, discovered_resources)
             });
 
             // Chrome mode renders each page in a browser; Http mode forces
@@ -656,8 +674,23 @@ impl CrawlEngine {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
 
-            let total = pump.await.unwrap_or(0);
+            let (total, discovered_resources) = pump.await.unwrap_or_else(|e| {
+                tracing::warn!(error=%e, "page pump task failed");
+                (0, Vec::new())
+            });
             tracing::info!(total, "page pump finished");
+
+            check_discovered_resources(
+                &pool,
+                crawl_id,
+                &tx,
+                &config,
+                &root_url,
+                discovered_resources,
+                &cancel_flag,
+            )
+            .await;
+
             if let Err(e) = storage::finish_crawl(&pool, crawl_id).await {
                 tracing::warn!(error=%e, "failed to finalize crawl record");
             }
@@ -720,6 +753,81 @@ impl CrawlEngine {
 
         (cancel, fut)
     }
+}
+
+/// Requests every resource the crawl discovered (images, stylesheets, scripts
+/// and links to other sites) once, and records each as a row of its own.
+///
+/// Runs after the page pump so it never competes with the crawl for the target
+/// site's attention, and skips anything already recorded as a page: an internal
+/// URL the crawler reached, or a resource Chrome already reported through the
+/// Resource Timing API.
+async fn check_discovered_resources(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    tx: &Sender<CrawlEvent>,
+    config: &CrawlConfig,
+    root_url: &str,
+    discovered: Vec<(String, ResourceKind)>,
+    cancel: &Arc<AtomicBool>,
+) {
+    if !config.check_resources || discovered.is_empty() || cancel.load(Ordering::Relaxed) {
+        return;
+    }
+    let recorded = match storage::load_page_urls(pool, crawl_id).await {
+        Ok(urls) => urls,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to read recorded URLs; skipping resource checks");
+            return;
+        }
+    };
+    let planned = crate::crawl::resources::plan_checks(&discovered, &recorded);
+    if planned.is_empty() {
+        return;
+    }
+    let client = match build_ssr_client(config) {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to build resource client; skipping resource checks");
+            return;
+        }
+    };
+    tracing::info!(
+        count = planned.len(),
+        "status-checking discovered resources"
+    );
+
+    crate::crawl::resources::check_all(&client, planned, cancel, |check| async move {
+        let mut record = PageRecord {
+            url: check.url.clone(),
+            status: check.status,
+            size_bytes: check.size_bytes,
+            content_type: check.content_type.clone(),
+            response_time: check.response_time,
+            is_internal: is_same_domain(root_url, &check.url),
+            is_resource: true,
+            resource_initiator: Some(check.kind.initiator().to_string()),
+            redirect_url: check.redirect_url.clone(),
+            ..Default::default()
+        };
+        if record.redirect_url.is_some() {
+            record.redirect_status = record
+                .status
+                .filter(|code| (300..400).contains(code))
+                .or(Some(301));
+        }
+        if let Some(error) = &check.error {
+            tracing::debug!(url = %check.url, error = %error, "resource check failed");
+        }
+        record.compute_indexability();
+        if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
+            tracing::warn!(error=%e, url=%record.url, "failed to persist resource");
+        }
+        if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+            tracing::error!(error=%e, "failed to send resource event");
+        }
+    })
+    .await;
 }
 
 pub fn channel() -> (Sender<CrawlEvent>, Receiver<CrawlEvent>) {

@@ -6,8 +6,11 @@ use std::hash::{Hash, Hasher};
 
 use scraper::{Html, Selector};
 
+use crate::crawl::url_norm::decode_entities;
+
 use crate::crawl::event::{
     EcommerceAudit, ImageRef, Outlink, PageRecord, SdFormat, SdIssue, SdItem, SdSeverity,
+    Subresource, SubresourceKind,
 };
 use crate::crawl::font_metrics::{
     META_DESCRIPTION_FONT_SIZE_PX, TITLE_FONT_SIZE_PX, text_pixel_width,
@@ -64,6 +67,7 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     extract_structured_data(&doc, record);
     extract_microdata(&doc, record);
     extract_images(&doc, record);
+    extract_subresources(&doc, record);
     extract_anchors(&doc, record);
     extract_og_type(&doc, record);
     extract_mixed_content(&doc, record);
@@ -363,6 +367,7 @@ fn extract_images(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse("img") else {
         return;
     };
+    let base = url::Url::parse(&record.url).ok();
     for el in doc.select(&sel) {
         let Some(src) = el.value().attr("src") else {
             continue;
@@ -374,7 +379,14 @@ fn extract_images(doc: &Html, record: &mut PageRecord) {
         let src = if src.to_ascii_lowercase().starts_with("data:") {
             summarize_inline_image_src(src)
         } else {
-            src.to_string()
+            // Resolved against the page, so an image is identified by where it
+            // actually lives: a bare "/logo.png" cannot be requested, cannot be
+            // opened from the details panel, and would merge two different
+            // origins' images into one row on a subdomain crawl.
+            match base.as_ref().and_then(|base| base.join(src).ok()) {
+                Some(resolved) => resolved.to_string(),
+                None => src.to_string(),
+            }
         };
         let has_alt_attr = el.value().attr("alt").is_some();
         let alt = el.value().attr("alt").map(|a| a.to_string());
@@ -388,6 +400,44 @@ fn extract_images(doc: &Html, record: &mut PageRecord) {
             height,
             has_alt_attr,
         });
+    }
+}
+
+/// Records the stylesheets and scripts the page pulls in, so the post-crawl
+/// resource pass can status-check them. Images come from `extract_images` and
+/// links from `extract_anchors`; these two have no other home.
+fn extract_subresources(doc: &Html, record: &mut PageRecord) {
+    let Some(base) = url::Url::parse(&record.url).ok() else {
+        return;
+    };
+    const SOURCES: [(&str, &str, SubresourceKind); 2] = [
+        (
+            r#"link[rel="stylesheet" i][href]"#,
+            "href",
+            SubresourceKind::Stylesheet,
+        ),
+        ("script[src]", "src", SubresourceKind::Script),
+    ];
+    for (selector, attribute, kind) in SOURCES {
+        let Ok(sel) = Selector::parse(selector) else {
+            continue;
+        };
+        for el in doc.select(&sel) {
+            let Some(value) = el.value().attr(attribute) else {
+                continue;
+            };
+            let value = decode_entities(value.trim());
+            if value.is_empty() {
+                continue;
+            }
+            let Some(url) = base.join(&value).ok().map(|url| url.to_string()) else {
+                continue;
+            };
+            let subresource = Subresource { url, kind };
+            if !record.subresources.contains(&subresource) {
+                record.subresources.push(subresource);
+            }
+        }
     }
 }
 
@@ -1644,8 +1694,8 @@ mod tests {
         // one image rather than becoming two.
         assert_eq!(r.images[0].src, r.images[1].src);
         assert_ne!(r.images[0].src, r.images[2].src);
-        // A fetchable source is untouched.
-        assert_eq!(r.images[3].src, "/real.png");
+        // A fetchable source is resolved against the page.
+        assert_eq!(r.images[3].src, "https://example.com/real.png");
     }
 
     #[test]

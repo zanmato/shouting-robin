@@ -131,18 +131,18 @@ fn test_http_crawl() {
         external
             .outlinks
             .iter()
-            .any(|l| l.dst_url.contains("example.com")),
-        "external page should link to example.com"
+            .any(|l| l.dst_url.contains("example.invalid")),
+        "external page should link to example.invalid"
     );
     assert!(
         external
             .images
             .iter()
-            .any(|i| i.src.contains("example.com")),
+            .any(|i| i.src.contains("example.invalid")),
         "external page should reference external image"
     );
 
-    // External bail: external-link.html links off-domain to books.toscrape.com.
+    // External bail: external-link.html links off-domain to books.invalid.
     // We capture it as an outlink but must never crawl or analyze the external
     // host as a page of its own. Asserting on this also keeps the test offline.
     let external_link =
@@ -151,11 +151,11 @@ fn test_http_crawl() {
         external_link
             .outlinks
             .iter()
-            .any(|l| l.dst_url.contains("books.toscrape.com")),
+            .any(|l| l.dst_url.contains("books.invalid")),
         "external-link page should record the off-domain link as an outlink"
     );
     assert!(
-        !pages.iter().any(|p| p.url.contains("books.toscrape.com")),
+        !pages.iter().any(|p| p.url.contains("books.invalid")),
         "off-domain host must not be crawled as its own page, found: {:?}",
         pages
             .iter()
@@ -430,7 +430,7 @@ fn test_chrome_crawl() {
         external
             .images
             .iter()
-            .any(|i| i.src.contains("example.com")),
+            .any(|i| i.src.contains("example.invalid")),
         "external page should have an external image"
     );
 
@@ -470,8 +470,8 @@ fn test_chrome_crawl() {
         external
             .outlinks
             .iter()
-            .any(|l| l.dst_url.contains("example.com")),
-        "external page should link to example.com"
+            .any(|l| l.dst_url.contains("example.invalid")),
+        "external page should link to example.invalid"
     );
     assert!(
         home.outlinks.len() > 5,
@@ -650,5 +650,55 @@ fn test_escaped_ampersands_in_hrefs_are_decoded_before_crawling() {
             .any(|p| p.url.contains("about.html?ref=nav&page=2")),
         "the decoded URL should have been crawled, got {:?}",
         page_paths(&pages)
+    );
+}
+
+/// Everything the pages point at is requested once after the crawl: images,
+/// stylesheets, scripts and links to other sites. Without this pass a broken
+/// image is invisible and no image has a known size.
+#[test]
+fn test_discovered_resources_are_status_checked() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+
+    let pages = crawl_test_site_checking_resources(&root_url);
+
+    server.kill();
+
+    let resource = |path: &str| {
+        pages
+            .iter()
+            .find(|page| page.is_resource && page.url.ends_with(path))
+    };
+
+    let stylesheet = resource("/style.css").expect("the stylesheet should be a row of its own");
+    assert_eq!(stylesheet.status, Some(200));
+    assert_eq!(stylesheet.content_type.as_deref(), Some("text/css"));
+    assert!(
+        stylesheet.size_bytes > 0,
+        "a 200 stylesheet should have a size"
+    );
+
+    let script = resource("/app.js").expect("the script should be a row of its own");
+    assert_eq!(script.status, Some(200));
+
+    let logo = resource("/img/logo.png").expect("the logo should be a row of its own");
+    assert_eq!(logo.status, Some(200));
+    assert_eq!(logo.content_type.as_deref(), Some("image/png"));
+    assert!(logo.size_bytes > 0, "a 200 image should have a size");
+    assert_eq!(logo.resource_initiator.as_deref(), Some("img"));
+
+    // images.html references two files that do not exist. Being able to say so
+    // is the point of the pass.
+    let missing = resource("/img/banner.png").expect("a missing image is still a row");
+    assert_eq!(missing.status, Some(404));
+
+    // A page the crawler reached itself must not be re-listed as a resource.
+    assert!(
+        !pages
+            .iter()
+            .any(|page| page.is_resource && page.url.ends_with("/about.html")),
+        "a crawled page should not also appear as a resource row"
     );
 }

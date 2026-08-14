@@ -3,6 +3,7 @@ pub mod engine;
 pub mod event;
 pub mod font_metrics;
 pub mod render_mode;
+pub mod resources;
 pub mod similarity;
 pub mod sitemap;
 pub mod url_norm;
@@ -40,4 +41,16 @@ pub struct CrawlConfig {
     pub list_mode: bool,
     #[serde(default)]
     pub seed_urls: Vec<String>,
+    /// Request every discovered image, stylesheet, script and external link
+    /// once after the page crawl, to record its status, type and size.
+    ///
+    /// On by default: without it a broken image or a dead external link is
+    /// invisible. Off is one request per page and nothing else, which is what
+    /// the test suites want so they never reach a third-party host.
+    #[serde(default = "default_true")]
+    pub check_resources: bool,
+}
+
+fn default_true() -> bool {
+    true
 }

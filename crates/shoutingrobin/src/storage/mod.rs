@@ -440,6 +440,19 @@ async fn insert_links(
     Ok(())
 }
 
+/// Every URL already recorded as a row of this crawl. The resource pass uses
+/// it to skip URLs the crawler already reached or Chrome already reported.
+pub async fn load_page_urls(
+    pool: &SqlitePool,
+    crawl_id: i64,
+) -> Result<std::collections::HashSet<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as("SELECT url FROM pages WHERE crawl_id = ?")
+        .bind(crawl_id)
+        .fetch_all(pool)
+        .await?;
+    Ok(rows.into_iter().map(|(url,)| url).collect())
+}
+
 #[allow(dead_code)]
 pub async fn compute_inlink_counts(
     pool: &SqlitePool,

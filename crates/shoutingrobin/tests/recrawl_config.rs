@@ -20,6 +20,7 @@ fn sample_config() -> CrawlConfig {
         exclude_patterns: vec!["/tag/.*".to_string()],
         crawl_subdomains: true,
         list_mode: true,
+        check_resources: true,
         seed_urls: vec![
             "https://example.com/one".to_string(),
             "https://example.com/two".to_string(),

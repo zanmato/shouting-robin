@@ -151,6 +151,7 @@ impl CrawlBar {
             crawl_subdomains: self.crawl_subdomains,
             list_mode: self.list_mode,
             seed_urls,
+            check_resources: true,
         }
     }
 
