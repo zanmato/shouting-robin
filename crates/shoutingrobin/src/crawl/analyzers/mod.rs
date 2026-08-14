@@ -533,14 +533,27 @@ fn collapse_whitespace(text: &str) -> Option<String> {
     }
 }
 
-/// The anchor text of a link, falling back to the alt text of any image it
-/// wraps.
+/// The anchor text of a link: its accessible name, in the order a browser
+/// computes one.
 ///
-/// Search engines read an image link's `alt` as its anchor text, so a header
-/// logo linking home with `alt="ByLynga"` is not an anchorless link. Without
-/// the fallback a single templated image link is reported on every page of a
+/// `aria-label` first, because an author who writes one is overriding whatever
+/// is inside the element and both screen readers and search engines honour
+/// that. Then the element's text content, which already includes the text of an
+/// inline `<svg><title>`, since that title is a text node inside the anchor.
+/// Only when all of that collapses to nothing does the `alt` of a wrapped image
+/// stand in: search engines read an image link's `alt` as its anchor text, so a
+/// header logo linking home with `alt="ByLynga"` is not an anchorless link, and
+/// without the fallback one templated image link is reported on every page of a
 /// site.
+///
+/// `alt` written on the `<a>` itself is deliberately not read. HTML allows the
+/// attribute on `<img>`, `<area>` and `<input type="image">` only, so browsers
+/// ignore it, screen readers announce the link unlabelled and a search engine
+/// reads nothing. A link carrying only that is genuinely anchorless.
 fn anchor_text(el: &scraper::ElementRef, image_alt: &Selector) -> Option<String> {
+    if let Some(label) = el.value().attr("aria-label").and_then(collapse_whitespace) {
+        return Some(label);
+    }
     let text = el.text().collect::<Vec<_>>().join(" ");
     if let Some(anchor) = collapse_whitespace(&text) {
         return Some(anchor);
@@ -1856,5 +1869,49 @@ mod tests {
             </body></html>"#,
         );
         assert_eq!(r.outlinks[0].anchor.as_deref(), Some("Swedish flag"));
+    }
+
+    #[test]
+    fn an_aria_label_names_a_link_that_has_no_text() {
+        let r = analyze_at(
+            "https://example.com/page",
+            r#"<html><head><title>T</title></head><body>
+            <a href="https://example.com/next" aria-label="Nästa"><svg class="bi"></svg></a>
+            <a href="https://example.com/prev" aria-label="   "><svg class="bi"></svg></a>
+            <a href="https://example.com/first" alt="Första"><svg class="bi"></svg></a>
+            </body></html>"#,
+        );
+        assert_eq!(r.outlinks[0].anchor.as_deref(), Some("Nästa"));
+        // A whitespace-only label names nothing.
+        assert_eq!(r.outlinks[1].anchor, None);
+        // `alt` is not a valid attribute of `<a>`; browsers ignore it, so a
+        // link carrying only that is genuinely unlabelled.
+        assert_eq!(r.outlinks[2].anchor, None);
+    }
+
+    #[test]
+    fn an_aria_label_overrides_the_text_inside_the_link() {
+        let r = analyze_at(
+            "https://example.com/page",
+            r#"<html><head><title>T</title></head><body>
+            <a href="https://example.com/more" aria-label="Read the full review">More</a>
+            </body></html>"#,
+        );
+        assert_eq!(
+            r.outlinks[0].anchor.as_deref(),
+            Some("Read the full review"),
+            "an author's explicit label is what a browser announces"
+        );
+    }
+
+    #[test]
+    fn an_inline_svg_title_names_a_link() {
+        let r = analyze_at(
+            "https://example.com/page",
+            r#"<html><head><title>T</title></head><body>
+            <a href="https://example.com/next"><svg><title>Next page</title><path/></svg></a>
+            </body></html>"#,
+        );
+        assert_eq!(r.outlinks[0].anchor.as_deref(), Some("Next page"));
     }
 }
