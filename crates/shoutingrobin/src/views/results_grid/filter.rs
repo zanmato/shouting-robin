@@ -81,6 +81,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::NearDuplicates,
             IssueFilter::LowContent,
             IssueFilter::SsrContentMissing,
+            IssueFilter::MissingBodyTag,
             IssueFilter::BlockedByRobots,
         ],
         ResultTab::Images => &[
@@ -1033,6 +1034,11 @@ pub(super) fn filter_for_tab(
                     .is_none_or(referrer_policy_leaks_url)
             }),
             IssueFilter::MixedContent => indices.retain(|&idx| pages[idx].has_mixed_content),
+            // `Some(false)` only: a row with no markup to read (a subresource,
+            // or a URL nothing fetched) has nothing to be missing.
+            IssueFilter::MissingBodyTag => {
+                indices.retain(|&idx| pages[idx].has_body_tag == Some(false))
+            }
             // The Links tab lists one row per URL, so a link-level sub-filter
             // selects the pages carrying at least one such link. The details
             // panel's Outlinks section is where the individual links are.

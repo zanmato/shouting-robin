@@ -17,6 +17,8 @@ use crate::crawl::font_metrics::{meta_description_pixel_width, title_pixel_width
 pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str) {
     let doc = Html::parse_document(html);
 
+    record.has_body_tag = Some(has_element(html, "body"));
+
     record.title = select_text(&doc, "title");
     record.meta_description = select_attr(&doc, r#"meta[name="description"]"#, "content");
     record.h1 = select_text(&doc, "h1");
@@ -107,10 +109,39 @@ fn extract_mixed_content(doc: &Html, record: &mut PageRecord) {
     }
 }
 
+/// True when the markup as served contains the named element's start tag.
+///
+/// Read off the source rather than the parsed tree on purpose: an HTML parser
+/// is required to invent `<html>`, `<head>` and `<body>` when they are absent,
+/// so every parsed document has a body whether or not the server sent one.
+/// Only the source can answer whether the author wrote it.
+///
+/// Browsers recover, which is why a page like this looks fine and still counts:
+/// what the parser had to guess is not what the site said.
+fn has_element(html: &str, name: &str) -> bool {
+    let lowered = html.to_ascii_lowercase();
+    let needle = format!("<{name}");
+    lowered.match_indices(&needle).any(|(index, _)| {
+        // `<body` must be the whole tag name, so what follows it is whitespace,
+        // the end of the tag, or a self-closing slash. Otherwise `<bodybuilder>`
+        // would answer for `<body>`.
+        lowered[index + needle.len()..]
+            .chars()
+            .next()
+            .is_none_or(|next| next.is_whitespace() || next == '>' || next == '/')
+    })
+}
+
 /// Compares the raw server-rendered HTML against the already-analyzed rendered
 /// DOM (`record`) to detect pages whose content only appears after client-side
 /// JavaScript. Call after `analyze_html` so the rendered fields are populated.
 pub fn analyze_ssr(record: &mut PageRecord, raw_html: &str, content_selector: &str) {
+    // Read off the server's markup, replacing whatever the rendered DOM said.
+    // Chrome hands back a serialised document, and a serialised document always
+    // has a body because the parser put one there — in Chrome mode the answer
+    // is only available here, from the bytes the server actually sent.
+    record.has_body_tag = Some(has_element(raw_html, "body"));
+
     const MIN_RENDERED_WORDS: u32 = 50;
     const SSR_RATIO_THRESHOLD: f32 = 0.5;
 
@@ -1869,6 +1900,33 @@ mod tests {
             </body></html>"#,
         );
         assert_eq!(r.outlinks[0].anchor.as_deref(), Some("Swedish flag"));
+    }
+
+    #[test]
+    fn a_document_with_no_body_element_is_recorded_as_missing_one() {
+        // A parser invents `<body>`, so this can only be read off the source.
+        let without = analyze_at(
+            "https://example.com/shell",
+            r#"<!doctype html><html lang="en"><head><title>T</title></head>
+               <h1>Straight into content</h1><p>No body element anywhere.</p></html>"#,
+        );
+        assert_eq!(without.has_body_tag, Some(false));
+
+        let with = analyze_at(
+            "https://example.com/page",
+            r#"<!doctype html><html><head><title>T</title></head><body><h1>H</h1></body></html>"#,
+        );
+        assert_eq!(with.has_body_tag, Some(true));
+    }
+
+    #[test]
+    fn an_element_whose_name_merely_starts_the_same_does_not_count() {
+        let r = analyze_at(
+            "https://example.com/page",
+            r#"<!doctype html><html><head><title>T</title></head>
+               <bodybuilder>not a body</bodybuilder></html>"#,
+        );
+        assert_eq!(r.has_body_tag, Some(false));
     }
 
     #[test]

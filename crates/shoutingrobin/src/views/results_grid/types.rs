@@ -222,6 +222,7 @@ pub enum IssueFilter {
     LinkNofollow,
     LinkNoAnchorText,
     LinkExternal,
+    MissingBodyTag,
     DepthShallow,
     DepthMedium,
     DepthDeep,
@@ -327,6 +328,7 @@ impl IssueFilter {
             IssueFilter::UrlParameters => "Parameters",
             IssueFilter::UrlOverLength => "Over 115 Chars",
             IssueFilter::UrlSpaces => "Contains Space",
+            IssueFilter::MissingBodyTag => "Missing <body>",
             IssueFilter::DirectiveNoindex => "Noindex",
             IssueFilter::DirectiveNofollow => "Nofollow",
             IssueFilter::DirectiveNoarchive => "Noarchive",
@@ -416,6 +418,7 @@ impl IssueFilter {
             | Self::BlockedByRobots
             | Self::DirectiveNoindex
             | Self::ImageBroken
+            | Self::MissingBodyTag
             | Self::LinkBroken => Tone::Err,
 
             Self::NonIndexable

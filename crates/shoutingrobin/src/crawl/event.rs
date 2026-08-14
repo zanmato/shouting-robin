@@ -103,6 +103,10 @@ pub struct PageRecord {
     /// image, iframe, media, …) over plain HTTP. Browsers block or warn on such
     /// mixed content, so it's a security issue worth flagging.
     pub has_mixed_content: bool,
+    /// Whether the markup as served carries a `<body>` start tag. `None` for a
+    /// row that is not a parsed document: a subresource, or a URL nothing was
+    /// fetched for, neither of which has markup to be missing anything.
+    pub has_body_tag: Option<bool>,
 }
 
 #[derive(Debug, Clone)]

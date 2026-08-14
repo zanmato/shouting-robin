@@ -1,0 +1,1 @@
+ALTER TABLE pages ADD COLUMN has_body_tag INTEGER;

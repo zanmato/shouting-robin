@@ -118,6 +118,7 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("near_duplicate_count", "Near Dups", 80., None),
             col("ssr_words", "SSR Words", 90., None),
             col("ssr_diff", "SSR Diff", 90., None),
+            col("body_tag", "Body Tag", 80., None),
             col("indexability", "Indexability", 110., None),
         ],
         // One row per unique image source. A footer logo referenced from every
@@ -499,6 +500,7 @@ pub(super) fn is_tag_column(key: &str) -> bool {
             | "sec_content_type_opts"
             | "sec_referrer_policy"
             | "sec_mixed_content"
+            | "body_tag"
     )
 }
 

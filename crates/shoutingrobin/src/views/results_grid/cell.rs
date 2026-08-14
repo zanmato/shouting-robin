@@ -524,6 +524,11 @@ pub(super) fn cell_text(
                 _ => "No",
             })
         }
+        "body_tag" => match record.has_body_tag {
+            Some(true) => SharedString::from("Yes"),
+            Some(false) => SharedString::from("No"),
+            None => SharedString::from(NO_VALUE),
+        },
         "sec_mixed_content" => SharedString::from(if record.has_mixed_content {
             "Yes"
         } else {
@@ -682,6 +687,12 @@ pub(super) fn render_cell_tag(
         | "sec_referrer_policy" => match text.as_ref() {
             "Yes" => Tone::Ok,
             "No" => Tone::Warn,
+            _ => return None,
+        },
+        // A missing body inverts it too: "No" is the finding.
+        "body_tag" => match text.as_ref() {
+            "Yes" => Tone::Ok,
+            "No" => Tone::Err,
             _ => return None,
         },
         // Mixed content inverts the polarity: "Yes" means insecure subresources.

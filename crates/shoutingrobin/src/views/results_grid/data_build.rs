@@ -152,6 +152,7 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Multiple H1" => Some((ResultTab::H1, IssueFilter::Multiple)),
         "Canonicalised" => Some((ResultTab::Canonicals, IssueFilter::Canonicalised)),
         "Noindex" => Some((ResultTab::Directives, IssueFilter::DirectiveNoindex)),
+        "Missing <body> Tag" => Some((ResultTab::Content, IssueFilter::MissingBodyTag)),
         "Images Missing Alt Attribute" => {
             Some((ResultTab::Images, IssueFilter::MissingAltAttribute))
         }
@@ -1026,6 +1027,21 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         description: "Pages with no canonical link element.",
         hint: "Add a self-referencing canonical to every page, so a URL that picks up \
                parameters or a tracking suffix still points at one address.",
+    },
+    FilterDerivedRule {
+        name: "Missing <body> Tag",
+        tab: ResultTab::Content,
+        filter: IssueFilter::MissingBodyTag,
+        // An Issue, and a high one: the markup is invalid, and everything that
+        // reads the page — parser, screen reader, scraper — is recovering from
+        // it in its own way rather than reading what the site meant.
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::High,
+        denominator: Denominator::Documents,
+        description: "Pages whose markup has no <body> element.",
+        hint: "Wrap the page content in <body>. A browser invents one and renders \
+               anyway, so this is easy to ship without noticing, and what every other \
+               consumer of the page then reads is a guess.",
     },
     FilterDerivedRule {
         name: "Noindex",

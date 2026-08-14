@@ -53,6 +53,7 @@ fn linked_paths() -> Vec<String> {
         "/near-dup-a",
         "/near-dup-b",
         "/low-content",
+        "/no-body",
         "/large",
         "/images",
         "/canonical-self",
@@ -196,6 +197,21 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                 ),
             )
         }
+        // Markup with no `<body>` element, which a parser invents and the
+        // source therefore has to be read for. Written out rather than built
+        // with `doc`, which always writes one.
+        "/no-body" => (
+            ok,
+            no_headers,
+            format!(
+                "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">\
+                 <title>A page whose markup has no body element at all</title>\
+                 <meta name=\"description\" content=\"Markup that goes from the head \
+                 straight into content, the way a JavaScript shell often does.\"></head>\
+                 <h1>No body tag</h1><h2>Recovered by the parser</h2><p>{}</p></html>",
+                lorem(120)
+            ),
+        ),
         "/robots.txt" => (
             ok,
             no_headers,
@@ -1230,6 +1246,10 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::MissingContentTypeOptions => both(&["/"], &["/syn-secure"]),
         F::MissingReferrerPolicy => both(&["/"], &["/syn-secure"]),
         F::MixedContent => both(&["/syn-mixed"], &["/"]),
+
+        // Markup validity: read off the source, since a parser invents the
+        // element when the server omits it.
+        F::MissingBodyTag => both(&["/no-body"], &["/"]),
 
         // URL hygiene
         F::UrlNonAscii => both(&["/café"], &["/"]),

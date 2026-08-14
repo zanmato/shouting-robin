@@ -22,6 +22,15 @@ fn test_http_crawl() {
         page_paths(&pages)
     );
 
+    // Markup validity: read off what the server sent, since a parser invents a
+    // body element when the server omits one.
+    let no_body = find_page(&pages, "/no-body.html").expect("the no-body page should be crawled");
+    assert_eq!(no_body.has_body_tag, Some(false));
+    let home_body = find_page(&pages, "/index.html")
+        .or_else(|| find_page(&pages, &format!(":{port}/")))
+        .expect("home page should be crawled");
+    assert_eq!(home_body.has_body_tag, Some(true));
+
     // Home
     let home = find_page(&pages, "/index.html")
         .or_else(|| find_page(&pages, &format!(":{port}/")))
