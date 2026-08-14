@@ -467,6 +467,22 @@ pub async fn load_page_urls(
     Ok(rows.into_iter().map(|(url,)| url).collect())
 }
 
+/// Every document of a crawl that declares a canonical, as (url, canonical).
+/// The canonical is returned exactly as the page wrote it, so the caller
+/// resolves it against the page's own URL before doing anything with it.
+pub async fn load_declared_canonicals(
+    pool: &SqlitePool,
+    crawl_id: i64,
+) -> Result<Vec<(String, String)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT url, canonical FROM pages
+         WHERE crawl_id = ? AND is_page = 1 AND canonical IS NOT NULL AND trim(canonical) != ''",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await
+}
+
 /// The 3xx rows of a crawl whose target is unknown, as (url, status). spider
 /// reports no final URL for a redirect it did not follow, so these are the
 /// redirects we know happened but not where they went.

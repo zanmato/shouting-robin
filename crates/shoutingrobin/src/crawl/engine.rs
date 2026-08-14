@@ -716,6 +716,16 @@ impl CrawlEngine {
 
             resolve_unknown_redirects(&pool, crawl_id, &tx, &config, &root_url, &cancel_flag).await;
 
+            fetch_declared_canonical_targets(
+                &pool,
+                crawl_id,
+                &tx,
+                &config,
+                &root_url,
+                &cancel_flag,
+            )
+            .await;
+
             check_discovered_resources(
                 &pool,
                 crawl_id,
@@ -965,8 +975,7 @@ async fn resolve_unknown_redirects(
         if !is_same_domain(root_url, &target) || !recorded.insert(target.clone()) {
             continue;
         }
-        let Some(record) = fetch_redirect_target_page(&client, &target, config, root_url).await
-        else {
+        let Some(record) = fetch_uncrawled_page(&client, &target, config, root_url).await else {
             continue;
         };
         if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
@@ -974,6 +983,118 @@ async fn resolve_unknown_redirects(
         }
         if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
             tracing::error!(error=%e, "failed to send redirect target page event");
+        }
+    }
+}
+
+/// The canonical targets worth requesting: absolute, on this site, not the
+/// declaring page itself, and not already a row of the crawl.
+///
+/// Split out from the pass so the decision is testable without a database or a
+/// server. Comparison is normalised throughout, because a page that writes its
+/// canonical without the trailing slash is pointing at itself, and a target
+/// already recorded under a different spelling of the same URL is already
+/// recorded.
+fn plan_canonical_fetches(
+    declared: &[(String, String)],
+    recorded: &std::collections::HashSet<String>,
+    root_url: &str,
+) -> Vec<String> {
+    let recorded_normalized: std::collections::HashSet<String> = recorded
+        .iter()
+        .map(|url| crate::crawl::url_norm::normalize_url(url).unwrap_or_else(|| url.clone()))
+        .collect();
+    let mut planned = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for (page_url, canonical) in declared {
+        let Some(target) = crate::crawl::url_norm::resolve_url(page_url, canonical) else {
+            continue;
+        };
+        if urls_equivalent(&target, page_url) || !is_same_domain(root_url, &target) {
+            continue;
+        }
+        let normalized =
+            crate::crawl::url_norm::normalize_url(&target).unwrap_or_else(|| target.clone());
+        if recorded_normalized.contains(&normalized) || !seen.insert(normalized) {
+            continue;
+        }
+        planned.push(target);
+    }
+    planned
+}
+
+/// Fetches the URL a document declares as its canonical, when the crawl never
+/// reached that URL.
+///
+/// A canonical is the site's own statement of which URL is authoritative, and
+/// nothing obliges anyone to link to it: `/Integritetspolicy` canonicalises to
+/// `/integritetspolicy`, our content rules skip the former for being
+/// canonicalised, and without this pass the latter is never fetched, so between
+/// the two we audit neither.
+///
+/// Bounded by construction, which was the concern: the URL set is fixed before
+/// the pass starts, each URL is fetched once, and **its own links are not
+/// queued**. One hop, no frontier expansion, the same shape as
+/// [`resolve_unknown_redirects`].
+///
+/// The client does not follow redirects, so a canonical pointing at a redirect
+/// is recorded as the 3xx it is rather than silently resolved.
+async fn fetch_declared_canonical_targets(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    tx: &Sender<CrawlEvent>,
+    config: &CrawlConfig,
+    root_url: &str,
+    cancel: &Arc<AtomicBool>,
+) {
+    if cancel.load(Ordering::Relaxed) {
+        return;
+    }
+    let declared = match storage::load_declared_canonicals(pool, crawl_id).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to read declared canonicals");
+            return;
+        }
+    };
+    if declared.is_empty() {
+        return;
+    }
+    let recorded = match storage::load_page_urls(pool, crawl_id).await {
+        Ok(urls) => urls,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to read recorded URLs");
+            return;
+        }
+    };
+    let planned = plan_canonical_fetches(&declared, &recorded, root_url);
+    if planned.is_empty() {
+        return;
+    }
+    let client = match build_redirect_client(config) {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to build client for canonical targets");
+            return;
+        }
+    };
+    tracing::info!(
+        count = planned.len(),
+        "fetching uncrawled canonical targets"
+    );
+
+    for target in planned {
+        if cancel.load(Ordering::Relaxed) {
+            return;
+        }
+        let Some(record) = fetch_uncrawled_page(&client, &target, config, root_url).await else {
+            continue;
+        };
+        if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
+            tracing::warn!(error=%e, url=%record.url, "failed to persist canonical target");
+        }
+        if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+            tracing::error!(error=%e, "failed to send canonical target page event");
         }
     }
 }
@@ -1028,8 +1149,12 @@ async fn fetch_redirect_target(client: &reqwest::Client, url: &str) -> Option<St
     (resolved.as_str() != url).then(|| resolved.to_string())
 }
 
-/// Fetches and analyzes a redirect's target as a page of its own.
-async fn fetch_redirect_target_page(
+/// Fetches and analyzes one URL as a page of its own, outside the crawl.
+///
+/// Used by the post-crawl passes that know an address the crawler never
+/// requested: a redirect's target and a declared canonical. It reads the one
+/// URL it is given and does nothing with the links on it.
+async fn fetch_uncrawled_page(
     client: &reqwest::Client,
     url: &str,
     config: &CrawlConfig,
@@ -2101,7 +2226,7 @@ mod hreflang_tests {
 }
 
 #[cfg(test)]
-mod redirect_resolution_tests {
+mod out_of_band_fetch_tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -2213,7 +2338,7 @@ mod redirect_resolution_tests {
 
         let record = rt.block_on(async {
             let client = build_redirect_client(&config()).expect("client");
-            fetch_redirect_target_page(&client, &format!("{base}/target"), &config(), &base).await
+            fetch_uncrawled_page(&client, &format!("{base}/target"), &config(), &base).await
         });
 
         stop.store(true, Ordering::Relaxed);
@@ -2241,5 +2366,168 @@ mod redirect_resolution_tests {
 
         stop.store(true, Ordering::Relaxed);
         assert_eq!(target, None);
+    }
+
+    #[test]
+    fn the_pass_fetches_a_canonical_target_and_records_it_as_a_page() {
+        let (port, stop) = spawn_redirect_server();
+        let base = format!("http://127.0.0.1:{port}");
+        let rt = runtime();
+
+        let pages = rt.block_on(async {
+            let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").expect("pool");
+            sqlx::query(
+                "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
+            )
+            .execute(&pool)
+            .await
+            .expect("migrations table");
+            storage::run_migrations(&pool).await.expect("migrations");
+            let crawl_id = storage::create_crawl(&pool, &base, "http", &config())
+                .await
+                .expect("crawl");
+
+            // The shape this pass exists for: a crawled document that declares
+            // a canonical nothing links to.
+            let source = PageRecord {
+                url: format!("{base}/source"),
+                status: Some(200),
+                canonical: Some("/target".to_string()),
+                is_page: true,
+                is_internal: true,
+                ..Default::default()
+            };
+            storage::insert_page(&pool, crawl_id, &source)
+                .await
+                .expect("insert source");
+
+            let (tx, rx) = channel();
+            fetch_declared_canonical_targets(
+                &pool,
+                crawl_id,
+                &tx,
+                &config(),
+                &base,
+                &Arc::new(AtomicBool::new(false)),
+            )
+            .await;
+            drop(tx);
+
+            let emitted: Vec<String> = rx
+                .drain()
+                .filter_map(|event| match event {
+                    CrawlEvent::Page(record) => Some(record.url.clone()),
+                    _ => None,
+                })
+                .collect();
+            let stored = storage::load_pages_for_crawl(&pool, crawl_id, &base)
+                .await
+                .expect("load");
+            (emitted, stored)
+        });
+
+        stop.store(true, Ordering::Relaxed);
+        let (emitted, stored) = pages;
+        assert_eq!(
+            emitted,
+            vec![format!("{base}/target")],
+            "the target reaches the live UI as well as the database"
+        );
+        let target = stored
+            .iter()
+            .find(|record| record.url == format!("{base}/target"))
+            .expect("the canonical target should be recorded");
+        assert_eq!(target.status, Some(200));
+        assert_eq!(target.title.as_deref(), Some("Target Page Title"));
+        assert!(
+            target.is_page,
+            "the authoritative URL is audited like any other document"
+        );
+    }
+
+    fn recorded(urls: &[&str]) -> std::collections::HashSet<String> {
+        urls.iter().map(|url| url.to_string()).collect()
+    }
+
+    #[test]
+    fn a_canonical_pointing_at_an_uncrawled_url_is_planned() {
+        let declared = vec![(
+            "https://example.com/Policy".to_string(),
+            "https://example.com/policy".to_string(),
+        )];
+        assert_eq!(
+            plan_canonical_fetches(
+                &declared,
+                &recorded(&["https://example.com/Policy"]),
+                "https://example.com"
+            ),
+            vec!["https://example.com/policy".to_string()]
+        );
+    }
+
+    #[test]
+    fn a_self_referencing_canonical_is_never_fetched() {
+        // Both spellings of self-reference: the identical URL, and the one
+        // written without the trailing slash that made the home page look
+        // canonicalised elsewhere.
+        let declared = vec![
+            (
+                "https://example.com/a".to_string(),
+                "https://example.com/a".to_string(),
+            ),
+            (
+                "https://example.com/".to_string(),
+                "https://example.com".to_string(),
+            ),
+            ("https://example.com/b".to_string(), "/b".to_string()),
+        ];
+        assert!(
+            plan_canonical_fetches(&declared, &recorded(&[]), "https://example.com").is_empty()
+        );
+    }
+
+    #[test]
+    fn a_canonical_already_recorded_is_not_fetched_again() {
+        let declared = vec![(
+            "https://example.com/a".to_string(),
+            "https://example.com/b".to_string(),
+        )];
+        // Recorded under a spelling that differs only where the URL standard
+        // says it may: the default port and the fragment.
+        assert!(
+            plan_canonical_fetches(
+                &declared,
+                &recorded(&["https://example.com:443/b#top"]),
+                "https://example.com"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_canonical_off_this_site_is_left_to_the_resource_pass() {
+        let declared = vec![(
+            "https://example.com/a".to_string(),
+            "https://other.invalid/a".to_string(),
+        )];
+        assert!(
+            plan_canonical_fetches(&declared, &recorded(&[]), "https://example.com").is_empty()
+        );
+    }
+
+    #[test]
+    fn seven_pages_canonicalising_to_one_url_fetch_it_once() {
+        let declared: Vec<(String, String)> = (0..7)
+            .map(|i| {
+                (
+                    format!("https://example.com/p{i}"),
+                    "https://example.com/one".to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            plan_canonical_fetches(&declared, &recorded(&[]), "https://example.com").len(),
+            1
+        );
     }
 }
