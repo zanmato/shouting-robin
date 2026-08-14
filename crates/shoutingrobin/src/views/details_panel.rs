@@ -1,9 +1,13 @@
+use std::rc::Rc;
+
 use gpui::{
-    AnyElement, App, Context, Hsla, InteractiveElement, IntoElement, ParentElement, Render,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, prelude::FluentBuilder, px,
+    AnyElement, App, Context, Entity, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels,
+    Render, SharedString, Size, StatefulInteractiveElement, Styled, Window, div,
+    prelude::FluentBuilder, px,
 };
 use gpui_component::{
     ActiveTheme, Icon as UiIcon, Sizable as _, scroll::ScrollableElement as _, tooltip::Tooltip,
+    v_virtual_list,
 };
 
 use crate::a11y_rules::rule_description;
@@ -1175,132 +1179,208 @@ fn hreflang_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> Option<AnyEl
     ))
 }
 
-fn inlinks_section(
-    rec: &PageRecord,
+/// The height of one row in the link and image-reference lists. The lists are
+/// virtualised, which needs every row to be the same known height, so a row is
+/// two fixed lines: the URL and one line of detail under it.
+const LINK_ROW_HEIGHT: Pixels = px(38.);
+
+/// How many rows a virtualised section shows before it scrolls on its own.
+const MAX_VISIBLE_LINK_ROWS: usize = 8;
+
+fn link_row(
+    url: SharedString,
+    detail: SharedString,
+    trailing: Option<AnyElement>,
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
     cx: &App,
-) -> Option<AnyElement> {
-    if rec.backlinks.is_empty() {
-        return None;
-    }
-    let mut body = div().flex().flex_col().gap_0p5();
-    for bl in &rec.backlinks {
-        body = body.child(
+) -> AnyElement {
+    div()
+        .h(LINK_ROW_HEIGHT)
+        .flex()
+        .flex_col()
+        .justify_center()
+        .gap_0p5()
+        .border_t_1()
+        .border_color(border)
+        .child(
             div()
                 .flex()
-                .flex_col()
-                .gap_0p5()
-                .pt_1()
-                .border_t_1()
-                .border_color(border)
+                .items_center()
+                .gap_1()
                 .child(
                     div()
+                        .flex_1()
+                        .min_w(px(0.))
                         .text_xs()
                         .font_family(cx.theme().mono_font_family.clone())
                         .text_color(fg)
-                        .child(SharedString::from(bl.source_url.clone())),
+                        .truncate()
+                        .child(url),
                 )
-                .child(
-                    div().text_xs().text_color(muted).child(SharedString::from(
-                        bl.anchor
-                            .as_deref()
-                            .map(|a| format!("Anchor: {a}"))
-                            .unwrap_or_else(|| "No anchor".into()),
-                    )),
-                )
-                .when_some(bl.rel.as_deref(), |el, rel| {
-                    el.child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(SharedString::from(format!("Rel: {rel}"))),
-                    )
-                }),
-        );
+                .when_some(trailing, |el, tag| el.child(tag)),
+        )
+        .child(div().text_xs().text_color(muted).truncate().child(detail))
+        .into_any_element()
+}
+
+/// The height a virtualised section takes: its rows, up to a cap, after which
+/// it scrolls within itself.
+fn link_list_height(row_count: usize) -> Pixels {
+    LINK_ROW_HEIGHT * row_count.min(MAX_VISIBLE_LINK_ROWS) as f32
+}
+
+fn link_row_sizes(row_count: usize) -> Rc<Vec<Size<Pixels>>> {
+    Rc::new(vec![
+        Size {
+            width: px(0.),
+            height: LINK_ROW_HEIGHT,
+        };
+        row_count
+    ])
+}
+
+/// The page a link or reference section is describing, or `None` when the
+/// selection is not a page. Used inside the virtual lists' render closures,
+/// which run against the panel rather than a captured record.
+fn selected_page(panel: &DetailsPanel) -> Option<&PageRecord> {
+    match &panel.selected {
+        Some(DetailsSelection::Page(rec)) => Some(rec),
+        _ => None,
     }
+}
+
+fn inlinks_section(
+    panel: &Entity<DetailsPanel>,
+    rec: &PageRecord,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+) -> Option<AnyElement> {
+    let count = rec.backlinks.len();
+    if count == 0 {
+        return None;
+    }
+    let body = div()
+        .h(link_list_height(count))
+        .child(v_virtual_list(
+            panel.clone(),
+            "inlinks",
+            link_row_sizes(count),
+            move |this, range, _window, cx| {
+                let Some(rec) = selected_page(this) else {
+                    return Vec::new();
+                };
+                rec.backlinks
+                    .get(range)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|backlink| {
+                        let anchor = backlink
+                            .anchor
+                            .as_deref()
+                            .filter(|a| !a.trim().is_empty())
+                            .unwrap_or("No anchor");
+                        let detail = match backlink.rel.as_deref() {
+                            Some(rel) => format!("{anchor} · rel={rel}"),
+                            None => anchor.to_string(),
+                        };
+                        link_row(
+                            SharedString::from(backlink.source_url.clone()),
+                            SharedString::from(detail),
+                            None,
+                            muted,
+                            fg,
+                            border,
+                            cx,
+                        )
+                    })
+                    .collect()
+            },
+        ))
+        .into_any_element();
     Some(section(
         "Inlinks (From)",
         None,
         Some(
             div()
                 .text_xs()
-                .child(SharedString::from(format!("{} links", rec.backlinks.len())))
+                .child(SharedString::from(format!("{count} links")))
                 .into_any_element(),
         ),
         muted,
         border,
-        body.into_any_element(),
+        body,
     ))
 }
 
 fn outlinks_section(
+    panel: &Entity<DetailsPanel>,
     rec: &PageRecord,
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
-    cx: &App,
 ) -> Option<AnyElement> {
-    if rec.outlinks.is_empty() {
+    let count = rec.outlinks.len();
+    if count == 0 {
         return None;
     }
-    let mut body = div().flex().flex_col().gap_0p5();
-    // Every link, not the first 50: the Links tab lists one row per URL now, so
-    // this section is the only place an individual link's anchor and rel are
-    // visible. It builds a child per link, which is what the inlinks section
-    // above already does and what virtualising both sections will fix.
-    for link in &rec.outlinks {
-        let is_nofollow = link
-            .rel
-            .as_deref()
-            .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
-        body = body.child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_0p5()
-                .pt_1()
-                .border_t_1()
-                .border_color(border)
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .child(
-                            div()
-                                .text_xs()
-                                .font_family(cx.theme().mono_font_family.clone())
-                                .text_color(fg)
-                                .child(SharedString::from(link.dst_url.clone())),
-                        )
-                        .when(is_nofollow, |el| {
-                            el.child(tone_tag(Tone::Warn, cx).child(SharedString::from("nofollow")))
-                        }),
-                )
-                .child(
-                    div().text_xs().text_color(muted).child(SharedString::from(
-                        link.anchor
+    let body = div()
+        .h(link_list_height(count))
+        .child(v_virtual_list(
+            panel.clone(),
+            "outlinks",
+            link_row_sizes(count),
+            move |this, range, _window, cx| {
+                let Some(rec) = selected_page(this) else {
+                    return Vec::new();
+                };
+                rec.outlinks
+                    .get(range)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|link| {
+                        let is_nofollow = link
+                            .rel
                             .as_deref()
-                            .map(|a| a.to_string())
-                            .unwrap_or_else(|| "-".into()),
-                    )),
-                ),
-        );
-    }
+                            .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
+                        let trailing = is_nofollow.then(|| {
+                            tone_tag(Tone::Warn, cx)
+                                .child(SharedString::from("nofollow"))
+                                .into_any_element()
+                        });
+                        let anchor = link
+                            .anchor
+                            .as_deref()
+                            .filter(|a| !a.trim().is_empty())
+                            .unwrap_or("No anchor text");
+                        link_row(
+                            SharedString::from(link.dst_url.clone()),
+                            SharedString::from(anchor.to_string()),
+                            trailing,
+                            muted,
+                            fg,
+                            border,
+                            cx,
+                        )
+                    })
+                    .collect()
+            },
+        ))
+        .into_any_element();
     Some(section(
         "Outlinks (To)",
         None,
         Some(
             div()
                 .text_xs()
-                .child(SharedString::from(format!("{} links", rec.outlinks.len())))
+                .child(SharedString::from(format!("{count} links")))
                 .into_any_element(),
         ),
         muted,
         border,
-        body.into_any_element(),
+        body,
     ))
 }
 
@@ -1444,72 +1524,75 @@ fn image_information_section(image: &ImageDetails, muted: Hsla, border: Hsla) ->
 }
 
 fn image_references_section(
+    panel: &Entity<DetailsPanel>,
     image: &ImageDetails,
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
-    cx: &App,
 ) -> AnyElement {
-    let mut body = div().flex().flex_col().gap_0p5();
-    for reference in &image.references {
-        let alt_tag = if reference.has_alt_attr {
-            if reference.alt.as_deref().is_none_or(|alt| alt.is_empty()) {
-                tone_tag(Tone::Warn, cx).child(SharedString::from("empty"))
-            } else {
-                tone_tag(Tone::Ok, cx).child(SharedString::from("yes"))
-            }
-        } else {
-            tone_tag(Tone::Err, cx).child(SharedString::from("missing"))
-        };
-        body = body.child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_0p5()
-                .pt_1()
-                .border_t_1()
-                .border_color(border)
-                .child(
-                    div()
-                        .text_xs()
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_color(fg)
-                        .child(SharedString::from(reference.page_url.clone())),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .text_xs()
-                        .child(div().text_color(muted).child("Alt:"))
-                        .child(alt_tag)
-                        .when_some(reference.alt.clone(), |el, alt| {
-                            el.child(div().text_color(fg).child(SharedString::from(alt)))
-                        }),
-                ),
-        );
-    }
+    let count = image.references.len();
+    let body = div()
+        .h(link_list_height(count))
+        .child(v_virtual_list(
+            panel.clone(),
+            "image-references",
+            link_row_sizes(count),
+            move |this, range, _window, cx| {
+                let Some(DetailsSelection::Image(image)) = &this.selected else {
+                    return Vec::new();
+                };
+                image
+                    .references
+                    .get(range)
+                    .unwrap_or_default()
+                    .iter()
+                    .map(|reference| {
+                        let (tone, label) = if !reference.has_alt_attr {
+                            (Tone::Err, "missing")
+                        } else if reference.alt.as_deref().is_none_or(|alt| alt.is_empty()) {
+                            (Tone::Warn, "empty")
+                        } else {
+                            (Tone::Ok, "alt")
+                        };
+                        let trailing = tone_tag(tone, cx)
+                            .child(SharedString::from(label))
+                            .into_any_element();
+                        link_row(
+                            SharedString::from(reference.page_url.clone()),
+                            SharedString::from(
+                                reference.alt.clone().unwrap_or_else(|| "-".to_string()),
+                            ),
+                            Some(trailing),
+                            muted,
+                            fg,
+                            border,
+                            cx,
+                        )
+                    })
+                    .collect()
+            },
+        ))
+        .into_any_element();
     section(
         "Referenced By",
         None,
         Some(
             div()
                 .text_xs()
-                .child(SharedString::from(format!(
-                    "{} pages",
-                    image.references.len()
-                )))
+                .child(SharedString::from(format!("{count} pages")))
                 .into_any_element(),
         ),
         muted,
         border,
-        body.into_any_element(),
+        body,
     )
 }
 
 impl Render for DetailsPanel {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The virtualised sections render against the panel itself rather than
+        // a captured copy of the records, so they need a handle to it.
+        let panel = cx.entity();
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let fg = theme.foreground;
@@ -1532,7 +1615,7 @@ impl Render for DetailsPanel {
                 .flex_col()
                 .child(image_header_block(image, muted, border))
                 .child(image_information_section(image, muted, border))
-                .child(image_references_section(image, muted, fg, border, cx))
+                .child(image_references_section(&panel, image, muted, fg, border))
                 .into_any_element(),
             Some(DetailsSelection::Page(rec)) => div()
                 .id("details-scroll")
@@ -1563,10 +1646,10 @@ impl Render for DetailsPanel {
                 .child(images_section(rec, muted, fg, border, cx))
                 .child(serp_section(rec, muted, border, cx))
                 .when_some(hreflang_section(rec, muted, border), |el, s| el.child(s))
-                .when_some(inlinks_section(rec, muted, fg, border, cx), |el, s| {
+                .when_some(inlinks_section(&panel, rec, muted, fg, border), |el, s| {
                     el.child(s)
                 })
-                .when_some(outlinks_section(rec, muted, fg, border, cx), |el, s| {
+                .when_some(outlinks_section(&panel, rec, muted, fg, border), |el, s| {
                     el.child(s)
                 })
                 .when_some(headers_section(rec, muted, fg, border, cx), |el, s| {
