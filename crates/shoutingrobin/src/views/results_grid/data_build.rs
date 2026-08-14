@@ -282,9 +282,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         .count();
     if missing_desc > 0 {
         entries.push(IssueEntry {
+            // Not a defect: a page without a description still ranks, and
+            // Google writes a snippet from the body. What it costs is control
+            // over what that snippet says, which is worth doing something
+            // about but not worth the loudest row on the overview.
             name: "Missing Meta Description".into(),
-            issue_type: IssueType::Issue,
-            priority: IssuePriority::High,
+            issue_type: IssueType::Opportunity,
+            priority: IssuePriority::Medium,
             count: missing_desc,
             pct: missing_desc as f32 / doc_total * 100.0,
             description: "Pages with an empty or missing meta description.".into(),
@@ -355,9 +359,11 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
     };
     if duplicate_h1 > 0 {
         entries.push(IssueEntry {
+            // Worth a look, rarely worth a fix: "Products" as the H1 of every
+            // category page is repetitive rather than wrong.
             name: "Duplicate H1".into(),
             issue_type: IssueType::Warning,
-            priority: IssuePriority::Medium,
+            priority: IssuePriority::Low,
             count: duplicate_h1,
             pct: duplicate_h1 as f32 / doc_total * 100.0,
             description: "Multiple pages share the same H1 heading text.".into(),
@@ -463,9 +469,12 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         .count();
     if low_content > 0 {
         entries.push(IssueEntry {
+            // Thin content is one of the few findings that is nearly always
+            // worth acting on, and the rule only reaches indexable documents,
+            // so the pages it names are ones the site wants to rank.
             name: "Low Content Pages".into(),
             issue_type: IssueType::Opportunity,
-            priority: IssuePriority::Low,
+            priority: IssuePriority::Medium,
             count: low_content,
             pct: low_content as f32 / doc_total * 100.0,
             description: format!(
@@ -668,9 +677,12 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         .count();
     if hreflang_missing_xdefault > 0 {
         entries.push(IssueEntry {
+            // x-default is recommended rather than required, so it stays
+            // quiet: a cluster without one still serves every language it
+            // names, it only has no fallback for the ones it does not.
             name: "Hreflang Missing x-default".into(),
             issue_type: IssueType::Warning,
-            priority: IssuePriority::Medium,
+            priority: IssuePriority::Low,
             count: hreflang_missing_xdefault,
             pct: hreflang_missing_xdefault as f32 / doc_total * 100.0,
             description: "Pages with hreflang but no x-default fallback tag.".into(),
@@ -921,7 +933,9 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         name: "Images Missing Alt Attribute",
         tab: ResultTab::Images,
         filter: IssueFilter::MissingAltAttribute,
-        issue_type: IssueType::Warning,
+        // A failure, not a style note: an image with no alt at all fails WCAG
+        // 1.1.1, which is a level A criterion.
+        issue_type: IssueType::Issue,
         priority: IssuePriority::Medium,
         denominator: Denominator::Documents,
         description: "Pages carrying an image with no alt attribute at all.",
