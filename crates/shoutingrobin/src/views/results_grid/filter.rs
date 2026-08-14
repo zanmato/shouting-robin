@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::crawl::engine::is_same_domain;
-use crate::crawl::event::{A11yIssue, HreflangIssue, ImageRef, PageRecord, SdFormat, SdItem};
+use crate::crawl::event::{A11yIssue, HreflangIssue, PageRecord, SdFormat, SdItem};
 use crate::ui::tag::Tone;
 use crate::views::ResultTab;
 
@@ -1096,12 +1096,6 @@ pub(super) fn flat_row_matches_filter(
     filter: IssueFilter,
 ) -> bool {
     match row {
-        FlatRow::Image { item, .. } => {
-            let Some(image) = page.images.get(*item) else {
-                return false;
-            };
-            image_matches_filter(image, filter)
-        }
         FlatRow::ImageAggregate(image) => image_aggregate_matches_filter(image, filter),
         FlatRow::A11yIssue { item, .. } => {
             let Some(issue) = page.a11y_issues.get(*item) else {
@@ -1115,7 +1109,7 @@ pub(super) fn flat_row_matches_filter(
             };
             sd_item_matches_filter(sd_item, page, filter)
         }
-        FlatRow::Hreflang { .. } | FlatRow::IssuesRow { .. } | FlatRow::ChangeRow { .. } => true,
+        FlatRow::IssuesRow { .. } | FlatRow::ChangeRow { .. } => true,
         FlatRow::DirectoryAggregate { depth, .. } => match filter {
             IssueFilter::DepthShallow => *depth <= 1,
             IssueFilter::DepthMedium => *depth >= 2 && *depth <= 3,
@@ -1137,18 +1131,6 @@ pub(super) fn image_aggregate_matches_filter(
         IssueFilter::MissingAltAttribute => image.missing_alt_attr,
         IssueFilter::AltOver100 => image.alt_over_100,
         IssueFilter::MissingSizeAttributes => image.missing_size_attrs,
-        _ => true,
-    }
-}
-
-fn image_matches_filter(image: &ImageRef, filter: IssueFilter) -> bool {
-    match filter {
-        IssueFilter::MissingAltText => {
-            image.has_alt_attr && image.alt.as_deref().is_none_or(|a| a.is_empty())
-        }
-        IssueFilter::MissingAltAttribute => !image.has_alt_attr,
-        IssueFilter::AltOver100 => image.alt.as_deref().is_some_and(|a| char_length(a) > 100),
-        IssueFilter::MissingSizeAttributes => image.width.is_none() || image.height.is_none(),
         _ => true,
     }
 }

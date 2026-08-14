@@ -20,8 +20,8 @@ use super::cell::{
     cell_text, flat_cell_text, image_aggregate_cell_text, render_cell_tag, url_to_path,
 };
 use super::columns::{
-    build_occurrence_counts, columns_for_tab_with_baseline, compare_numeric, is_mono_column,
-    is_numeric_column,
+    build_occurrence_counts, columns_for_tab_with_baseline, compare_numeric, hreflang_column_count,
+    is_mono_column, is_numeric_column,
 };
 use super::data_build::{
     build_change_entries, build_issues_entries, build_rows_for_tab, change_entry_matches,
@@ -72,6 +72,10 @@ pub struct ResultsDelegate {
     /// so recomputing it per cell made the tab quadratic in rules times cells.
     /// Empty on every other tab.
     issue_entries: Vec<IssueEntry>,
+    /// How many hreflang column pairs the Hreflang tab shows, derived from the
+    /// loaded records. Kept here so the columns are only rebuilt when the
+    /// figure actually moves rather than on every streamed record.
+    hreflang_columns: usize,
     /// Lazily computed per-tab badge and sub-filter counts, keyed by tab.
     /// Invalidated whenever the underlying data changes (pages, baseline, root),
     /// but not on tab/filter switches since the counts span all tabs.
@@ -86,7 +90,7 @@ impl ResultsDelegate {
             filtered_indices: Vec::new(),
             flat_rows: Vec::new(),
             occurrence_counts: HashMap::new(),
-            columns: columns_for_tab_with_baseline(tab, false),
+            columns: columns_for_tab_with_baseline(tab, false, 0),
             active_tab: tab,
             issue_filter: IssueFilter::All,
             root_origin: None,
@@ -95,6 +99,7 @@ impl ResultsDelegate {
             baseline_started_at: None,
             baseline_issue_counts: HashMap::new(),
             issue_entries: Vec::new(),
+            hreflang_columns: 0,
             counts_cache: None,
         }
     }
@@ -132,8 +137,11 @@ impl ResultsDelegate {
     }
 
     fn rebuild_columns(&mut self) {
-        self.columns =
-            columns_for_tab_with_baseline(self.active_tab, self.baseline_pages.is_some());
+        self.columns = columns_for_tab_with_baseline(
+            self.active_tab,
+            self.baseline_pages.is_some(),
+            self.hreflang_columns,
+        );
     }
 
     pub fn switch_tab(&mut self, tab: ResultTab) {
@@ -231,10 +239,9 @@ impl ResultsDelegate {
     pub fn record_at(&self, index: usize) -> Option<&PageRecord> {
         if tab_is_flattened(self.active_tab) {
             match self.flat_rows.get(index)? {
-                FlatRow::Image { page, .. }
-                | FlatRow::A11yIssue { page, .. }
-                | FlatRow::Hreflang { page, .. }
-                | FlatRow::SdItem { page, .. } => self.all_pages.get(*page),
+                FlatRow::A11yIssue { page, .. } | FlatRow::SdItem { page, .. } => {
+                    self.all_pages.get(*page)
+                }
                 FlatRow::ChangeRow { index } => {
                     let entries = self.change_entries();
                     let entry = entries.get(*index)?;
@@ -320,6 +327,11 @@ impl ResultsDelegate {
     }
 
     fn rebuild_filter(&mut self) {
+        let hreflang_columns = hreflang_column_count(&self.all_pages);
+        if hreflang_columns != self.hreflang_columns {
+            self.hreflang_columns = hreflang_columns;
+            self.rebuild_columns();
+        }
         self.occurrence_counts = build_occurrence_counts(self.active_tab, &self.all_pages);
         self.filtered_indices = filter_for_tab(
             self.active_tab,
@@ -429,10 +441,7 @@ impl ResultsDelegate {
         }
         self.flat_rows.retain(|row| {
             let page_index = match row {
-                FlatRow::Image { page, .. }
-                | FlatRow::A11yIssue { page, .. }
-                | FlatRow::Hreflang { page, .. }
-                | FlatRow::SdItem { page, .. } => *page,
+                FlatRow::A11yIssue { page, .. } | FlatRow::SdItem { page, .. } => *page,
                 FlatRow::IssuesRow { .. }
                 | FlatRow::ChangeRow { .. }
                 | FlatRow::ImageAggregate(_)
@@ -558,10 +567,7 @@ impl ResultsDelegate {
             },
             _ => {
                 let page_index = match row {
-                    FlatRow::Image { page, .. }
-                    | FlatRow::A11yIssue { page, .. }
-                    | FlatRow::Hreflang { page, .. }
-                    | FlatRow::SdItem { page, .. } => *page,
+                    FlatRow::A11yIssue { page, .. } | FlatRow::SdItem { page, .. } => *page,
                     _ => return String::new(),
                 };
                 let Some(record) = self.all_pages.get(page_index) else {
@@ -757,9 +763,7 @@ impl TableDelegate for ResultsDelegate {
                 }
                 _ => {
                     let page_index = match row {
-                        FlatRow::Image { page, .. }
-                        | FlatRow::Hreflang { page, .. }
-                        | FlatRow::SdItem { page, .. } => *page,
+                        FlatRow::SdItem { page, .. } => *page,
                         FlatRow::IssuesRow { .. }
                         | FlatRow::ChangeRow { .. }
                         | FlatRow::ImageAggregate(_)

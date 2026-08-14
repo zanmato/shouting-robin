@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use gpui::{App, ParentElement, SharedString};
 
 use crate::crawl::engine::is_same_domain;
-use crate::crawl::event::{A11yIssue, ImageRef, PageRecord, SdFormat, SdItem};
+use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdItem};
 use crate::ui::tag::{Tone, count_tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::ResultTab;
 
@@ -45,30 +45,11 @@ pub(super) fn flat_cell_text(
     root_origin: Option<&str>,
 ) -> SharedString {
     match row {
-        FlatRow::Image { item, .. } => {
-            let Some(image) = record.images.get(*item) else {
-                return SharedString::default();
-            };
-            image_cell_text(record, image, col_key, root_origin)
-        }
         FlatRow::A11yIssue { item, .. } => {
             let Some(issue) = record.a11y_issues.get(*item) else {
                 return SharedString::default();
             };
             a11y_cell_text(record, issue, col_key, root_origin)
-        }
-        FlatRow::Hreflang { item, .. } => {
-            if let Some((lang, url)) = record.hreflang_tags.get(*item) {
-                hreflang_cell_text(record, lang, url, col_key, root_origin)
-            } else {
-                match col_key {
-                    "address" => page_address(record, root_origin),
-                    "indexability" => SharedString::from(
-                        record.indexability.clone().unwrap_or_else(|| "-".into()),
-                    ),
-                    _ => SharedString::from("-"),
-                }
-            }
         }
         FlatRow::SdItem { item, .. } => {
             if let Some(sd_item) = record.sd_items.get(*item) {
@@ -109,36 +90,6 @@ pub(super) fn flat_cell_text(
     }
 }
 
-fn image_cell_text(
-    record: &PageRecord,
-    image: &ImageRef,
-    col_key: &str,
-    root_origin: Option<&str>,
-) -> SharedString {
-    match col_key {
-        "address" => page_address(record, root_origin),
-        "image_src" => SharedString::from(image.src.clone()),
-        "image_alt" => SharedString::from(image.alt.clone().unwrap_or_default()),
-        "image_width" => SharedString::from(
-            image
-                .width
-                .map(|w| w.to_string())
-                .unwrap_or_else(|| "-".into()),
-        ),
-        "image_height" => SharedString::from(
-            image
-                .height
-                .map(|h| h.to_string())
-                .unwrap_or_else(|| "-".into()),
-        ),
-        "image_has_alt" => SharedString::from(if image.has_alt_attr { "Yes" } else { "No" }),
-        "indexability" => {
-            SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
-        }
-        _ => SharedString::default(),
-    }
-}
-
 pub(super) fn image_aggregate_cell_text(image: &ImageAggregateRow, col_key: &str) -> SharedString {
     match col_key {
         "image_src" => SharedString::from(image.src.clone()),
@@ -175,24 +126,6 @@ fn a11y_cell_text(
         "a11y_impact" => SharedString::from(issue.impact.clone()),
         "a11y_target" => SharedString::from(issue.target.clone().unwrap_or_default()),
         "a11y_html" => SharedString::from(issue.html.clone().unwrap_or_default()),
-        "indexability" => {
-            SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
-        }
-        _ => SharedString::default(),
-    }
-}
-
-fn hreflang_cell_text(
-    record: &PageRecord,
-    lang: &str,
-    url: &str,
-    col_key: &str,
-    root_origin: Option<&str>,
-) -> SharedString {
-    match col_key {
-        "address" => page_address(record, root_origin),
-        "hreflang_lang" => SharedString::from(lang.to_string()),
-        "hreflang_url" => SharedString::from(url.to_string()),
         "indexability" => {
             SharedString::from(record.indexability.clone().unwrap_or_else(|| "-".into()))
         }
@@ -574,12 +507,35 @@ pub(super) fn cell_text(
                 .map(|s| format!("{s:.1}"))
                 .unwrap_or_else(|| "-".into()),
         ),
+        // The Hreflang tab's language/URL column pairs, one per tag, so their
+        // keys carry the tag's position: "hreflang_2", "hreflang_2_url".
+        key if key.starts_with("hreflang_") => {
+            hreflang_pair_cell_text(record, key).unwrap_or_default()
+        }
         "title_2" => SharedString::from(record.title_2.as_deref().unwrap_or("-")),
         "meta_desc_2" => SharedString::from(record.meta_description_2.as_deref().unwrap_or("-")),
         "h1_2" => SharedString::from(record.h1_2.as_deref().unwrap_or("-")),
         "h2_2" => SharedString::from(record.h2_2.as_deref().unwrap_or("-")),
         _ => SharedString::default(),
     }
+}
+
+/// The language or URL of the nth hreflang tag, for a `hreflang_<n>` or
+/// `hreflang_<n>_url` column key. `None` when the key is not a pair key or the
+/// page has fewer tags than that.
+fn hreflang_pair_cell_text(record: &PageRecord, col_key: &str) -> Option<SharedString> {
+    let rest = col_key.strip_prefix("hreflang_")?;
+    let (number, want_url) = match rest.strip_suffix("_url") {
+        Some(number) => (number, true),
+        None => (rest, false),
+    };
+    let index = number.parse::<usize>().ok()?.checked_sub(1)?;
+    let (lang, url) = record.hreflang_tags.get(index)?;
+    Some(SharedString::from(if want_url {
+        url.clone()
+    } else {
+        lang.clone()
+    }))
 }
 
 fn status_label(record: &PageRecord) -> SharedString {
@@ -770,6 +726,77 @@ mod tests {
     fn ssr_diff_clamps_to_zero_when_ssr_exceeds_csr() {
         let record = make_record(Some(378), Some(379));
         assert_eq!(ssr_diff_label(&record), "0%");
+    }
+}
+
+#[cfg(test)]
+mod hreflang_pivot_tests {
+    use super::*;
+
+    fn page_with_tags(tags: &[(&str, &str)]) -> PageRecord {
+        PageRecord {
+            url: "https://a.test/se/".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            hreflang_tags: tags
+                .iter()
+                .map(|(lang, url)| (lang.to_string(), url.to_string()))
+                .collect(),
+            ..Default::default()
+        }
+    }
+
+    fn text(record: &PageRecord, key: &str) -> String {
+        cell_text(record, key, &HashMap::new(), ResultTab::Hreflang, None).to_string()
+    }
+
+    #[test]
+    fn each_tag_lands_in_its_own_column_pair() {
+        let record = page_with_tags(&[
+            ("sv", "https://a.test/se/"),
+            ("de", "https://a.test/de/"),
+            ("x-default", "https://a.test/"),
+        ]);
+        assert_eq!(text(&record, "hreflang_count"), "3");
+        assert_eq!(text(&record, "hreflang_1"), "sv");
+        assert_eq!(text(&record, "hreflang_1_url"), "https://a.test/se/");
+        assert_eq!(text(&record, "hreflang_3"), "x-default");
+        assert_eq!(text(&record, "hreflang_3_url"), "https://a.test/");
+    }
+
+    #[test]
+    fn a_page_with_fewer_tags_leaves_the_later_columns_empty() {
+        let record = page_with_tags(&[("sv", "https://a.test/se/")]);
+        assert_eq!(text(&record, "hreflang_2"), "");
+        assert_eq!(text(&record, "hreflang_2_url"), "");
+        // Not a pair key, and not a real column either: it must not be read as
+        // tag zero or panic on the missing number.
+        assert_eq!(text(&record, "hreflang_"), "");
+        assert_eq!(text(&record, "hreflang_0"), "");
+    }
+
+    #[test]
+    fn the_column_count_follows_the_widest_page_up_to_the_cap() {
+        let pages = vec![
+            page_with_tags(&[("sv", "https://a.test/se/")]),
+            page_with_tags(&[
+                ("sv", "https://a.test/se/"),
+                ("de", "https://a.test/de/"),
+                ("fr", "https://a.test/fr/"),
+            ]),
+        ];
+        assert_eq!(super::super::columns::hreflang_column_count(&pages), 3);
+        assert_eq!(super::super::columns::hreflang_column_count(&[]), 0);
+
+        let many: Vec<(String, String)> = (0..25)
+            .map(|i| (format!("l{i}"), format!("https://a.test/{i}")))
+            .collect();
+        let wide = PageRecord {
+            hreflang_tags: many,
+            ..Default::default()
+        };
+        assert_eq!(super::super::columns::hreflang_column_count(&[wide]), 10);
     }
 }
 

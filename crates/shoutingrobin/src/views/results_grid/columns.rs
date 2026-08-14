@@ -6,7 +6,23 @@ use gpui_component::table::{Column, ColumnFixed};
 use crate::crawl::event::PageRecord;
 use crate::views::ResultTab;
 
-pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
+/// The most hreflang column pairs the Hreflang tab will show. A page with a
+/// pathological number of tags would otherwise make the grid unusably wide.
+const MAX_HREFLANG_COLUMNS: usize = 10;
+
+/// How many hreflang column pairs the loaded crawl needs: the largest number of
+/// tags any one page carries, so no page's tags are cut off unless a page
+/// exceeds the cap.
+pub(super) fn hreflang_column_count(pages: &[PageRecord]) -> usize {
+    pages
+        .iter()
+        .map(|page| page.hreflang_tags.len())
+        .max()
+        .unwrap_or(0)
+        .min(MAX_HREFLANG_COLUMNS)
+}
+
+pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Column> {
     match tab {
         ResultTab::Internal => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
@@ -121,12 +137,31 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
             col("occurrences", "Occurrences", 100., None),
             col("indexability", "Indexability", 110., None),
         ],
-        ResultTab::Hreflang => vec![
-            col("address", "Address", 380., Some(ColumnFixed::Left)),
-            col("hreflang_lang", "Language", 100., None),
-            col("hreflang_url", "URL", 400., None),
-            col("indexability", "Indexability", 110., None),
-        ],
+        // One row per URL, with a language/URL column pair per tag, the same
+        // treatment Title/Title 2 and H1/H1-2 already get. A row per tag put
+        // 614 rows against 125 URLs on the reference crawl.
+        ResultTab::Hreflang => {
+            let mut cols = vec![
+                col("address", "Address", 380., Some(ColumnFixed::Left)),
+                col("hreflang_count", "Tags", 70., None),
+            ];
+            for pair in 1..=hreflang_columns {
+                cols.push(col(
+                    &format!("hreflang_{pair}"),
+                    &format!("hreflang {pair}"),
+                    110.,
+                    None,
+                ));
+                cols.push(col(
+                    &format!("hreflang_{pair}_url"),
+                    &format!("hreflang {pair} URL"),
+                    320.,
+                    None,
+                ));
+            }
+            cols.push(col("indexability", "Indexability", 110., None));
+            cols
+        }
         ResultTab::StructuredData => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
             col("sd_format", "Format", 100., None),
@@ -240,8 +275,12 @@ pub(super) fn columns_for_tab(tab: ResultTab) -> Vec<Column> {
 
 /// Returns the columns for a tab, adding the comparison columns (`Prev`/`Δ`) to
 /// the Overview tab when a baseline crawl is active.
-pub(super) fn columns_for_tab_with_baseline(tab: ResultTab, has_baseline: bool) -> Vec<Column> {
-    let mut cols = columns_for_tab(tab);
+pub(super) fn columns_for_tab_with_baseline(
+    tab: ResultTab,
+    has_baseline: bool,
+    hreflang_columns: usize,
+) -> Vec<Column> {
+    let mut cols = columns_for_tab(tab, hreflang_columns);
     if tab == ResultTab::Overview
         && has_baseline
         && let Some(pos) = cols.iter().position(|c| c.key.as_ref() == "count")
@@ -399,6 +438,7 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "image_height"
             | "image_inlinks"
             | "url_length"
+            | "hreflang_count"
             | "dir_page_count"
             | "dir_depth"
             | "dir_avg_words"

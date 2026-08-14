@@ -27,16 +27,8 @@ pub(crate) struct ImageAggregateRow {
 
 #[derive(Clone, Debug)]
 pub(crate) enum FlatRow {
-    Image {
-        page: usize,
-        item: usize,
-    },
     ImageAggregate(Box<ImageAggregateRow>),
     A11yIssue {
-        page: usize,
-        item: usize,
-    },
-    Hreflang {
         page: usize,
         item: usize,
     },
@@ -66,7 +58,6 @@ pub(crate) fn tab_is_flattened(tab: ResultTab) -> bool {
         tab,
         ResultTab::Images
             | ResultTab::Accessibility
-            | ResultTab::Hreflang
             | ResultTab::StructuredData
             | ResultTab::Overview
             | ResultTab::SiteStructure
@@ -95,10 +86,7 @@ pub struct TabFilterCounts {
 /// tied to a single page (issue/change entries and directory aggregates).
 pub(super) fn flat_row_page_index(row: &FlatRow) -> Option<usize> {
     match row {
-        FlatRow::Image { page, .. }
-        | FlatRow::A11yIssue { page, .. }
-        | FlatRow::Hreflang { page, .. }
-        | FlatRow::SdItem { page, .. } => Some(*page),
+        FlatRow::A11yIssue { page, .. } | FlatRow::SdItem { page, .. } => Some(*page),
         FlatRow::IssuesRow { .. }
         | FlatRow::ChangeRow { .. }
         | FlatRow::ImageAggregate(_)

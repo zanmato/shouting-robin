@@ -10,21 +10,24 @@ use super::types::{
     IssueType,
 };
 
-pub(super) fn flat_row_item_count(page: &PageRecord, tab: ResultTab) -> usize {
+/// The rows one page contributes to a flattened tab that lists per-item rows.
+fn page_item_rows(tab: ResultTab, page_index: usize, page: &PageRecord) -> Vec<FlatRow> {
     match tab {
-        ResultTab::Accessibility => page.a11y_issues.len(),
-        ResultTab::Hreflang => page.hreflang_tags.len().max(1),
-        ResultTab::StructuredData => page.sd_items.len().max(1),
-        _ => 0,
-    }
-}
-
-pub(super) fn flat_row_variant(tab: ResultTab, page: usize, item: usize) -> FlatRow {
-    match tab {
-        ResultTab::Accessibility => FlatRow::A11yIssue { page, item },
-        ResultTab::Hreflang => FlatRow::Hreflang { page, item },
-        ResultTab::StructuredData => FlatRow::SdItem { page, item },
-        _ => FlatRow::Image { page, item },
+        ResultTab::Accessibility => (0..page.a11y_issues.len())
+            .map(|item| FlatRow::A11yIssue {
+                page: page_index,
+                item,
+            })
+            .collect(),
+        // A page with no structured data still gets a row, so the tab can list
+        // it as missing rather than dropping it.
+        ResultTab::StructuredData => (0..page.sd_items.len().max(1))
+            .map(|item| FlatRow::SdItem {
+                page: page_index,
+                item,
+            })
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -74,14 +77,9 @@ pub(super) fn build_rows_for_tab(
         ResultTab::Images => build_image_aggregates(page_indices, pages),
         _ => page_indices
             .iter()
-            .flat_map(|&page_index| {
-                let item_count = pages
-                    .get(page_index)
-                    .map(|page| flat_row_item_count(page, tab))
-                    .unwrap_or(0);
-                (0..item_count)
-                    .map(move |item_index| flat_row_variant(tab, page_index, item_index))
-                    .collect::<Vec<_>>()
+            .flat_map(|&page_index| match pages.get(page_index) {
+                Some(page) => page_item_rows(tab, page_index, page),
+                None => Vec::new(),
             })
             .collect(),
     }
