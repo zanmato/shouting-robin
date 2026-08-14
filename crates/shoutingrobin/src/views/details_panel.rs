@@ -1546,9 +1546,11 @@ fn tab_strip(
             })
             .child(SharedString::from(tab.label()))
             .when(count > 0, |el| {
+                // The same chip the grid's tabs and filter segments carry their
+                // counts in, so a count reads the same wherever it appears.
                 el.child(
-                    div()
-                        .text_color(cx.theme().muted_foreground)
+                    tone_tag(Tone::Neutral, cx)
+                        .rounded_full()
                         .child(SharedString::from(count.to_string())),
                 )
             })
