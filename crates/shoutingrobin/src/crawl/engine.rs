@@ -969,15 +969,14 @@ async fn resolve_redirect_chains(
         }
     };
 
-    for (start, start_status) in redirects {
+    for start in redirects {
         let mut url = start;
-        let mut status = start_status;
 
         for _ in 0..MAX_REDIRECT_HOPS {
             if cancel.load(Ordering::Relaxed) {
                 return;
             }
-            let Some(target) = fetch_redirect_target(&client, &url).await else {
+            let Some((status, target)) = fetch_redirect_target(&client, &url).await else {
                 break;
             };
             // The row points at the hop it actually serves, which is not
@@ -1011,10 +1010,7 @@ async fn resolve_redirect_chains(
             // Another 3xx is another hop; anything else is the end of the
             // chain, and it has just been recorded as the page it is.
             match next_status {
-                Some(code) if (300..400).contains(&code) => {
-                    url = target;
-                    status = code;
-                }
+                Some(code) if (300..400).contains(&code) => url = target,
                 _ => break,
             }
         }
@@ -1156,11 +1152,16 @@ fn build_redirect_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwes
     builder.build()
 }
 
-/// The absolute URL a redirect points at, from its `Location` header.
+/// The status a URL answers with and the absolute URL it points at, from its
+/// `Location` header.
+///
+/// The status comes back with the target because it is the status of *this*
+/// hop: a row's stored status can be the 200 at the end of a chain spider
+/// followed, and a hop should record the code it actually served.
 ///
 /// `Location` is very often relative (`/se/bett`), which RFC 7231 allows and
 /// which every browser resolves against the request URL, so we do too.
-async fn fetch_redirect_target(client: &reqwest::Client, url: &str) -> Option<String> {
+async fn fetch_redirect_target(client: &reqwest::Client, url: &str) -> Option<(u16, String)> {
     let response = match client.get(url).send().await {
         Ok(response) => response,
         Err(e) => {
@@ -1171,6 +1172,7 @@ async fn fetch_redirect_target(client: &reqwest::Client, url: &str) -> Option<St
     if !response.status().is_redirection() {
         return None;
     }
+    let status = response.status().as_u16();
     let location = response
         .headers()
         .get(reqwest::header::LOCATION)?
@@ -1180,7 +1182,7 @@ async fn fetch_redirect_target(client: &reqwest::Client, url: &str) -> Option<St
         .to_string();
     let base = url::Url::parse(url).ok()?;
     let resolved = base.join(&location).ok()?;
-    (resolved.as_str() != url).then(|| resolved.to_string())
+    (resolved.as_str() != url).then(|| (status, resolved.to_string()))
 }
 
 /// Fetches and analyzes one URL as a page of its own, outside the crawl.
@@ -2362,8 +2364,8 @@ mod out_of_band_fetch_tests {
 
         stop.store(true, Ordering::Relaxed);
         assert_eq!(
-            target.as_deref(),
-            Some(format!("{base}/target?a=1&b=2").as_str()),
+            target,
+            Some((301, format!("{base}/target?a=1&b=2"))),
             "a relative Location, query string and all, resolves against the request URL"
         );
     }
@@ -2508,9 +2510,12 @@ mod out_of_band_fetch_tests {
 
             // What the crawler leaves behind: the head of the chain, already
             // carrying the destination two hops away.
+            // The shape that hid the middle hop: spider followed the chain,
+            // so the row carries the 200 from the end of it and a destination
+            // two hops away.
             let head = PageRecord {
                 url: format!("{base}/chain1"),
-                status: Some(301),
+                status: Some(200),
                 redirect_url: Some(format!("{base}/target")),
                 redirect_status: Some(301),
                 is_page: true,
@@ -2550,6 +2555,11 @@ mod out_of_band_fetch_tests {
             first.redirect_url.as_deref(),
             Some(format!("{base}/chain2").as_str()),
             "a row points at the hop it serves, not at the end of the chain"
+        );
+        assert_eq!(
+            first.redirect_status,
+            Some(301),
+            "the code recorded is the one this hop served"
         );
         let second = find(format!("{base}/chain2"));
         assert_eq!(second.status, Some(301));

@@ -483,27 +483,25 @@ pub async fn load_declared_canonicals(
     .await
 }
 
-/// Every 3xx row of a crawl, as (url, status).
+/// Every URL of a crawl that answered with a redirect.
 ///
-/// All of them, not only the ones with no known target: spider reports the
-/// *final* URL of a chain it followed, so a row can carry a destination two
-/// hops away and the hop in between is missing entirely. The chain pass walks
-/// each one and records what it finds.
-pub async fn load_redirects(
-    pool: &SqlitePool,
-    crawl_id: i64,
-) -> Result<Vec<(String, u16)>, sqlx::Error> {
-    let rows: Vec<(String, i64)> = sqlx::query_as(
-        "SELECT url, status FROM pages
-         WHERE crawl_id = ? AND status >= 300 AND status < 400 ORDER BY url",
+/// A 3xx status is only half of them. spider follows a chain and reports the
+/// *final* response, so the row for a redirecting URL can carry status 200 and
+/// a `redirect_url` two hops away — which is the shape that hid the middle hop
+/// of `/` -> `/sv/` -> `/sv`. The definition here matches
+/// `PageRecord::is_redirect`, so the pass sees every row the app calls a
+/// redirect.
+pub async fn load_redirects(pool: &SqlitePool, crawl_id: i64) -> Result<Vec<String>, sqlx::Error> {
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT url FROM pages
+         WHERE crawl_id = ?
+           AND (redirect_url IS NOT NULL OR (status >= 300 AND status < 400))
+         ORDER BY url",
     )
     .bind(crawl_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows
-        .into_iter()
-        .map(|(url, status)| (url, status as u16))
-        .collect())
+    Ok(rows.into_iter().map(|(url,)| url).collect())
 }
 
 /// Records where a redirect went, once we have resolved it ourselves.
