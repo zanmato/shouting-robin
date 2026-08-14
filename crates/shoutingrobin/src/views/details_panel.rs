@@ -176,7 +176,7 @@ impl Default for DetailsPanel {
 
 fn format_bytes(bytes: u64) -> String {
     if bytes == 0 {
-        return "-".into();
+        return String::new();
     }
     if bytes < 1024 {
         return format!("{bytes} B");
@@ -187,10 +187,15 @@ fn format_bytes(bytes: u64) -> String {
     format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
 }
 
-fn or_dash(value: &Option<String>) -> SharedString {
+/// A field's value, or nothing at all when it has none.
+///
+/// The same convention the grid uses. A row here carries its label, so an
+/// empty value column says "this page has no canonical" without spending a
+/// character on saying it.
+fn or_blank(value: &Option<String>) -> SharedString {
     match value {
         Some(v) if !v.is_empty() => SharedString::from(v.clone()),
-        _ => SharedString::from("-"),
+        _ => SharedString::default(),
     }
 }
 
@@ -491,11 +496,11 @@ fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App
         Some(c) => tone_tag(status_code_tone(c), cx)
             .child(SharedString::from(c.to_string()))
             .into_any_element(),
-        None => div().text_color(muted).child("-").into_any_element(),
+        None => div().into_any_element(),
     };
-    let indexability_value = rec.indexability.clone().unwrap_or_else(|| "-".into());
-    let indexability_tag = if indexability_value == "-" {
-        div().text_color(muted).child("-").into_any_element()
+    let indexability_value = rec.indexability.clone().unwrap_or_default();
+    let indexability_tag = if indexability_value.is_empty() {
+        div().into_any_element()
     } else {
         tone_tag(indexability_tone(&indexability_value), cx)
             .child(SharedString::from(indexability_value.clone()))
@@ -508,14 +513,14 @@ fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App
         .gap_1()
         .child(row("Address", SharedString::from(rec.url.clone()), muted))
         .child(row("Status", status_tag, muted))
-        .child(row("Content Type", or_dash(&rec.content_type), muted))
+        .child(row("Content Type", or_blank(&rec.content_type), muted))
         .child(row(
             "Size",
             SharedString::from(format_bytes(rec.size_bytes)),
             muted,
         ))
         .child(row("Indexability", indexability_tag, muted))
-        .child(row("Canonical", or_dash(&rec.canonical), muted))
+        .child(row("Canonical", or_blank(&rec.canonical), muted))
         .when_some(rec.redirect_url.clone(), |el, redirect| {
             el.child(row("Redirect URI", SharedString::from(redirect), muted))
                 .child(row(
@@ -540,7 +545,7 @@ fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App
                             .iter()
                             .find(|(k, _)| k.eq_ignore_ascii_case("last-modified"))
                             .map(|(_, v)| v.as_str())
-                            .unwrap_or("-"),
+                            .unwrap_or_default(),
                     ),
                     muted,
                 ))
@@ -556,7 +561,7 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
         .flex()
         .flex_col()
         .gap_1()
-        .child(row("Title", or_dash(&rec.title), muted))
+        .child(row("Title", or_blank(&rec.title), muted))
         .child(row(
             "Title Length",
             SharedString::from(
@@ -572,14 +577,14 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             SharedString::from(
                 rec.title_pixel_width
                     .map(|w| w.to_string())
-                    .unwrap_or_else(|| "-".into()),
+                    .unwrap_or_default(),
             ),
             muted,
         ))
         .when_some(rec.title_2.clone(), |el, t2| {
             el.child(row("Title 2", SharedString::from(t2), muted))
         })
-        .child(row("Meta Desc", or_dash(&rec.meta_description), muted))
+        .child(row("Meta Desc", or_blank(&rec.meta_description), muted))
         .child(row(
             "Meta Length",
             SharedString::from(
@@ -595,14 +600,14 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             SharedString::from(
                 rec.meta_description_pixel_width
                     .map(|w| w.to_string())
-                    .unwrap_or_else(|| "-".into()),
+                    .unwrap_or_default(),
             ),
             muted,
         ))
         .when_some(rec.meta_description_2.clone(), |el, md2| {
             el.child(row("Meta Desc 2", SharedString::from(md2), muted))
         })
-        .child(row("H1", or_dash(&rec.h1), muted))
+        .child(row("H1", or_blank(&rec.h1), muted))
         .child(row(
             "H1 Length",
             SharedString::from(
@@ -616,14 +621,10 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
         .when_some(rec.h1_2.clone(), |el, h1_2| {
             el.child(row("H1-2", SharedString::from(h1_2), muted))
         })
-        .child(row("H2", or_dash(&rec.h2), muted))
+        .child(row("H2", or_blank(&rec.h2), muted))
         .child(row(
             "Word Count",
-            SharedString::from(
-                rec.word_count
-                    .map(|w| w.to_string())
-                    .unwrap_or_else(|| "-".into()),
-            ),
+            SharedString::from(rec.word_count.map(|w| w.to_string()).unwrap_or_default()),
             muted,
         ))
         .when(rec.ssr_word_count.is_some(), |el| {
@@ -632,7 +633,7 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
                 SharedString::from(
                     rec.ssr_word_count
                         .map(|w| w.to_string())
-                        .unwrap_or_else(|| "-".into()),
+                        .unwrap_or_default(),
                 ),
                 muted,
             ))
@@ -642,7 +643,7 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
                 muted,
             ))
         })
-        .child(row("Meta Robots", or_dash(&rec.robots), muted))
+        .child(row("Meta Robots", or_blank(&rec.robots), muted))
         .into_any_element();
 
     section("Page Content", None, None, muted, border, page_content)
@@ -665,11 +666,7 @@ fn structured_data_section(
                 .into_any_element(),
         )
     };
-    let sd_types_text = if rec.sd_types.is_empty() {
-        SharedString::from("-")
-    } else {
-        SharedString::from(rec.sd_types.join(", "))
-    };
+    let sd_types_text = SharedString::from(rec.sd_types.join(", "));
 
     let mut sd_items_body = div().flex().flex_col().gap_1();
     for (item, json_view) in rec.sd_items.iter().zip(json_views.iter()) {
@@ -872,19 +869,10 @@ fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> 
     let lcp_str = rec
         .lcp_ms
         .map(|ms| format!("{:.1}s", ms as f32 / 1000.0))
-        .unwrap_or_else(|| "-".into());
-    let cls_str = rec
-        .cls
-        .map(|v| format!("{:.3}", v))
-        .unwrap_or_else(|| "-".into());
-    let fcp_str = rec
-        .fcp_ms
-        .map(|ms| format!("{ms}ms"))
-        .unwrap_or_else(|| "-".into());
-    let ttfb_str = rec
-        .ttfb_ms
-        .map(|ms| format!("{ms}ms"))
-        .unwrap_or_else(|| "-".into());
+        .unwrap_or_default();
+    let cls_str = rec.cls.map(|v| format!("{:.3}", v)).unwrap_or_default();
+    let fcp_str = rec.fcp_ms.map(|ms| format!("{ms}ms")).unwrap_or_default();
+    let ttfb_str = rec.ttfb_ms.map(|ms| format!("{ms}ms")).unwrap_or_default();
 
     let vitals_body = div()
         .flex()
@@ -950,7 +938,7 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
     let link_score_str = rec
         .link_score
         .map(|s| format!("{s:.1}"))
-        .unwrap_or_else(|| "-".into());
+        .unwrap_or_default();
     let links_body = div()
         .flex()
         .flex_col()
@@ -974,7 +962,7 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
                         as u32
                 )
             } else {
-                "-".into()
+                String::new()
             }),
             muted,
         ))
@@ -1005,7 +993,7 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
                         (csr_out as f64 / total as f64 * 100.0).round() as u32
                     )
                 } else {
-                    "-".into()
+                    String::new()
                 }
             }),
             muted,
@@ -1018,11 +1006,7 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
         ))
         .child(row(
             "Depth",
-            SharedString::from(
-                rec.depth
-                    .map(|d| d.to_string())
-                    .unwrap_or_else(|| "-".into()),
-            ),
+            SharedString::from(rec.depth.map(|d| d.to_string()).unwrap_or_default()),
             muted,
         ))
         .child(row(
@@ -1035,7 +1019,7 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             SharedString::from(
                 rec.near_duplicate_count
                     .map(|c| c.to_string())
-                    .unwrap_or_else(|| "-".into()),
+                    .unwrap_or_default(),
             ),
             muted,
         ))
@@ -1044,7 +1028,7 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             SharedString::from(
                 rec.closest_similarity
                     .map(|s| format!("{s}%"))
-                    .unwrap_or_else(|| "-".into()),
+                    .unwrap_or_default(),
             ),
             muted,
         ))
@@ -1450,9 +1434,11 @@ fn image_header_block(image: &ImageDetails, muted: Hsla, border: Hsla) -> AnyEle
 fn image_information_section(image: &ImageDetails, muted: Hsla, border: Hsla) -> AnyElement {
     let dimensions = match (image.width, image.height) {
         (Some(w), Some(h)) => format!("{w} x {h}"),
-        (Some(w), None) => format!("{w} x -"),
-        (None, Some(h)) => format!("- x {h}"),
-        (None, None) => "-".to_string(),
+        // One side declared is worth showing, and the missing half is what the
+        // Missing Size Attributes rule is about.
+        (Some(w), None) => format!("{w} x ?"),
+        (None, Some(h)) => format!("? x {h}"),
+        (None, None) => String::new(),
     };
     let missing_alt = image
         .references
