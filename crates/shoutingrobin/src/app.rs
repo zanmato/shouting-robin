@@ -58,6 +58,10 @@ pub struct ShoutingRobinApp {
     details_panel: Entity<DetailsPanel>,
     status_bar: Entity<StatusBar>,
     active_tab: ResultTab,
+    /// The render mode of the crawl currently on screen. Accessibility and
+    /// Core Web Vitals only exist for a crawl that ran a browser, so the tabs
+    /// and panel sections reporting them are hidden for one that did not.
+    active_render_mode: RenderMode,
     issue_filter: IssueFilter,
     tabbar_scroll_handle: ScrollHandle,
     _cancel: Option<Arc<AtomicBool>>,
@@ -126,7 +130,7 @@ impl ShoutingRobinApp {
         let sidebar_sub = cx.subscribe_in(
             &sidebar,
             window,
-            move |_this, _sidebar, event: &CrawlsSidebarEvent, window, cx| match event {
+            move |this, _sidebar, event: &CrawlsSidebarEvent, window, cx| match event {
                 CrawlsSidebarEvent::Recrawl {
                     crawl_id,
                     root_url,
@@ -189,7 +193,12 @@ impl ShoutingRobinApp {
                     })
                     .detach();
                 }
-                CrawlsSidebarEvent::Selected { crawl_id, root_url } => {
+                CrawlsSidebarEvent::Selected {
+                    crawl_id,
+                    root_url,
+                    render_mode,
+                } => {
+                    this.set_render_mode(*render_mode, cx);
                     let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
                     let crawl_id = *crawl_id;
                     let root_url = root_url.clone();
@@ -329,6 +338,10 @@ impl ShoutingRobinApp {
             details_panel,
             status_bar,
             active_tab: ResultTab::Internal,
+            // Nothing is loaded yet. Chrome is the permissive starting point:
+            // it hides no tab, and the first crawl or reopened crawl replaces
+            // it with the truth.
+            active_render_mode: RenderMode::Chrome,
             issue_filter: IssueFilter::All,
             tabbar_scroll_handle: ScrollHandle::default(),
             _cancel: None,
@@ -418,6 +431,32 @@ impl ShoutingRobinApp {
         }
     }
 
+    /// Records which mode the crawl on screen ran in, and steps off a tab that
+    /// mode has nothing to say about.
+    fn set_render_mode(&mut self, mode: RenderMode, cx: &mut Context<Self>) {
+        if self.active_render_mode == mode {
+            return;
+        }
+        self.active_render_mode = mode;
+        self.details_panel
+            .update(cx, |panel, cx| panel.set_render_mode(mode, cx));
+        if !mode.renders_javascript() && Self::needs_rendering(self.active_tab) {
+            self.active_tab = ResultTab::Overview;
+            self.issue_filter = IssueFilter::All;
+            self.results_grid.update(cx, |grid, cx| {
+                grid.switch_tab(ResultTab::Overview, cx);
+            });
+        }
+        cx.notify();
+    }
+
+    /// True for the tabs whose every column is measured in a browser. Without
+    /// JavaScript rendering they can only ever be empty, so they are hidden
+    /// rather than left to look broken.
+    fn needs_rendering(tab: ResultTab) -> bool {
+        matches!(tab, ResultTab::Accessibility | ResultTab::Performance)
+    }
+
     /// Hands a fully resolved config to the engine and starts pumping its events
     /// into the UI.
     fn spawn_crawl(
@@ -427,6 +466,7 @@ impl ShoutingRobinApp {
         config: crate::crawl::CrawlConfig,
         cx: &mut Context<Self>,
     ) {
+        self.set_render_mode(mode, cx);
         let (tx, rx) = crate::crawl::engine::channel();
         let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
         let (cancel, fut) = {
@@ -762,6 +802,9 @@ impl Render for ShoutingRobinApp {
             .iter()
             .copied()
             .filter(|tab| *tab != ResultTab::Changes || has_baseline)
+            .filter(|tab| {
+                !Self::needs_rendering(*tab) || self.active_render_mode.renders_javascript()
+            })
             .collect();
 
         let active_ix = visible_tabs
@@ -922,6 +965,26 @@ impl Render for ShoutingRobinApp {
             );
         }
 
+        if let Some(note) = self.active_tab.note() {
+            let note = SharedString::from(note);
+            filter_left = filter_left.child(
+                h_flex()
+                    .id("tab-note")
+                    .items_center()
+                    .gap_1()
+                    .min_w_0()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(UiIcon::from(crate::ui::icon::Icon::Info).xsmall())
+                    // The line rarely fits beside the filters, so the truncated
+                    // form is the affordance and the tooltip is the text.
+                    .child(div().min_w_0().truncate().child(note.clone()))
+                    .tooltip(move |window, cx| {
+                        gpui_component::tooltip::Tooltip::new(note.clone()).build(window, cx)
+                    }),
+            );
+        }
+
         if has_baseline && let Some(started_at) = self.results_grid.read(cx).baseline_started_at(cx)
         {
             let now = chrono::Utc::now().timestamp();
@@ -1065,7 +1128,18 @@ impl Render for ShoutingRobinApp {
                                                             .min_w_0()
                                                             .child(self.results_grid.clone()),
                                                     )
-                                                    .child(self.details_panel.clone()),
+                                                    // No panel on the Overview:
+                                                    // clicking a row there
+                                                    // navigates to another tab
+                                                    // rather than selecting a
+                                                    // URL, so the panel could
+                                                    // only ever show the last
+                                                    // thing looked at
+                                                    // elsewhere.
+                                                    .when(
+                                                        self.active_tab != ResultTab::Overview,
+                                                        |el| el.child(self.details_panel.clone()),
+                                                    ),
                                             ),
                                     ),
                                 ),

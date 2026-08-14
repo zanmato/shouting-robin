@@ -84,6 +84,27 @@ impl ResultTab {
         }
     }
 
+    /// A line explaining what this tab counts, where the answer is deliberate
+    /// and would otherwise read as a defect.
+    ///
+    /// Both notes below record a decision rather than describe the code: other
+    /// tools draw these two lines elsewhere, and someone comparing the numbers
+    /// deserves to know we chose the wider reading on purpose.
+    pub fn note(self) -> Option<&'static str> {
+        match self {
+            ResultTab::Security => Some(
+                "Covers every URL that answered, redirects included: an http to https \
+                 redirect with no HSTS is exactly the hole these headers close.",
+            ),
+            ResultTab::Url => Some(
+                "Covers every internal URL, stylesheets, scripts and images included, not \
+                 only HTML pages. Mixed case and query strings are a cache hazard on an \
+                 asset too.",
+            ),
+            _ => None,
+        }
+    }
+
     pub fn icon(self) -> Option<Icon> {
         match self {
             ResultTab::Images => Some(Icon::Image),

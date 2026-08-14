@@ -15,6 +15,7 @@ pub enum CrawlsSidebarEvent {
     Selected {
         crawl_id: i64,
         root_url: String,
+        render_mode: RenderMode,
     },
     Deleted {
         crawl_id: i64,
@@ -144,11 +145,13 @@ impl Render for CrawlsSidebar {
                             .on_click(cx.listener({
                                 let crawl_id = crawl.id;
                                 let crawl_root = crawl.root_url.clone();
+                                let crawl_mode = RenderMode::from_stored(&crawl.render_mode);
                                 move |this, _event, _window, cx| {
                                     this.selected_id = Some(crawl_id);
                                     cx.emit(CrawlsSidebarEvent::Selected {
                                         crawl_id,
                                         root_url: crawl_root.clone(),
+                                        render_mode: crawl_mode,
                                     });
                                     cx.notify();
                                 }
@@ -181,11 +184,7 @@ impl Render for CrawlsSidebar {
                                 let crawl_id = crawl.id;
                                 let was_selected = is_selected;
                                 let crawl_root = crawl.root_url.clone();
-                                let render_mode = if crawl.render_mode == "chrome" {
-                                    RenderMode::Chrome
-                                } else {
-                                    RenderMode::Http
-                                };
+                                let render_mode = RenderMode::from_stored(&crawl.render_mode);
                                 let sidebar = sidebar.clone();
                                 move |menu, window, _cx| {
                                     let sidebar_for_delete = sidebar.clone();
