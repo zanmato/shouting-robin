@@ -45,6 +45,7 @@ fn main() {
     app.run(move |cx| {
         gpui_component::init(cx);
         gpui_tokio::init(cx);
+        ui::fonts::register(cx);
 
         if let Err(e) = ThemesManager::init() {
             tracing::error!("Failed to initialize themes: {}", e);

@@ -17,6 +17,12 @@
 //! units and converted once at the end, so rounding happens a single time
 //! rather than per glyph.
 //!
+//! The Google Sans table was re-checked against `assets/fonts/GoogleSans-Regular.ttf`,
+//! which the app now bundles, and the Arial table against the platform's
+//! `arial.ttf`: all 191 codepoints of each match the font's `hmtx` exactly. The
+//! bundled file makes that audit repeatable — read `hmtx` for U+0020..U+007E and
+//! U+00A0..U+00FF and compare.
+//!
 //! Note this deliberately parts company with the tool this crawler is compared
 //! against, which models titles as 20px: our title widths run about 11% wider
 //! than its. The pixel thresholds are container widths and do not move with the

@@ -248,8 +248,12 @@ fn serp_preview(rec: &PageRecord, cx: &App) -> AnyElement {
         .px_2()
         .py_1p5()
         .child(
+            // The heading of a real result is set in Google Sans, and it is
+            // the font the title pixel-width rules measure against, so the
+            // preview shows the line the way the rule reads it.
             div()
-                .text_sm()
+                .font_family(crate::ui::fonts::FAMILY)
+                .text_size(px(18.))
                 .text_color(cx.theme().blue)
                 .child(SharedString::from(title.to_string())),
         )

@@ -229,7 +229,7 @@ fn report_html(report: &Report) -> String {
     };
 
     format!(
-        r#"<main style="display:flex;flex-direction:column;width:100%;font-family:'Noto Sans';color:#0f172a">
+        r#"<main style="display:flex;flex-direction:column;width:100%;font-family:'Google Sans';color:#0f172a">
              <div style="font-size:11px;color:#64748b">SEO CRAWL REPORT</div>
              <h1 style="font-size:28px;font-weight:700;margin:0;padding-top:4px">{site}</h1>
              <div style="font-size:12px;color:#64748b;padding-top:4px;padding-bottom:18px">{generated} · {mode}</div>
@@ -246,7 +246,7 @@ fn report_html(report: &Report) -> String {
 /// are filled in by the layout engine, so nothing here counts pages.
 fn footer_html(report: &Report) -> String {
     format!(
-        r#"<div style="display:flex;flex-direction:row;justify-content:space-between;width:100%;padding:0 {margin}px;font-family:'Noto Sans';font-size:10px;color:#94a3b8">
+        r#"<div style="display:flex;flex-direction:row;justify-content:space-between;width:100%;padding:0 {margin}px;font-family:'Google Sans';font-size:10px;color:#94a3b8">
              <div>{site}</div>
              <div style="display:flex;flex-direction:row;gap:3px">
                <div>Page</div><div class="pageNumber"></div><div>of</div><div class="totalPages"></div>
@@ -257,22 +257,11 @@ fn footer_html(report: &Report) -> String {
     )
 }
 
-/// The font the report is set in.
-///
-/// Bundled rather than taken from the machine, for two reasons. A report is a
-/// document someone sends on, so it should look the same wherever it was
-/// written. And the layout engine mis-advances fonts that carry a legacy
-/// `kern` table alongside GPOS: DejaVu Sans and Liberation Sans, the two
-/// faces a Linux box is most likely to answer "sans-serif" with, both come out
-/// with gaps inside words and numbers, while Noto Sans and Lato are correct.
-/// Reported upstream; until it is fixed, picking the font ourselves is the
-/// difference between a report and a curiosity.
-const REGULAR: &[u8] = include_bytes!("../assets/fonts/NotoSans-Regular.ttf");
-const BOLD: &[u8] = include_bytes!("../assets/fonts/NotoSans-Bold.ttf");
-
+/// The report is set in the app's bundled family, for the reasons
+/// [`crate::ui::fonts`] gives.
 fn report_fonts() -> Result<Fonts> {
     let mut fonts = Fonts::default();
-    for face in [REGULAR, BOLD] {
+    for face in [crate::ui::fonts::REGULAR, crate::ui::fonts::BOLD] {
         fonts
             .register(FontResource::new(face))
             .map_err(|err| anyhow!("failed to register the report font: {err}"))?;

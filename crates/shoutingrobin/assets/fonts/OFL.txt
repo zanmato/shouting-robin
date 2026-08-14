@@ -1,11 +1,10 @@
-Noto Sans (Regular and Bold), the font the PDF report is set in.
-
-Copyright 2010, 2012-2020 Google Inc.
-Copyright 2015-2020 Google LLC.
+Google Sans (Regular and Bold), the font the PDF report and the SERP preview
+are set in. Google sets result-page titles in it, which is also why the title
+pixel-width rules measure against its advance widths.
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-https://scripts.sil.org/OFL
+https://openfontlicense.org
 
 
 -----------------------------------------------------------
