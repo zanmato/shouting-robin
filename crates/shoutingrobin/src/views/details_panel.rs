@@ -6,11 +6,12 @@ use gpui::{
     prelude::FluentBuilder, px,
 };
 use gpui_component::{
-    ActiveTheme, Icon as UiIcon, Sizable as _, scroll::ScrollableElement as _, tooltip::Tooltip,
-    v_virtual_list,
+    ActiveTheme, Icon as UiIcon, Sizable as _, VirtualListScrollHandle,
+    scroll::ScrollableElement as _, tooltip::Tooltip, v_virtual_list,
 };
 
 use crate::a11y_rules::rule_description;
+use crate::crawl::RenderMode;
 use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdSeverity};
 use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
@@ -48,6 +49,20 @@ pub struct DetailsPanel {
     selected: Option<DetailsSelection>,
     json_views: Vec<Option<JsonView>>,
     html_views: Vec<Option<HtmlView>>,
+    /// One handle per virtualised section, held here rather than built during
+    /// render. A scroll handle owns the offset: `v_virtual_list` makes a fresh
+    /// one per call, and an element that tracks a scroll handle reads its
+    /// offset instead of the offset the window persisted, so a list without a
+    /// handle of its own is redrawn at zero every frame and cannot be scrolled
+    /// at all.
+    inlinks_scroll: VirtualListScrollHandle,
+    outlinks_scroll: VirtualListScrollHandle,
+    duplicates_scroll: VirtualListScrollHandle,
+    image_references_scroll: VirtualListScrollHandle,
+    /// The mode the crawl on screen ran in. Accessibility violations and Core
+    /// Web Vitals are measured in a browser, so for an HTTP crawl those two
+    /// sections can only ever be a column of dashes.
+    render_mode: RenderMode,
 }
 
 impl DetailsPanel {
@@ -56,7 +71,17 @@ impl DetailsPanel {
             selected: None,
             json_views: Vec::new(),
             html_views: Vec::new(),
+            inlinks_scroll: VirtualListScrollHandle::new(),
+            outlinks_scroll: VirtualListScrollHandle::new(),
+            duplicates_scroll: VirtualListScrollHandle::new(),
+            image_references_scroll: VirtualListScrollHandle::new(),
+            render_mode: RenderMode::Chrome,
         }
+    }
+
+    pub fn set_render_mode(&mut self, mode: RenderMode, cx: &mut Context<Self>) {
+        self.render_mode = mode;
+        cx.notify();
     }
 
     pub fn set_selected(&mut self, selection: Option<DetailsSelection>, cx: &mut Context<Self>) {
@@ -92,6 +117,16 @@ impl DetailsPanel {
                 .collect(),
             None => Vec::new(),
         };
+        // A new selection is a new set of rows, so every list starts at the top
+        // rather than inheriting the previous page's position.
+        for handle in [
+            &self.inlinks_scroll,
+            &self.outlinks_scroll,
+            &self.duplicates_scroll,
+            &self.image_references_scroll,
+        ] {
+            handle.set_offset(gpui::point(px(0.), px(0.)));
+        }
         self.selected = selection;
         cx.notify();
     }
@@ -872,6 +907,8 @@ fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> 
 }
 
 fn link_metrics_section(
+    panel: &Entity<DetailsPanel>,
+    scroll: &VirtualListScrollHandle,
     rec: &PageRecord,
     muted: Hsla,
     fg: Hsla,
@@ -971,29 +1008,52 @@ fn link_metrics_section(
             muted,
         ))
         .when(!rec.near_duplicate_urls.is_empty(), |el| {
-            let mut urls_body = div().flex().flex_col().gap_0p5();
-            for dup_url in &rec.near_duplicate_urls {
-                urls_body = urls_body.child(
-                    div()
-                        .text_xs()
-                        .font_family(cx.theme().mono_font_family.clone())
-                        .text_color(fg)
-                        .truncate()
-                        .child(SharedString::from(dup_url.clone())),
-                );
-            }
+            // A page on a large templated site can be near-duplicate with
+            // hundreds of others, so this list is virtualised and capped like
+            // the link lists rather than built in full every frame.
+            let count = rec.near_duplicate_urls.len();
+            let mono = cx.theme().mono_font_family.clone();
             el.child(
                 div()
-                    .pl(px(0.))
                     .pt_1()
                     .child(
                         div()
                             .text_xs()
                             .text_color(muted)
                             .pb_0p5()
-                            .child("Duplicate Pages:"),
+                            .child(SharedString::from(format!("Duplicate Pages ({count}):"))),
                     )
-                    .child(urls_body),
+                    .child(
+                        div().h(duplicate_list_height(count)).child(
+                            v_virtual_list(
+                                panel.clone(),
+                                "near-duplicates",
+                                duplicate_row_sizes(count),
+                                move |this, range, _window, _cx| {
+                                    let Some(rec) = selected_page(this) else {
+                                        return Vec::new();
+                                    };
+                                    rec.near_duplicate_urls
+                                        .get(range)
+                                        .unwrap_or_default()
+                                        .iter()
+                                        .map(|dup_url| {
+                                            div()
+                                                .h(DUPLICATE_ROW_HEIGHT)
+                                                .flex()
+                                                .items_center()
+                                                .text_xs()
+                                                .font_family(mono.clone())
+                                                .text_color(fg)
+                                                .truncate()
+                                                .child(SharedString::from(dup_url.clone()))
+                                        })
+                                        .collect()
+                                },
+                            )
+                            .track_scroll(scroll),
+                        ),
+                    ),
             )
         })
         .child(row(
@@ -1135,32 +1195,72 @@ fn serp_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App) -> AnyEle
     )
 }
 
-fn hreflang_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> Option<AnyElement> {
+fn hreflang_section(
+    rec: &PageRecord,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> Option<AnyElement> {
     if rec.hreflang_issues.is_empty() {
         return None;
     }
-    let mut body = div().flex().flex_col().gap_0p5();
+    let mut body = div().flex().flex_col().gap_1();
     for issue in &rec.hreflang_issues {
-        let label = match issue {
-            crate::crawl::event::HreflangIssue::MissingReturnTag { lang, target_url } => {
-                format!("Missing return tag: {lang} -> {target_url}")
-            }
+        // Badged like the accessibility issues above, and graded like the
+        // Hreflang tab: all of these are warnings there, and a panel that
+        // paints them in error red says something the tab contradicts. Only an
+        // invalid language code is unambiguously wrong.
+        let (tone, name, detail) = match issue {
+            crate::crawl::event::HreflangIssue::MissingReturnTag { lang, target_url } => (
+                Tone::Warn,
+                "Missing return tag",
+                Some(format!("{lang} -> {target_url}")),
+            ),
             crate::crawl::event::HreflangIssue::InvalidLanguageCode { code } => {
-                format!("Invalid language code: {code}")
+                (Tone::Err, "Invalid language code", Some(code.clone()))
             }
-            crate::crawl::event::HreflangIssue::MissingXDefault => "Missing x-default".into(),
+            crate::crawl::event::HreflangIssue::MissingXDefault => {
+                (Tone::Warn, "Missing x-default", None)
+            }
             crate::crawl::event::HreflangIssue::MissingSelfReference => {
-                "Missing self reference".into()
+                (Tone::Warn, "Missing self reference", None)
             }
-            crate::crawl::event::HreflangIssue::NonCanonicalUrl { hreflang_url } => {
-                format!("Non-canonical target: {hreflang_url}")
-            }
+            crate::crawl::event::HreflangIssue::NonCanonicalUrl { hreflang_url } => (
+                Tone::Warn,
+                "Non-canonical target",
+                Some(hreflang_url.clone()),
+            ),
         };
         body = body.child(
             div()
-                .text_xs()
-                .text_color(gpui::hsla(0. / 360., 0.84, 0.60, 1.0))
-                .child(SharedString::from(label)),
+                .flex()
+                .flex_col()
+                .gap_0p5()
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .child(tone_tag(tone, cx).child(SharedString::from(match tone {
+                            Tone::Err => "error",
+                            _ => "warning",
+                        })))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(fg)
+                                .child(SharedString::from(name)),
+                        ),
+                )
+                .when_some(detail, |el, detail| {
+                    el.child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(SharedString::from(detail)),
+                    )
+                }),
         );
     }
     Some(section(
@@ -1181,8 +1281,10 @@ fn hreflang_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> Option<AnyEl
 
 /// The height of one row in the link and image-reference lists. The lists are
 /// virtualised, which needs every row to be the same known height, so a row is
-/// two fixed lines: the URL and one line of detail under it.
-const LINK_ROW_HEIGHT: Pixels = px(38.);
+/// two fixed lines: the URL and one line of detail under it, with enough room
+/// above and below that consecutive rows read as separate entries rather than
+/// one block of text.
+const LINK_ROW_HEIGHT: Pixels = px(46.);
 
 /// How many rows a virtualised section shows before it scrolls on its own.
 const MAX_VISIBLE_LINK_ROWS: usize = 8;
@@ -1201,7 +1303,8 @@ fn link_row(
         .flex()
         .flex_col()
         .justify_center()
-        .gap_0p5()
+        .gap_1()
+        .py_1()
         .border_t_1()
         .border_color(border)
         .child(
@@ -1241,6 +1344,27 @@ fn link_row_sizes(row_count: usize) -> Rc<Vec<Size<Pixels>>> {
     ])
 }
 
+/// One duplicate URL is a single line, so its rows are shorter than a link's.
+const DUPLICATE_ROW_HEIGHT: Pixels = px(18.);
+
+/// How many duplicate URLs are shown before the list scrolls on its own. Higher
+/// than the link cap because the rows are half the height.
+const MAX_VISIBLE_DUPLICATE_ROWS: usize = 12;
+
+fn duplicate_list_height(row_count: usize) -> Pixels {
+    DUPLICATE_ROW_HEIGHT * row_count.min(MAX_VISIBLE_DUPLICATE_ROWS) as f32
+}
+
+fn duplicate_row_sizes(row_count: usize) -> Rc<Vec<Size<Pixels>>> {
+    Rc::new(vec![
+        Size {
+            width: px(0.),
+            height: DUPLICATE_ROW_HEIGHT,
+        };
+        row_count
+    ])
+}
+
 /// The page a link or reference section is describing, or `None` when the
 /// selection is not a page. Used inside the virtual lists' render closures,
 /// which run against the panel rather than a captured record.
@@ -1253,6 +1377,7 @@ fn selected_page(panel: &DetailsPanel) -> Option<&PageRecord> {
 
 fn inlinks_section(
     panel: &Entity<DetailsPanel>,
+    scroll: &VirtualListScrollHandle,
     rec: &PageRecord,
     muted: Hsla,
     fg: Hsla,
@@ -1264,41 +1389,44 @@ fn inlinks_section(
     }
     let body = div()
         .h(link_list_height(count))
-        .child(v_virtual_list(
-            panel.clone(),
-            "inlinks",
-            link_row_sizes(count),
-            move |this, range, _window, cx| {
-                let Some(rec) = selected_page(this) else {
-                    return Vec::new();
-                };
-                rec.backlinks
-                    .get(range)
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|backlink| {
-                        let anchor = backlink
-                            .anchor
-                            .as_deref()
-                            .filter(|a| !a.trim().is_empty())
-                            .unwrap_or("No anchor");
-                        let detail = match backlink.rel.as_deref() {
-                            Some(rel) => format!("{anchor} · rel={rel}"),
-                            None => anchor.to_string(),
-                        };
-                        link_row(
-                            SharedString::from(backlink.source_url.clone()),
-                            SharedString::from(detail),
-                            None,
-                            muted,
-                            fg,
-                            border,
-                            cx,
-                        )
-                    })
-                    .collect()
-            },
-        ))
+        .child(
+            v_virtual_list(
+                panel.clone(),
+                "inlinks",
+                link_row_sizes(count),
+                move |this, range, _window, cx| {
+                    let Some(rec) = selected_page(this) else {
+                        return Vec::new();
+                    };
+                    rec.backlinks
+                        .get(range)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|backlink| {
+                            let anchor = backlink
+                                .anchor
+                                .as_deref()
+                                .filter(|a| !a.trim().is_empty())
+                                .unwrap_or("No anchor");
+                            let detail = match backlink.rel.as_deref() {
+                                Some(rel) => format!("{anchor} · rel={rel}"),
+                                None => anchor.to_string(),
+                            };
+                            link_row(
+                                SharedString::from(backlink.source_url.clone()),
+                                SharedString::from(detail),
+                                None,
+                                muted,
+                                fg,
+                                border,
+                                cx,
+                            )
+                        })
+                        .collect()
+                },
+            )
+            .track_scroll(scroll),
+        )
         .into_any_element();
     Some(section(
         "Inlinks (From)",
@@ -1317,6 +1445,7 @@ fn inlinks_section(
 
 fn outlinks_section(
     panel: &Entity<DetailsPanel>,
+    scroll: &VirtualListScrollHandle,
     rec: &PageRecord,
     muted: Hsla,
     fg: Hsla,
@@ -1328,46 +1457,49 @@ fn outlinks_section(
     }
     let body = div()
         .h(link_list_height(count))
-        .child(v_virtual_list(
-            panel.clone(),
-            "outlinks",
-            link_row_sizes(count),
-            move |this, range, _window, cx| {
-                let Some(rec) = selected_page(this) else {
-                    return Vec::new();
-                };
-                rec.outlinks
-                    .get(range)
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|link| {
-                        let is_nofollow = link
-                            .rel
-                            .as_deref()
-                            .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
-                        let trailing = is_nofollow.then(|| {
-                            tone_tag(Tone::Warn, cx)
-                                .child(SharedString::from("nofollow"))
-                                .into_any_element()
-                        });
-                        let anchor = link
-                            .anchor
-                            .as_deref()
-                            .filter(|a| !a.trim().is_empty())
-                            .unwrap_or("No anchor text");
-                        link_row(
-                            SharedString::from(link.dst_url.clone()),
-                            SharedString::from(anchor.to_string()),
-                            trailing,
-                            muted,
-                            fg,
-                            border,
-                            cx,
-                        )
-                    })
-                    .collect()
-            },
-        ))
+        .child(
+            v_virtual_list(
+                panel.clone(),
+                "outlinks",
+                link_row_sizes(count),
+                move |this, range, _window, cx| {
+                    let Some(rec) = selected_page(this) else {
+                        return Vec::new();
+                    };
+                    rec.outlinks
+                        .get(range)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|link| {
+                            let is_nofollow = link
+                                .rel
+                                .as_deref()
+                                .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
+                            let trailing = is_nofollow.then(|| {
+                                tone_tag(Tone::Warn, cx)
+                                    .child(SharedString::from("nofollow"))
+                                    .into_any_element()
+                            });
+                            let anchor = link
+                                .anchor
+                                .as_deref()
+                                .filter(|a| !a.trim().is_empty())
+                                .unwrap_or("No anchor text");
+                            link_row(
+                                SharedString::from(link.dst_url.clone()),
+                                SharedString::from(anchor.to_string()),
+                                trailing,
+                                muted,
+                                fg,
+                                border,
+                                cx,
+                            )
+                        })
+                        .collect()
+                },
+            )
+            .track_scroll(scroll),
+        )
         .into_any_element();
     Some(section(
         "Outlinks (To)",
@@ -1525,6 +1657,7 @@ fn image_information_section(image: &ImageDetails, muted: Hsla, border: Hsla) ->
 
 fn image_references_section(
     panel: &Entity<DetailsPanel>,
+    scroll: &VirtualListScrollHandle,
     image: &ImageDetails,
     muted: Hsla,
     fg: Hsla,
@@ -1533,45 +1666,49 @@ fn image_references_section(
     let count = image.references.len();
     let body = div()
         .h(link_list_height(count))
-        .child(v_virtual_list(
-            panel.clone(),
-            "image-references",
-            link_row_sizes(count),
-            move |this, range, _window, cx| {
-                let Some(DetailsSelection::Image(image)) = &this.selected else {
-                    return Vec::new();
-                };
-                image
-                    .references
-                    .get(range)
-                    .unwrap_or_default()
-                    .iter()
-                    .map(|reference| {
-                        let (tone, label) = if !reference.has_alt_attr {
-                            (Tone::Err, "missing")
-                        } else if reference.alt.as_deref().is_none_or(|alt| alt.is_empty()) {
-                            (Tone::Warn, "empty")
-                        } else {
-                            (Tone::Ok, "alt")
-                        };
-                        let trailing = tone_tag(tone, cx)
-                            .child(SharedString::from(label))
-                            .into_any_element();
-                        link_row(
-                            SharedString::from(reference.page_url.clone()),
-                            SharedString::from(
-                                reference.alt.clone().unwrap_or_else(|| "-".to_string()),
-                            ),
-                            Some(trailing),
-                            muted,
-                            fg,
-                            border,
-                            cx,
-                        )
-                    })
-                    .collect()
-            },
-        ))
+        .child(
+            v_virtual_list(
+                panel.clone(),
+                "image-references",
+                link_row_sizes(count),
+                move |this, range, _window, cx| {
+                    let Some(DetailsSelection::Image(image)) = &this.selected else {
+                        return Vec::new();
+                    };
+                    image
+                        .references
+                        .get(range)
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|reference| {
+                            // The tag says what is missing, not merely that
+                            // something is: this row is about the alt text this
+                            // page gives the image, and nothing else.
+                            let (tone, label) = if !reference.has_alt_attr {
+                                (Tone::Err, "missing alt")
+                            } else if reference.alt.as_deref().is_none_or(|alt| alt.is_empty()) {
+                                (Tone::Warn, "empty alt")
+                            } else {
+                                (Tone::Ok, "alt")
+                            };
+                            let trailing = tone_tag(tone, cx)
+                                .child(SharedString::from(label))
+                                .into_any_element();
+                            link_row(
+                                SharedString::from(reference.page_url.clone()),
+                                SharedString::from(reference.alt.clone().unwrap_or_default()),
+                                Some(trailing),
+                                muted,
+                                fg,
+                                border,
+                                cx,
+                            )
+                        })
+                        .collect()
+                },
+            )
+            .track_scroll(scroll),
+        )
         .into_any_element();
     section(
         "Referenced By",
@@ -1615,7 +1752,14 @@ impl Render for DetailsPanel {
                 .flex_col()
                 .child(image_header_block(image, muted, border))
                 .child(image_information_section(image, muted, border))
-                .child(image_references_section(&panel, image, muted, fg, border))
+                .child(image_references_section(
+                    &panel,
+                    &self.image_references_scroll,
+                    image,
+                    muted,
+                    fg,
+                    border,
+                ))
                 .into_any_element(),
             Some(DetailsSelection::Page(rec)) => div()
                 .id("details-scroll")
@@ -1633,25 +1777,41 @@ impl Render for DetailsPanel {
                     border,
                     cx,
                 ))
-                .child(accessibility_section(
+                // Both of these are measured in a browser. On an HTTP crawl
+                // they would be a heading over nothing.
+                .when(self.render_mode.renders_javascript(), |el| {
+                    el.child(accessibility_section(
+                        rec,
+                        &self.html_views,
+                        muted,
+                        fg,
+                        border,
+                        cx,
+                    ))
+                    .child(vitals_section(rec, muted, border, panel2))
+                })
+                .child(link_metrics_section(
+                    &panel,
+                    &self.duplicates_scroll,
                     rec,
-                    &self.html_views,
                     muted,
                     fg,
                     border,
                     cx,
                 ))
-                .child(vitals_section(rec, muted, border, panel2))
-                .child(link_metrics_section(rec, muted, fg, border, cx))
                 .child(images_section(rec, muted, fg, border, cx))
                 .child(serp_section(rec, muted, border, cx))
-                .when_some(hreflang_section(rec, muted, border), |el, s| el.child(s))
-                .when_some(inlinks_section(&panel, rec, muted, fg, border), |el, s| {
+                .when_some(hreflang_section(rec, muted, fg, border, cx), |el, s| {
                     el.child(s)
                 })
-                .when_some(outlinks_section(&panel, rec, muted, fg, border), |el, s| {
-                    el.child(s)
-                })
+                .when_some(
+                    inlinks_section(&panel, &self.inlinks_scroll, rec, muted, fg, border),
+                    |el, s| el.child(s),
+                )
+                .when_some(
+                    outlinks_section(&panel, &self.outlinks_scroll, rec, muted, fg, border),
+                    |el, s| el.child(s),
+                )
                 .when_some(headers_section(rec, muted, fg, border, cx), |el, s| {
                     el.child(s)
                 })
