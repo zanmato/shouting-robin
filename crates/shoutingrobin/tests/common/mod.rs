@@ -109,6 +109,15 @@ async fn handle_connection(mut stream: TcpStream, test_site_dir: PathBuf) -> std
     let raw_path = request_line.split_whitespace().nth(1).unwrap_or("/");
     let path = raw_path.split(['?', '#']).next().unwrap_or("/");
 
+    // A real 301 whose Location is relative, which is what most servers send
+    // and what the crawler must resolve itself: spider refuses to follow a
+    // redirect to loopback, so this arrives as "redirected, target unknown".
+    if path == "/moved" {
+        let response = "HTTP/1.1 301 Moved Permanently\r\nLocation: /redirect-target.html\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+        stream.write_all(response.as_bytes()).await?;
+        return stream.flush().await;
+    }
+
     let relative = path.trim_start_matches('/');
     let relative = if relative.is_empty() {
         "index.html"
@@ -182,6 +191,7 @@ pub fn write_sitemap(port: u16) {
     <xhtml:link rel="alternate" hreflang="sv" href="{base}/om-oss.html"/>
   </url>
   <url><loc>{base}/orphan-page.html</loc><lastmod>2026-07-15T09:30:00+02:00</lastmod></url>
+  <url><loc>{base}/sitemap-only.html</loc><lastmod>2026-05-02</lastmod></url>
 </urlset>
 "#
     );

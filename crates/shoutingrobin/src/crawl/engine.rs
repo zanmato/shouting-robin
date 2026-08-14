@@ -714,6 +714,8 @@ impl CrawlEngine {
             });
             tracing::info!(total, "page pump finished");
 
+            resolve_unknown_redirects(&pool, crawl_id, &tx, &config, &root_url, &cancel_flag).await;
+
             check_discovered_resources(
                 &pool,
                 crawl_id,
@@ -737,44 +739,79 @@ impl CrawlEngine {
 
             run_hreflang_validation(&pool, crawl_id).await;
 
-            if let Ok(orphans) = storage::load_sitemap_orphans(&pool, crawl_id).await {
+            // Sitemap orphans and robots-blocked URLs: recorded, not just
+            // announced. Both used to be live-only events, so reopening a crawl
+            // or exporting it lost them, and a site with 422 sitemap URLs
+            // against 105 crawled lost about three hundred rows.
+            {
+                let blocked: std::collections::HashSet<String> =
+                    std::mem::take(&mut *blocked_urls.lock().unwrap_or_else(|e| e.into_inner()))
+                        .into_iter()
+                        .collect();
+                // Every URL already a row, so a URL listed by two sitemaps, or
+                // both listed and blocked, is one row rather than two.
+                let mut recorded = storage::load_page_urls(&pool, crawl_id)
+                    .await
+                    .unwrap_or_default();
+
+                // Read the orphans before recording any: the query is "listed
+                // in a sitemap and absent from `pages`", and we are about to
+                // add them to `pages`.
+                let orphans = storage::load_sitemap_orphans(&pool, crawl_id)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!(error=%e, "failed to load sitemap orphans");
+                        Vec::new()
+                    });
+                let mut orphan_count = 0usize;
                 for orphan in &orphans {
+                    if !recorded.insert(orphan.page_url.clone()) {
+                        continue;
+                    }
+                    orphan_count += 1;
                     let record = PageRecord {
                         url: orphan.page_url.clone(),
                         sitemap_url: Some(orphan.sitemap_url.clone()),
                         sitemap_lastmod: orphan.lastmod.clone(),
                         in_sitemap: Some(true),
+                        // A URL can be both listed and disallowed, and the one
+                        // row should say so.
+                        blocked_by_robots: blocked.contains(&orphan.page_url).then_some(true),
                         is_internal: is_same_domain(&root_url, &orphan.page_url),
                         ..Default::default()
                     };
+                    if let Err(e) = storage::insert_page(&pool, crawl_id, &record).await {
+                        tracing::warn!(error=%e, url=%record.url, "failed to persist sitemap orphan");
+                    }
                     if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
                         tracing::warn!(error=%e, "failed to send sitemap orphan page event");
                     }
                 }
-                if !orphans.is_empty() {
-                    tracing::info!(count = orphans.len(), "found sitemap orphan URLs");
+                if orphan_count > 0 {
+                    tracing::info!(count = orphan_count, "found sitemap orphan URLs");
                 }
-            }
 
-            {
-                let blocked =
-                    std::mem::take(&mut *blocked_urls.lock().unwrap_or_else(|e| e.into_inner()));
-                let mut seen = std::collections::HashSet::new();
+                let mut blocked_count = 0usize;
                 for url in &blocked {
-                    if seen.insert(url.clone()) {
-                        let record = PageRecord {
-                            url: url.clone(),
-                            is_internal: is_same_domain(&root_url, url),
-                            blocked_by_robots: Some(true),
-                            ..Default::default()
-                        };
-                        if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
-                            tracing::warn!(error=%e, "failed to send blocked URL page event");
-                        }
+                    if !recorded.insert(url.clone()) {
+                        continue;
+                    }
+                    blocked_count += 1;
+                    let record = PageRecord {
+                        url: url.clone(),
+                        is_internal: is_same_domain(&root_url, url),
+                        blocked_by_robots: Some(true),
+                        ..Default::default()
+                    };
+                    if let Err(e) = storage::insert_page(&pool, crawl_id, &record).await {
+                        tracing::warn!(error=%e, url=%record.url, "failed to persist blocked URL");
+                    }
+                    if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+                        tracing::warn!(error=%e, "failed to send blocked URL page event");
                     }
                 }
-                if !blocked.is_empty() {
-                    tracing::info!(count = blocked.len(), "found robots.txt-blocked URLs");
+                if blocked_count > 0 {
+                    tracing::info!(count = blocked_count, "found robots.txt-blocked URLs");
                 }
             }
 
@@ -863,6 +900,183 @@ async fn check_discovered_resources(
         }
     })
     .await;
+}
+
+/// Resolves redirects whose target the crawler could not report, and crawls
+/// the targets it did not already reach.
+///
+/// spider hands back a final URL only for a redirect it followed, so a 3xx it
+/// declined to follow arrives as "something redirected, destination unknown".
+/// The destination is then reachable no other way: it is not linked from
+/// anywhere else, so the page it points at never enters the crawl at all.
+///
+/// One request each, with redirects disabled, reading `Location` ourselves.
+async fn resolve_unknown_redirects(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    tx: &Sender<CrawlEvent>,
+    config: &CrawlConfig,
+    root_url: &str,
+    cancel: &Arc<AtomicBool>,
+) {
+    if cancel.load(Ordering::Relaxed) {
+        return;
+    }
+    let unresolved = match storage::load_unresolved_redirects(pool, crawl_id).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to read unresolved redirects");
+            return;
+        }
+    };
+    if unresolved.is_empty() {
+        return;
+    }
+    let client = match build_redirect_client(config) {
+        Ok(client) => client,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to build redirect client");
+            return;
+        }
+    };
+    let mut recorded = match storage::load_page_urls(pool, crawl_id).await {
+        Ok(urls) => urls,
+        Err(e) => {
+            tracing::warn!(error=%e, "failed to read recorded URLs");
+            return;
+        }
+    };
+
+    for (url, status) in unresolved {
+        if cancel.load(Ordering::Relaxed) {
+            return;
+        }
+        let Some(target) = fetch_redirect_target(&client, &url).await else {
+            continue;
+        };
+        if let Err(e) = storage::set_redirect_target(pool, crawl_id, &url, &target, status).await {
+            tracing::warn!(error=%e, url=%url, "failed to record redirect target");
+        }
+        tracing::info!(from = %url, to = %target, "resolved a redirect the crawler could not");
+
+        // The target is a page of the site that nothing else links to, so it is
+        // crawled here or not at all. External targets are left to the resource
+        // pass, which status-checks them without auditing them.
+        if !is_same_domain(root_url, &target) || !recorded.insert(target.clone()) {
+            continue;
+        }
+        let Some(record) = fetch_redirect_target_page(&client, &target, config, root_url).await
+        else {
+            continue;
+        };
+        if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
+            tracing::warn!(error=%e, url=%record.url, "failed to persist redirect target");
+        }
+        if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+            tracing::error!(error=%e, "failed to send redirect target page event");
+        }
+    }
+}
+
+/// A client that reports redirects instead of following them, so `Location` is
+/// readable.
+fn build_redirect_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Error> {
+    let mut builder = reqwest::Client::builder()
+        .timeout(Duration::from_secs(config.timeout_seconds.max(1) as u64))
+        .redirect(reqwest::redirect::Policy::none());
+    if let Some(ua) = config.user_agent.as_deref().filter(|ua| !ua.is_empty()) {
+        builder = builder.user_agent(ua);
+    }
+    if !config.extra_headers.is_empty() {
+        let mut headers = reqwest::header::HeaderMap::new();
+        for (key, value) in &config.extra_headers {
+            if let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_bytes())
+                && let Ok(val) = reqwest::header::HeaderValue::from_str(value)
+            {
+                headers.insert(name, val);
+            }
+        }
+        builder = builder.default_headers(headers);
+    }
+    builder.build()
+}
+
+/// The absolute URL a redirect points at, from its `Location` header.
+///
+/// `Location` is very often relative (`/se/bett`), which RFC 7231 allows and
+/// which every browser resolves against the request URL, so we do too.
+async fn fetch_redirect_target(client: &reqwest::Client, url: &str) -> Option<String> {
+    let response = match client.get(url).send().await {
+        Ok(response) => response,
+        Err(e) => {
+            tracing::debug!(url = %url, error = %e, "redirect resolution request failed");
+            return None;
+        }
+    };
+    if !response.status().is_redirection() {
+        return None;
+    }
+    let location = response
+        .headers()
+        .get(reqwest::header::LOCATION)?
+        .to_str()
+        .ok()?
+        .trim()
+        .to_string();
+    let base = url::Url::parse(url).ok()?;
+    let resolved = base.join(&location).ok()?;
+    (resolved.as_str() != url).then(|| resolved.to_string())
+}
+
+/// Fetches and analyzes a redirect's target as a page of its own.
+async fn fetch_redirect_target_page(
+    client: &reqwest::Client,
+    url: &str,
+    config: &CrawlConfig,
+    root_url: &str,
+) -> Option<PageRecord> {
+    let started = std::time::Instant::now();
+    let response = match client.get(url).send().await {
+        Ok(response) => response,
+        Err(e) => {
+            tracing::debug!(url = %url, error = %e, "redirect target fetch failed");
+            return None;
+        }
+    };
+    let status = response.status().as_u16();
+    let headers: Vec<(String, String)> = response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            value
+                .to_str()
+                .ok()
+                .map(|value| (name.to_string(), value.to_string()))
+        })
+        .collect();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| value.split(';').next().unwrap_or(value).trim().to_string());
+    let body = response.text().await.ok()?;
+
+    let mut record = PageRecord {
+        url: url.to_string(),
+        status: Some(status),
+        size_bytes: body.len() as u64,
+        response_time: started.elapsed(),
+        content_type,
+        headers,
+        is_page: true,
+        is_internal: is_same_domain(root_url, url),
+        ..Default::default()
+    };
+    if (200..300).contains(&status) && !body.is_empty() {
+        crate::crawl::analyzers::analyze_html(&mut record, &body, &config.content_selector);
+    }
+    record.compute_indexability();
+    Some(record)
 }
 
 /// A page URL to the sitemap that lists it, the `<lastmod>` it claims and any
@@ -1883,5 +2097,149 @@ mod hreflang_tests {
                 .any(|i| matches!(i, HreflangIssue::NonCanonicalUrl { .. })),
             "got {issues:?}"
         );
+    }
+}
+
+#[cfg(test)]
+mod redirect_resolution_tests {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+
+    /// A server that answers `/moved` with a 301 whose `Location` is relative,
+    /// which is what most servers send, and serves the target as a real page.
+    /// The crawler's own fixtures cannot exercise this: spider refuses to
+    /// follow a redirect to loopback, so it never reports one there.
+    fn spawn_redirect_server() -> (u16, std::sync::Arc<AtomicBool>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind");
+        listener.set_nonblocking(true).expect("nonblocking");
+        let port = listener.local_addr().expect("addr").port();
+        let stop = std::sync::Arc::new(AtomicBool::new(false));
+
+        std::thread::spawn({
+            let stop = stop.clone();
+            move || {
+                while !stop.load(Ordering::Relaxed) {
+                    match listener.accept() {
+                        Ok((mut stream, _)) => {
+                            let mut buf = [0u8; 2048];
+                            let read = stream.read(&mut buf).unwrap_or(0);
+                            let request = String::from_utf8_lossy(&buf[..read]);
+                            let path = request
+                                .lines()
+                                .next()
+                                .and_then(|line| line.split_whitespace().nth(1))
+                                .unwrap_or("/")
+                                .to_string();
+                            let response = if path == "/moved" {
+                                "HTTP/1.1 301 Moved Permanently\r\nLocation: /target?a=1&b=2\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                            } else if path.starts_with("/target") {
+                                let body = "<!doctype html><html><head><title>Target Page Title</title></head>\
+                                            <body><h1>Target Heading</h1><p>one two three four five</p></body></html>";
+                                format!(
+                                    "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                                    body.len()
+                                )
+                            } else {
+                                "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string()
+                            };
+                            let _ = stream.write_all(response.as_bytes());
+                            let _ = stream.flush();
+                        }
+                        Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
+        });
+        (port, stop)
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+    }
+
+    fn config() -> CrawlConfig {
+        CrawlConfig {
+            max_pages: 0,
+            max_concurrent: 1,
+            delay_ms: 0,
+            timeout_seconds: 10,
+            respect_robots_txt: false,
+            follow_sitemaps: false,
+            block_images: false,
+            near_duplicate_threshold: 90,
+            content_selector: String::new(),
+            user_agent: None,
+            extra_headers: Vec::new(),
+            include_patterns: Vec::new(),
+            exclude_patterns: Vec::new(),
+            crawl_subdomains: false,
+            list_mode: false,
+            seed_urls: Vec::new(),
+            check_resources: false,
+        }
+    }
+
+    #[test]
+    fn a_relative_location_resolves_against_the_redirects_own_url() {
+        let (port, stop) = spawn_redirect_server();
+        let base = format!("http://127.0.0.1:{port}");
+        let rt = runtime();
+
+        let target = rt.block_on(async {
+            let client = build_redirect_client(&config()).expect("client");
+            fetch_redirect_target(&client, &format!("{base}/moved")).await
+        });
+
+        stop.store(true, Ordering::Relaxed);
+        assert_eq!(
+            target.as_deref(),
+            Some(format!("{base}/target?a=1&b=2").as_str()),
+            "a relative Location, query string and all, resolves against the request URL"
+        );
+    }
+
+    #[test]
+    fn a_redirect_target_is_fetched_and_analyzed_as_a_page() {
+        let (port, stop) = spawn_redirect_server();
+        let base = format!("http://127.0.0.1:{port}");
+        let rt = runtime();
+
+        let record = rt.block_on(async {
+            let client = build_redirect_client(&config()).expect("client");
+            fetch_redirect_target_page(&client, &format!("{base}/target"), &config(), &base).await
+        });
+
+        stop.store(true, Ordering::Relaxed);
+        let record = record.expect("the target should be fetched");
+        assert_eq!(record.status, Some(200));
+        assert!(record.is_page, "the target is a document of its own");
+        assert!(record.is_internal);
+        assert_eq!(record.title.as_deref(), Some("Target Page Title"));
+        assert_eq!(record.h1.as_deref(), Some("Target Heading"));
+        // The heading counts too: the word count is over the whole body.
+        assert_eq!(record.word_count, Some(7));
+        assert_eq!(record.indexability.as_deref(), Some("Indexable"));
+    }
+
+    #[test]
+    fn a_url_that_does_not_redirect_yields_no_target() {
+        let (port, stop) = spawn_redirect_server();
+        let base = format!("http://127.0.0.1:{port}");
+        let rt = runtime();
+
+        let target = rt.block_on(async {
+            let client = build_redirect_client(&config()).expect("client");
+            fetch_redirect_target(&client, &format!("{base}/target")).await
+        });
+
+        stop.store(true, Ordering::Relaxed);
+        assert_eq!(target, None);
     }
 }

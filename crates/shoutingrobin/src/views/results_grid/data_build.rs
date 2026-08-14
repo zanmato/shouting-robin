@@ -186,7 +186,14 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
 }
 
 pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
-    let internal: Vec<&PageRecord> = pages.iter().filter(|p| p.is_internal).collect();
+    // Only URLs we actually requested. Sitemap orphans and robots-blocked URLs
+    // are recorded so they can be reported, but nothing was fetched for them,
+    // so counting them here would make every "missing header" rule a share of
+    // URLs we never asked for.
+    let internal: Vec<&PageRecord> = pages
+        .iter()
+        .filter(|p| p.is_internal && (p.status.is_some() || p.redirect_url.is_some()))
+        .collect();
     // Page-content checks (titles, headings, canonicals, content quality, a11y,
     // performance, hreflang) apply only to pages eligible to rank: navigated
     // HTML documents that aren't redirect sources (whose body is the target's)
@@ -1361,6 +1368,9 @@ mod tests {
             url: url.into(),
             is_internal: true,
             is_page: true,
+            // Every crawled page has one; a row without a status is a URL we
+            // never fetched, which the overview leaves out.
+            status: Some(200),
             h1: h1.map(|s| s.to_string()),
             ..Default::default()
         }

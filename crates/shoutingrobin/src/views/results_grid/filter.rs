@@ -398,6 +398,16 @@ fn is_fetch_xhr(page: &PageRecord) -> bool {
 /// report a misleading `Content-Type` for the document itself (e.g. SPAs
 /// serving `application/javascript` for the request it actually issued), which
 /// would otherwise hide real pages from these tabs.
+/// True when we actually requested the URL and got an answer.
+///
+/// A sitemap orphan and a robots.txt-blocked URL are recorded so they can be
+/// reported, but nothing was ever fetched for them. Tabs that describe a
+/// response (its headers, its type, its code) must leave them out, or every
+/// "missing header" rule counts URLs we never asked for.
+fn was_fetched(page: &PageRecord) -> bool {
+    page.status.is_some() || page.redirect_url.is_some()
+}
+
 fn is_page_document(page: &PageRecord) -> bool {
     page.is_page && !page.is_resource
 }
@@ -529,7 +539,7 @@ pub(super) fn filter_for_tab(
         ResultTab::Internal | ResultTab::Security | ResultTab::Url => pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.is_internal)
+            .filter(|(_, p)| p.is_internal && was_fetched(p))
             .map(|(i, _)| i)
             .collect(),
         // Tabs whose data is parsed from the navigated document. Harvested
@@ -539,7 +549,6 @@ pub(super) fn filter_for_tab(
         | ResultTab::MetaDesc
         | ResultTab::H1
         | ResultTab::H2
-        | ResultTab::Content
         | ResultTab::Canonicals
         | ResultTab::StructuredData
         | ResultTab::Hreflang
@@ -568,6 +577,17 @@ pub(super) fn filter_for_tab(
             .filter(|(_, p)| p.is_internal && is_page_document(p))
             .map(|(i, _)| i)
             .collect(),
+        // Documents, plus the URLs robots.txt kept us out of: the tab carries
+        // the Blocked by robots.txt filter, and a blocked URL is exactly a URL
+        // with no content, so it has nowhere else to be reported.
+        ResultTab::Content => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| {
+                p.is_internal && (is_page_document(p) || p.blocked_by_robots == Some(true))
+            })
+            .map(|(i, _)| i)
+            .collect(),
         ResultTab::Images => pages
             .iter()
             .enumerate()
@@ -580,7 +600,17 @@ pub(super) fn filter_for_tab(
             .filter(|(_, p)| p.is_internal && !p.outlinks.is_empty())
             .map(|(i, _)| i)
             .collect(),
-        ResultTab::Ecommerce | ResultTab::Sitemaps | ResultTab::SiteStructure => pages
+        // Documents, plus every URL a sitemap lists. A sitemap orphan is a URL
+        // the sitemap advertises and nothing links to, so it was never crawled
+        // and is not a document; leaving it out made the tab's own Orphan URLs
+        // filter unable to match anything.
+        ResultTab::Sitemaps => pages
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| p.is_internal && (is_page_document(p) || p.in_sitemap == Some(true)))
+            .map(|(i, _)| i)
+            .collect(),
+        ResultTab::Ecommerce | ResultTab::SiteStructure => pages
             .iter()
             .enumerate()
             .filter(|(_, p)| p.is_internal && is_page_document(p))

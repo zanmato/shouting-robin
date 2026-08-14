@@ -766,3 +766,72 @@ fn test_sitemap_hreflang_reaches_the_page() {
         "the page's own HTML has no hreflang, so the sitemap is the only source"
     );
 }
+
+/// The crawler's SSRF guard refuses to follow a redirect to a loopback host,
+/// which is what a 127.0.0.1 fixture produces. That refusal wins: the redirect
+/// is recorded as a URL we could not fetch, and no target is invented for it.
+/// Resolving a redirect we *can* read is covered by the engine's unit tests,
+/// which a loopback server cannot exercise.
+#[test]
+fn test_a_refused_redirect_is_not_resolved_behind_the_guard() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+
+    let pages = crawl_test_site_reloaded(&root_url);
+
+    server.kill();
+
+    let moved = pages
+        .iter()
+        .find(|page| page.url.ends_with("/moved"))
+        .expect("the redirect itself should be recorded");
+    assert_eq!(
+        moved.status,
+        Some(599),
+        "spider reports its own refusal, not the 301 the server sent"
+    );
+    assert_eq!(moved.redirect_url, None);
+    assert!(
+        find_page(&pages, "/redirect-target.html").is_none(),
+        "nothing links to the target, and the guard stopped us reading where the redirect went"
+    );
+}
+
+/// Sitemap orphans and robots-blocked URLs are reported by the crawl and must
+/// survive it: both were live-only events, so reopening a crawl lost them.
+#[test]
+fn test_orphans_and_blocked_urls_are_persisted() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let root_url = format!("http://127.0.0.1:{port}/");
+    write_sitemap(port);
+
+    // Reloaded from the database, which is where they used to go missing.
+    let pages = crawl_test_site_reloaded(&root_url);
+
+    server.kill();
+
+    // Listed in the sitemap, disallowed by robots.txt, linked from nowhere: a
+    // URL the sitemap advertises and the crawl never reaches.
+    let orphan = find_page(&pages, "/sitemap-only.html")
+        .expect("a sitemap URL the crawl never reached should survive it");
+    assert_eq!(orphan.in_sitemap, Some(true));
+    assert_eq!(orphan.sitemap_lastmod.as_deref(), Some("2026-05-02"));
+    assert_eq!(orphan.status, None, "it was never fetched");
+    assert!(
+        !orphan.is_page,
+        "an uncrawled URL is not a document, so it stays off the content tabs"
+    );
+
+    let blocked =
+        find_page(&pages, "/noindex.html").expect("a robots-blocked URL should survive the crawl");
+    assert_eq!(blocked.blocked_by_robots, Some(true));
+    assert_eq!(blocked.status, None);
+
+    // One row each, not one per source that reported them.
+    for path in ["/sitemap-only.html", "/noindex.html"] {
+        let count = pages.iter().filter(|page| page.url.ends_with(path)).count();
+        assert_eq!(count, 1, "{path} should be a single row");
+    }
+}

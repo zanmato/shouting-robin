@@ -1,2 +1,3 @@
 User-agent: *
 Disallow: /noindex.html
+Disallow: /sitemap-only.html

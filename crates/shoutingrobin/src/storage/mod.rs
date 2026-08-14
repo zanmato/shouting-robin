@@ -467,6 +467,46 @@ pub async fn load_page_urls(
     Ok(rows.into_iter().map(|(url,)| url).collect())
 }
 
+/// The 3xx rows of a crawl whose target is unknown, as (url, status). spider
+/// reports no final URL for a redirect it did not follow, so these are the
+/// redirects we know happened but not where they went.
+pub async fn load_unresolved_redirects(
+    pool: &SqlitePool,
+    crawl_id: i64,
+) -> Result<Vec<(String, u16)>, sqlx::Error> {
+    let rows: Vec<(String, i64)> = sqlx::query_as(
+        "SELECT url, status FROM pages
+         WHERE crawl_id = ? AND redirect_url IS NULL AND status >= 300 AND status < 400",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(url, status)| (url, status as u16))
+        .collect())
+}
+
+/// Records where a redirect went, once we have resolved it ourselves.
+pub async fn set_redirect_target(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    url: &str,
+    target: &str,
+    status: u16,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE pages SET redirect_url = ?, redirect_status = ? WHERE crawl_id = ? AND url = ?",
+    )
+    .bind(target)
+    .bind(status as i64)
+    .bind(crawl_id)
+    .bind(url)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 #[allow(dead_code)]
 pub async fn compute_inlink_counts(
     pool: &SqlitePool,
