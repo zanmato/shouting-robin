@@ -499,6 +499,7 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
             | IssueFilter::HreflangMissingReturnTag
             | IssueFilter::HreflangInvalidLang
             | IssueFilter::HreflangMissingXDefault
+            | IssueFilter::HreflangMissingSelfReference
             | IssueFilter::HreflangNonCanonical
             | IssueFilter::MissingStructuredData
             | IssueFilter::SdErrors

@@ -955,14 +955,21 @@ impl TabBar {
             return;
         }
 
-        if anim_params.read(cx).3 != px(0.) {
-            return;
-        }
-
         if let Some(to_b) = bounds.tabs.get(selected_ix) {
             let left = to_b.origin.x - container.origin.x;
             let width = to_b.size.width;
-            anim_params.update(cx, |v, _| *v = (left, width, left, width, v.4));
+            let (_, _, to_left, to_width, epoch) = *anim_params.read(cx);
+
+            if to_width == px(0.) {
+                anim_params.update(cx, |v, _| *v = (left, width, left, width, epoch));
+                return;
+            }
+
+            // Re-sync whenever the measured bounds drift from what we stored,
+            // e.g. when a suffix (badge count) appears after initial layout.
+            if left != to_left || width != to_width {
+                anim_params.update(cx, |v, _| *v = (left, width, left, width, epoch));
+            }
         }
     }
 }
@@ -1122,6 +1129,7 @@ impl RenderOnce for TabBar {
                             if let Some(ref rc) = bounds_rc {
                                 let rc = rc.clone();
                                 div()
+                                    .flex_shrink_0()
                                     .on_prepaint(move |bounds, _, _| {
                                         if let Some(slot) = rc.borrow_mut().tabs.get_mut(ix) {
                                             *slot = bounds;

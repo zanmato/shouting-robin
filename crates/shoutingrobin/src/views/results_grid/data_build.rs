@@ -419,33 +419,6 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    // Counted in pages, not image instances. Every other row in this table is a
-    // count of pages over the page total, and a row that silently switched to
-    // images over the image total made the percentage column impossible to read
-    // across rows: 4 images out of 1865 showed as 0.2% next to page percentages.
-    // The drill-down still lists the offending images, as it does for the
-    // accessibility rules.
-    let missing_alt = documents
-        .iter()
-        .filter(|p| {
-            p.images
-                .iter()
-                .any(|img| !img.has_alt_attr || img.alt.as_deref().is_none_or(|a| a.is_empty()))
-        })
-        .count();
-    if missing_alt > 0 {
-        entries.push(IssueEntry {
-            name: "Images Missing Alt Text".into(),
-            issue_type: IssueType::Issue,
-            priority: IssuePriority::Medium,
-            count: missing_alt,
-            pct: missing_alt as f32 / doc_total * 100.0,
-            description: "Pages carrying an image without alt text or with an empty alt attribute."
-                .into(),
-            hint: "Add descriptive alt text to every meaningful image.".into(),
-        });
-    }
-
     let sd_errors = documents.iter().filter(|p| p.sd_errors > 0).count();
     if sd_errors > 0 {
         entries.push(IssueEntry {
@@ -926,6 +899,17 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
                visible hole in the page.",
     },
     FilterDerivedRule {
+        name: "Images Missing Alt Text",
+        tab: ResultTab::Images,
+        filter: IssueFilter::MissingAltText,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Images carrying an alt attribute that is empty.",
+        hint: "Give every meaningful image descriptive alt text. An empty alt says \
+               \"decorative\", which is only right for images that carry no meaning.",
+    },
+    FilterDerivedRule {
         name: "Images Missing Alt Attribute",
         tab: ResultTab::Images,
         filter: IssueFilter::MissingAltAttribute,
@@ -1039,8 +1023,31 @@ fn filter_derived_entry(
     denominator: f32,
     occurrence_counts: &HashMap<String, usize>,
 ) -> Option<IssueEntry> {
-    let count =
-        super::filter::filter_for_tab(rule.tab, rule.filter, pages, occurrence_counts).len();
+    // The Images tab lists one row per image source, so an image rule counts
+    // images and is a share of the images crawled. Counting pages there would
+    // put a figure on the row that the drill-down cannot reproduce: one 234 kB
+    // image referenced from 144 pages is 144 pages but one oversized image.
+    let (count, denominator) = if rule.tab == ResultTab::Images {
+        let all = build_image_aggregates(
+            &super::filter::filter_for_tab(rule.tab, IssueFilter::All, pages, occurrence_counts),
+            pages,
+        );
+        let matching = all
+            .iter()
+            .filter(|row| match row {
+                FlatRow::ImageAggregate(image) => {
+                    super::filter::image_aggregate_matches_filter(image, rule.filter)
+                }
+                _ => false,
+            })
+            .count();
+        (matching, all.len().max(1) as f32)
+    } else {
+        (
+            super::filter::filter_for_tab(rule.tab, rule.filter, pages, occurrence_counts).len(),
+            denominator,
+        )
+    };
     if count == 0 {
         return None;
     }
@@ -1473,12 +1480,15 @@ mod overview_denominator_tests {
             .unwrap_or_else(|| panic!("no {name} entry in {:?}", entries.iter().map(|e| &e.name)))
     }
 
-    /// One page carrying many offending images or violations must not report a
-    /// count or a percentage in those units: the whole table is pages over the
-    /// page total, and instance tallies made the percentage column unreadable
-    /// across rows.
+    /// A rule counts in the units of the tab it drills through to, and its
+    /// percentage is a share of that tab's population. The Accessibility tab
+    /// lists a row per page-with-violations, so its rule counts pages; the
+    /// Images tab lists a row per image source, so an image rule counts images.
+    /// Counting pages for an image rule puts a number on the row that the
+    /// drill-down cannot reproduce: one oversized image referenced from 144
+    /// pages would read 144 and land on a single row.
     #[test]
-    fn instance_derived_rules_are_counted_in_pages() {
+    fn a_rules_count_is_the_number_of_rows_it_lands_on() {
         let mut offender = document("https://a.test/gallery");
         offender.images = vec![
             image_without_alt("/one.png"),
@@ -1486,16 +1496,23 @@ mod overview_denominator_tests {
             image_without_alt("/three.png"),
         ];
         offender.a11y_issues = vec![critical_issue("image-alt"), critical_issue("label")];
-        let pages = vec![offender, document("https://a.test/clean")];
+        // A second page referencing one of the same images: still one image.
+        let mut second = document("https://a.test/other");
+        second.images = vec![image_without_alt("/one.png")];
+        let pages = vec![offender, second, document("https://a.test/clean")];
 
         let entries = build_issues_entries(&pages);
-        let alt = entry(&entries, "Images Missing Alt Text");
-        assert_eq!(alt.count, 1, "one page, not three images");
-        assert!((alt.pct - 50.0).abs() < 0.01, "pct was {}", alt.pct);
+        let alt = entry(&entries, "Images Missing Alt Attribute");
+        assert_eq!(alt.count, 3, "three images, not two pages");
+        assert!((alt.pct - 100.0).abs() < 0.01, "pct was {}", alt.pct);
 
         let a11y = entry(&entries, "Accessibility Critical Issues");
         assert_eq!(a11y.count, 1, "one page, not two violations");
-        assert!((a11y.pct - 50.0).abs() < 0.01, "pct was {}", a11y.pct);
+        assert!(
+            (a11y.pct - 33.33).abs() < 0.1,
+            "pct was {} of three pages",
+            a11y.pct
+        );
     }
 
     #[test]
