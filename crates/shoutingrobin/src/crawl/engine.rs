@@ -468,33 +468,34 @@ impl CrawlEngine {
                         // Content-Type above is unreliable (e.g. a fully-rendered
                         // page reported as application/json or text/css). When the
                         // body is actually HTML, trust the body over that header.
-                        if looks_like_html(html) {
+                        let body_is_html = looks_like_html(html);
+                        // The Content-Type is only the visible half of that: every
+                        // other header on the row belongs to the same foreign
+                        // response. A page carrying an API call's
+                        // `x-robots-tag: noindex` was reported as non-indexable
+                        // when the document itself sends no such header. Drop the
+                        // set rather than read anything else out of it; the SSR
+                        // fetch below asks for the document itself and its headers
+                        // take their place.
+                        if headers_belong_to_another_request(
+                            chrome_mode,
+                            body_is_html,
+                            record.content_type.as_deref(),
+                        ) {
+                            tracing::debug!(
+                                url = %record.url,
+                                content_type = ?record.content_type,
+                                "discarding response headers reported for a rendered page"
+                            );
+                            record.headers.clear();
+                        }
+                        if body_is_html {
                             record.content_type = Some("text/html".to_string());
                         }
                         crate::crawl::analyzers::analyze_html(
                             &mut record,
                             html,
                             &content_selector_for_pump,
-                        );
-                    }
-
-                    // hreflang can also arrive in a `Link:` response header,
-                    // which is how non-HTML documents annotate alternates and
-                    // how some sites annotate every page without touching the
-                    // markup. Merged into the same set the HTML produced.
-                    if !skip_analysis && let Ok(base) = url::Url::parse(&record.url) {
-                        let header_tags: Vec<(String, String)> = record
-                            .headers
-                            .iter()
-                            .filter(|(name, _)| name.eq_ignore_ascii_case("link"))
-                            .flat_map(|(_, value)| {
-                                crate::crawl::analyzers::parse_link_header_hreflang(value, &base)
-                            })
-                            .collect();
-                        crate::crawl::analyzers::merge_hreflang_tags(
-                            &mut record,
-                            header_tags,
-                            HreflangSource::HttpHeader,
                         );
                     }
 
@@ -537,6 +538,29 @@ impl CrawlEngine {
                             &mut record,
                         )
                         .await;
+                    }
+
+                    // hreflang can also arrive in a `Link:` response header,
+                    // which is how non-HTML documents annotate alternates and
+                    // how some sites annotate every page without touching the
+                    // markup. Merged into the same set the HTML produced. After
+                    // the SSR fetch, so it reads the document's own headers on a
+                    // row whose reported ones turned out to be another
+                    // request's.
+                    if !skip_analysis && let Ok(base) = url::Url::parse(&record.url) {
+                        let header_tags: Vec<(String, String)> = record
+                            .headers
+                            .iter()
+                            .filter(|(name, _)| name.eq_ignore_ascii_case("link"))
+                            .flat_map(|(_, value)| {
+                                crate::crawl::analyzers::parse_link_header_hreflang(value, &base)
+                            })
+                            .collect();
+                        crate::crawl::analyzers::merge_hreflang_tags(
+                            &mut record,
+                            header_tags,
+                            HreflangSource::HttpHeader,
+                        );
                     }
 
                     record.compute_indexability();
@@ -1713,6 +1737,29 @@ const METRICS_AUTOMATION_JS: &str = r#"
 /// the correct content type for navigated pages when Chrome's request
 /// interception reports a subresource's headers for the document. Checks the
 /// leading bytes (after any BOM/whitespace) for the doctype or an `<html>` tag.
+/// True when the response headers spider reported for a navigated page are some
+/// other request's. Chrome's request interception hands back whichever response
+/// it last saw, so a page that renders HTML arrives labelled `application/json`
+/// or `text/css` with the headers to match. A document that answers with HTML
+/// and says it is something else cannot have sent them, and reading anything out
+/// of them (`x-robots-tag`, the security headers, `Link:`) describes a request
+/// the page made rather than the page.
+///
+/// Only in Chrome mode: a plain HTTP crawl reads one response per row, and a
+/// server that mislabels its own HTML is a finding rather than a mix-up.
+fn headers_belong_to_another_request(
+    chrome_mode: bool,
+    body_is_html: bool,
+    content_type: Option<&str>,
+) -> bool {
+    chrome_mode
+        && body_is_html
+        && content_type.is_some_and(|content_type| {
+            !content_type.eq_ignore_ascii_case("text/html")
+                && !content_type.eq_ignore_ascii_case("application/xhtml+xml")
+        })
+}
+
 fn looks_like_html(body: &str) -> bool {
     let head = body
         .trim_start_matches('\u{feff}')
@@ -1798,6 +1845,23 @@ async fn fetch_and_analyze_ssr(
             return;
         }
     };
+    // This request asked for the document itself, so these are the document's
+    // headers. A row reaches here with none when the ones Chrome reported were
+    // another request's and were dropped, which is the only case worth filling
+    // in: a successful response only, so a fetch the server refuses (a bot
+    // block answering 403) does not describe the page instead.
+    if record.headers.is_empty() && response.status().is_success() {
+        record.headers = response
+            .headers()
+            .iter()
+            .filter_map(|(name, value)| {
+                value
+                    .to_str()
+                    .ok()
+                    .map(|value| (name.to_string(), value.to_string()))
+            })
+            .collect();
+    }
     match response.text().await {
         Ok(raw_html) => {
             crate::crawl::analyzers::analyze_ssr(record, &raw_html, content_selector);
@@ -2089,6 +2153,66 @@ async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRec
                 html: None,
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod reported_header_tests {
+    use super::*;
+
+    /// The case from a real crawl: a rendered page arrived carrying an API
+    /// call's `application/json` response, `x-robots-tag: noindex` and all, and
+    /// was reported non-indexable while the document sends no such header.
+    #[test]
+    fn a_rendered_page_labelled_json_did_not_send_those_headers() {
+        assert!(headers_belong_to_another_request(
+            true,
+            true,
+            Some("application/json")
+        ));
+        assert!(headers_belong_to_another_request(
+            true,
+            true,
+            Some("text/css")
+        ));
+    }
+
+    #[test]
+    fn a_page_whose_own_content_type_matches_its_body_keeps_its_headers() {
+        assert!(!headers_belong_to_another_request(
+            true,
+            true,
+            Some("text/html")
+        ));
+        assert!(!headers_belong_to_another_request(
+            true,
+            true,
+            Some("application/xhtml+xml")
+        ));
+        // No Content-Type at all is spider fetching a subresource without
+        // headers, not a mix-up: there is nothing to disagree with.
+        assert!(!headers_belong_to_another_request(true, true, None));
+    }
+
+    /// A plain HTTP crawl reads one response per row, so a JSON content type on
+    /// an HTML body is the server's own doing and worth reporting as such.
+    #[test]
+    fn an_http_crawl_never_reports_another_requests_headers() {
+        assert!(!headers_belong_to_another_request(
+            false,
+            true,
+            Some("application/json")
+        ));
+    }
+
+    /// A real JSON or CSS response, which is most of what a crawl records.
+    #[test]
+    fn a_body_that_is_not_html_is_left_alone() {
+        assert!(!headers_belong_to_another_request(
+            true,
+            false,
+            Some("application/json")
+        ));
     }
 }
 
