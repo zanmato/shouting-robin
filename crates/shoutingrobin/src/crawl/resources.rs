@@ -18,9 +18,9 @@ use std::time::{Duration, Instant};
 
 use tokio::task::JoinSet;
 
-/// How many resource requests are in flight at once. The page crawl is over by
-/// the time this runs, so this bounds our own footprint on the target site
-/// rather than competing with it.
+/// How many resource requests are in flight at once when the crawl's own
+/// concurrency is unset. The page crawl is over by the time this runs, so this
+/// bounds our own footprint on the target site rather than competing with it.
 const RESOURCE_CONCURRENCY: usize = 8;
 
 /// The most resources a single crawl will status-check. A large site links out
@@ -126,23 +126,40 @@ pub fn plan_checks(
 
 /// Runs the checks with bounded concurrency, handing each result to `on_result`
 /// as it lands so rows reach the UI during the pass rather than after it.
+///
+/// `concurrency` and `delay` are the crawl's own settings, so a crawl paced to
+/// stay under a rate limit is not undone by this pass firing at its own rate.
+/// A `concurrency` of 0 means the setting is unset and the default applies.
 pub async fn check_all<F, Fut>(
     client: &reqwest::Client,
     planned: Vec<(String, ResourceKind)>,
+    concurrency: usize,
+    delay: Duration,
     cancel: &Arc<AtomicBool>,
     mut on_result: F,
 ) where
     F: FnMut(ResourceCheck) -> Fut,
     Fut: std::future::Future<Output = ()>,
 {
+    let concurrency = if concurrency == 0 {
+        RESOURCE_CONCURRENCY
+    } else {
+        concurrency
+    };
     let mut queue = planned.into_iter();
     let mut in_flight: JoinSet<ResourceCheck> = JoinSet::new();
 
     loop {
-        while in_flight.len() < RESOURCE_CONCURRENCY && !cancel.load(Ordering::Relaxed) {
+        while in_flight.len() < concurrency && !cancel.load(Ordering::Relaxed) {
             let Some((url, kind)) = queue.next() else {
                 break;
             };
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+                if cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+            }
             let client = client.clone();
             in_flight.spawn(async move { check_one(&client, url, kind).await });
         }
@@ -316,5 +333,44 @@ mod tests {
             .collect();
         let planned = plan_checks(&discovered, &HashSet::new());
         assert_eq!(planned.len(), MAX_RESOURCE_CHECKS);
+    }
+
+    /// The pass runs after the crawl but hits the same server, so a crawl paced
+    /// to stay under a rate limit must not be undone here. Port 9 (discard) is
+    /// closed, so each check fails immediately and only the delay is timed.
+    #[test]
+    fn the_configured_delay_paces_the_checks() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+
+        let elapsed = runtime.block_on(async {
+            let planned: Vec<(String, ResourceKind)> = (0..3)
+                .map(|i| (format!("http://127.0.0.1:9/{i}.png"), ResourceKind::Image))
+                .collect();
+            let cancel = Arc::new(AtomicBool::new(false));
+            let started = tokio::time::Instant::now();
+            let mut checked = 0;
+            check_all(
+                &reqwest::Client::new(),
+                planned,
+                1,
+                Duration::from_millis(50),
+                &cancel,
+                |_| {
+                    checked += 1;
+                    async {}
+                },
+            )
+            .await;
+            assert_eq!(checked, 3);
+            started.elapsed()
+        });
+
+        assert!(
+            elapsed >= Duration::from_millis(150),
+            "three checks at a 50ms delay took {elapsed:?}"
+        );
     }
 }

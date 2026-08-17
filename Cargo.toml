@@ -56,7 +56,7 @@ tokio = { version = "1", features = [
 ] }
 
 # Crawl backend
-spider = { git = "https://github.com/spider-rs/spider", default-features = false, features = [
+spider = { git = "https://github.com/zanmato/spider", branch = "shouting-robin", default-features = false, features = [
     "chrome",
     "chrome_intercept",
     "chrome_stealth",

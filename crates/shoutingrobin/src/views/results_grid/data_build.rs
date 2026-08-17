@@ -105,6 +105,10 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Slow CLS" => Some((ResultTab::Performance, IssueFilter::SlowCls)),
         "Slow Largest Contentful Paint" => Some((ResultTab::Performance, IssueFilter::SlowLcp)),
         "High Cumulative Layout Shift" => Some((ResultTab::Performance, IssueFilter::SlowCls)),
+        "Accessibility Critical & Serious Issues" => {
+            Some((ResultTab::Accessibility, IssueFilter::All))
+        }
+        "Accessibility Critical Issues" => Some((ResultTab::Accessibility, IssueFilter::All)),
         "A11y Critical Issues" => Some((ResultTab::Accessibility, IssueFilter::All)),
         "A11y Warnings" => Some((ResultTab::Accessibility, IssueFilter::All)),
         "HTTP Errors (4xx/5xx)" => Some((ResultTab::ResponseCodes, IssueFilter::Status4xx)),
@@ -115,6 +119,7 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         }
         "Blocked by robots.txt" => Some((ResultTab::Content, IssueFilter::BlockedByRobots)),
         "Redirects" => Some((ResultTab::ResponseCodes, IssueFilter::Redirects)),
+        "Missing HSTS Header" => Some((ResultTab::Security, IssueFilter::MissingHsts)),
         "Missing HSTS" => Some((ResultTab::Security, IssueFilter::MissingHsts)),
         "Missing CSP" => Some((ResultTab::Security, IssueFilter::MissingCsp)),
         "Missing Frame Guard" => Some((ResultTab::Security, IssueFilter::MissingFrameGuard)),
@@ -565,12 +570,16 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         .count();
     if a11y_critical > 0 {
         entries.push(IssueEntry {
-            name: "Accessibility Critical Issues".into(),
+            // Named for both impacts it counts. Called "Critical Issues" it
+            // read as axe's `critical` alone, so a site whose violations are
+            // all `serious` showed a count the Accessibility tab appeared to
+            // contradict.
+            name: "Accessibility Critical & Serious Issues".into(),
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: a11y_critical,
             pct: a11y_critical as f32 / doc_total * 100.0,
-            description: "Pages with critical or serious accessibility violations.".into(),
+            description: "Pages with accessibility violations rated critical or serious.".into(),
             hint: "Fix missing labels, ARIA roles, color contrast, and heading hierarchy.".into(),
         });
     }
@@ -1617,7 +1626,7 @@ mod overview_denominator_tests {
         assert_eq!(alt.count, 3, "three images, not two pages");
         assert!((alt.pct - 100.0).abs() < 0.01, "pct was {}", alt.pct);
 
-        let a11y = entry(&entries, "Accessibility Critical Issues");
+        let a11y = entry(&entries, "Accessibility Critical & Serious Issues");
         assert_eq!(a11y.count, 1, "one page, not two violations");
         assert!(
             (a11y.pct - 33.33).abs() < 0.1,
@@ -1711,6 +1720,7 @@ mod overview_denominator_tests {
 #[cfg(test)]
 mod filter_derived_rule_tests {
     use super::*;
+    use crate::crawl::event::{A11yIssue, ImageRef};
 
     #[test]
     fn every_filter_derived_rule_has_a_click_through_target() {
@@ -1723,6 +1733,70 @@ mod filter_derived_rule_tests {
                 rule.name
             );
         }
+    }
+
+    /// The rules built by hand rather than from `FILTER_DERIVED_RULES` are
+    /// named at their construction site and matched by name in
+    /// `overview_issue_target`, so the two drift apart silently: a row whose
+    /// name the map does not know renders as a link that does nothing when
+    /// clicked, which is what "Accessibility Critical Issues" (mapped as "A11y
+    /// Critical Issues") and "Missing HSTS Header" (mapped as "Missing HSTS")
+    /// both did. Whatever this fixture triggers has to be reachable.
+    #[test]
+    fn every_hand_built_overview_row_clicks_through_somewhere() {
+        let mut offender = PageRecord {
+            url: "http://a.test/gallery".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            word_count: Some(20),
+            ..Default::default()
+        };
+        offender.a11y_issues = vec![
+            A11yIssue {
+                rule: "link-name".into(),
+                impact: "serious".into(),
+                target: None,
+                html: None,
+            },
+            A11yIssue {
+                rule: "color-contrast".into(),
+                impact: "moderate".into(),
+                target: None,
+                html: None,
+            },
+        ];
+        offender.images = vec![ImageRef {
+            src: "/one.png".into(),
+            alt: None,
+            width: None,
+            height: None,
+            has_alt_attr: false,
+        }];
+        offender.compute_indexability();
+
+        let mut redirected = PageRecord {
+            url: "http://a.test/old".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(301),
+            redirect_url: Some("http://a.test/new".into()),
+            ..Default::default()
+        };
+        redirected.compute_indexability();
+
+        let entries = build_issues_entries(&[offender, redirected]);
+        assert!(!entries.is_empty(), "the fixture triggered no rules at all");
+
+        let unreachable: Vec<&str> = entries
+            .iter()
+            .filter(|entry| overview_issue_target(&entry.name).is_none())
+            .map(|entry| entry.name.as_str())
+            .collect();
+        assert!(
+            unreachable.is_empty(),
+            "overview rows that click through nowhere: {unreachable:?}"
+        );
     }
 
     #[test]

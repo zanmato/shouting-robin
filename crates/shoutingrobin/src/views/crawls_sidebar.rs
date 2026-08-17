@@ -1,14 +1,31 @@
 use gpui::prelude::FluentBuilder;
 use gpui::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div,
+    ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
+use gpui_component::hover_card::HoverCard;
 use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
-use gpui_component::{ActiveTheme, IconName, StyledExt as _};
+use gpui_component::{ActiveTheme, IconName, StyledExt as _, v_flex};
 
 use crate::crawl::RenderMode;
 use crate::storage::CrawlRow;
 use crate::ui::tag::{Tone, tone_tag};
+
+/// One "label ..... count" line of the crawl badge's hover card.
+fn count_line(label: &'static str, count: i64, cx: &App) -> impl IntoElement {
+    div()
+        .flex()
+        .flex_row()
+        .justify_between()
+        .gap_2()
+        .text_color(cx.theme().muted_foreground)
+        .child(label)
+        .child(
+            div()
+                .text_color(cx.theme().foreground)
+                .child(SharedString::from(format!("{count}"))),
+        )
+}
 
 #[derive(Clone, Debug)]
 pub enum CrawlsSidebarEvent {
@@ -114,9 +131,37 @@ impl Render for CrawlsSidebar {
                                 .child(SharedString::from("running"))
                                 .into_any_element()
                         } else {
-                            tone_tag(Tone::Neutral, cx)
-                                .rounded_full()
-                                .child(SharedString::from(format!("{}", crawl.page_count)))
+                            // The badge counts every URL the crawl recorded,
+                            // which is mostly resources on an asset-heavy site
+                            // and so reads far above the page count on any tab.
+                            // A hover card rather than a tooltip: the three
+                            // parts read as a table of figures, which on one
+                            // tooltip line is a sentence nobody finishes.
+                            let (documents, others, unfetched) = crawl.breakdown();
+                            let total = crawl.page_count;
+                            HoverCard::new(("crawl-count", crawl.id as usize))
+                                .trigger(
+                                    tone_tag(Tone::Neutral, cx)
+                                        .rounded_full()
+                                        .child(SharedString::from(format!("{total}"))),
+                                )
+                                .content(move |_, _, cx| {
+                                    v_flex()
+                                        .gap_1()
+                                        .w(px(228.))
+                                        .text_xs()
+                                        .child(
+                                            div()
+                                                .font_semibold()
+                                                .text_color(cx.theme().foreground)
+                                                .child(SharedString::from(format!(
+                                                    "{total} URLs recorded"
+                                                ))),
+                                        )
+                                        .child(count_line("HTML pages", documents, cx))
+                                        .child(count_line("Resources and other URLs", others, cx))
+                                        .child(count_line("Discovered, not fetched", unfetched, cx))
+                                })
                                 .into_any_element()
                         };
 

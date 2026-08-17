@@ -78,6 +78,8 @@ impl CrawlEngine {
             RenderMode::Chrome => "chrome",
         };
         let fut = async move {
+            let root_url = resolve_start_url(&root_url, &config).await;
+
             let crawl_id = match storage::create_crawl(&pool, &root_url, mode_str, &config).await {
                 Ok(id) => id,
                 Err(e) => {
@@ -462,36 +464,6 @@ impl CrawlEngine {
                             html_len = html.len(),
                             "received html for analysis"
                         );
-                        // In Chrome render mode with request interception, spider
-                        // can hand us the response headers of an arbitrary
-                        // subresource rather than the main document, so the
-                        // Content-Type above is unreliable (e.g. a fully-rendered
-                        // page reported as application/json or text/css). When the
-                        // body is actually HTML, trust the body over that header.
-                        let body_is_html = looks_like_html(html);
-                        // The Content-Type is only the visible half of that: every
-                        // other header on the row belongs to the same foreign
-                        // response. A page carrying an API call's
-                        // `x-robots-tag: noindex` was reported as non-indexable
-                        // when the document itself sends no such header. Drop the
-                        // set rather than read anything else out of it; the SSR
-                        // fetch below asks for the document itself and its headers
-                        // take their place.
-                        if headers_belong_to_another_request(
-                            chrome_mode,
-                            body_is_html,
-                            record.content_type.as_deref(),
-                        ) {
-                            tracing::debug!(
-                                url = %record.url,
-                                content_type = ?record.content_type,
-                                "discarding response headers reported for a rendered page"
-                            );
-                            record.headers.clear();
-                        }
-                        if body_is_html {
-                            record.content_type = Some("text/html".to_string());
-                        }
                         crate::crawl::analyzers::analyze_html(
                             &mut record,
                             html,
@@ -500,6 +472,8 @@ impl CrawlEngine {
                     }
 
                     let mut resource_timings: Vec<ResourceTiming> = Vec::new();
+                    // The server's HTML for this page, if Chrome still has it.
+                    let mut chrome_raw_html: Option<String> = None;
                     if chrome_mode {
                         if skip_analysis {
                             // Redirect source or off-domain landing: don't measure
@@ -511,6 +485,9 @@ impl CrawlEngine {
                                 collect_a11y_violations(&page, &mut record, axe_js).await;
                             }
                             resource_timings = collect_resource_timings(&page).await;
+                            // Read while the tab is open; the SSR diff below runs
+                            // once it is closed.
+                            chrome_raw_html = raw_html_from_chrome(&page, &record.url).await;
                             page.close_page().await;
                         } else {
                             tracing::warn!(
@@ -525,19 +502,34 @@ impl CrawlEngine {
                         guard.inc();
                     }
 
-                    // The SSR diff needs the raw server HTML, not chrome. Run it
-                    // after releasing the chrome tab and advancing the guard so
-                    // it never holds spider back or keeps a tab open. Skipped for
-                    // redirects and off-domain landings, which carry no analysis.
-                    if !skip_analysis && let Some(client) = ssr_client.as_ref() {
-                        let ssr_url = record.url.clone();
-                        fetch_and_analyze_ssr(
-                            client,
-                            &ssr_url,
-                            &content_selector_for_pump,
-                            &mut record,
-                        )
-                        .await;
+                    // The SSR diff needs the raw server HTML, not chrome. Chrome
+                    // usually still holds it, so the diff costs nothing; the
+                    // fetch is for when it does not, and for a row left with no
+                    // headers of its own, which only a request can supply.
+                    // Skipped for redirects and off-domain landings, which carry
+                    // no analysis.
+                    if !skip_analysis {
+                        match chrome_raw_html {
+                            Some(ref raw_html) if !record.headers.is_empty() => {
+                                crate::crawl::analyzers::analyze_ssr(
+                                    &mut record,
+                                    raw_html,
+                                    &content_selector_for_pump,
+                                );
+                            }
+                            _ => {
+                                if let Some(client) = ssr_client.as_ref() {
+                                    let ssr_url = record.url.clone();
+                                    fetch_and_analyze_ssr(
+                                        client,
+                                        &ssr_url,
+                                        &content_selector_for_pump,
+                                        &mut record,
+                                    )
+                                    .await;
+                                }
+                            }
+                        }
                     }
 
                     // hreflang can also arrive in a `Link:` response header,
@@ -903,38 +895,54 @@ async fn check_discovered_resources(
         "status-checking discovered resources"
     );
 
-    crate::crawl::resources::check_all(&client, planned, cancel, |check| async move {
-        let mut record = PageRecord {
-            url: check.url.clone(),
-            status: check.status,
-            size_bytes: check.size_bytes,
-            content_type: check.content_type.clone(),
-            headers: check.headers.clone(),
-            response_time: check.response_time,
-            is_internal: is_same_domain(root_url, &check.url),
-            is_resource: true,
-            resource_initiator: Some(check.kind.initiator().to_string()),
-            redirect_url: check.redirect_url.clone(),
-            ..Default::default()
-        };
-        if record.redirect_url.is_some() {
-            record.redirect_status = record
-                .status
-                .filter(|code| (300..400).contains(code))
-                .or(Some(301));
-        }
-        if let Some(error) = &check.error {
-            tracing::debug!(url = %check.url, error = %error, "resource check failed");
-        }
-        record.compute_indexability();
-        if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
-            tracing::warn!(error=%e, url=%record.url, "failed to persist resource");
-        }
-        if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
-            tracing::error!(error=%e, "failed to send resource event");
-        }
-    })
+    crate::crawl::resources::check_all(
+        &client,
+        planned,
+        config.max_concurrent as usize,
+        Duration::from_millis(config.delay_ms),
+        cancel,
+        |check| async move {
+            let mut record = PageRecord {
+                url: check.url.clone(),
+                status: check.status,
+                size_bytes: check.size_bytes,
+                content_type: check.content_type.clone(),
+                headers: check.headers.clone(),
+                response_time: check.response_time,
+                is_internal: is_same_domain(root_url, &check.url),
+                is_resource: true,
+                resource_initiator: Some(check.kind.initiator().to_string()),
+                redirect_url: check.redirect_url.clone(),
+                ..Default::default()
+            };
+            if record.redirect_url.is_some() {
+                record.redirect_status = record
+                    .status
+                    .filter(|code| (300..400).contains(code))
+                    .or(Some(301));
+            }
+            if let Some(error) = &check.error {
+                tracing::debug!(url = %check.url, error = %error, "resource check failed");
+            }
+            record.compute_indexability();
+            if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
+                tracing::warn!(error=%e, url=%record.url, "failed to persist resource");
+            }
+            if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+                tracing::error!(error=%e, "failed to send resource event");
+            }
+        },
+    )
     .await;
+}
+
+/// Waits out the configured delay between requests. Spider paces the page
+/// crawl itself, but the passes that run after it make their own requests to
+/// the same server, so they hold to the same pace rather than bursting.
+async fn pace(config: &CrawlConfig) {
+    if config.delay_ms > 0 {
+        tokio::time::sleep(Duration::from_millis(config.delay_ms)).await;
+    }
 }
 
 /// How many hops one redirect chain is followed for. Chains longer than this
@@ -1000,6 +1008,7 @@ async fn resolve_redirect_chains(
             if cancel.load(Ordering::Relaxed) {
                 return;
             }
+            pace(config).await;
             let Some((status, target)) = fetch_redirect_target(&client, &url).await else {
                 break;
             };
@@ -1019,6 +1028,7 @@ async fn resolve_redirect_chains(
             if !is_same_domain(root_url, &target) || !recorded.insert(target.clone()) {
                 break;
             }
+            pace(config).await;
             let Some(record) = fetch_uncrawled_page(&client, &target, config, root_url).await
             else {
                 break;
@@ -1141,6 +1151,7 @@ async fn fetch_declared_canonical_targets(
         if cancel.load(Ordering::Relaxed) {
             return;
         }
+        pace(config).await;
         let Some(record) = fetch_uncrawled_page(&client, &target, config, root_url).await else {
             continue;
         };
@@ -1207,6 +1218,46 @@ async fn fetch_redirect_target(client: &reqwest::Client, url: &str) -> Option<(u
     let base = url::Url::parse(url).ok()?;
     let resolved = base.join(&location).ok()?;
     (resolved.as_str() != url).then(|| (status, resolved.to_string()))
+}
+
+/// The URL the crawl is actually scoped to, following a redirect the start URL
+/// itself serves onto the same site under a different spelling.
+///
+/// `https://www.example.com` answering `301 -> https://example.com/` is the
+/// ordinary case, and the whole crawl hangs on it: the frontier, the
+/// internal/external split and the depth graph are all keyed on the root's
+/// host, so crawling under the spelling the site redirects away from leaves
+/// every page that follows belonging to "another" site, unanalysed and with no
+/// link graph.
+///
+/// Only a hop onto another spelling of the same host is adopted. A redirect
+/// within the host (`/` -> `/sv/`) is left alone so it is still recorded as the
+/// redirect it is, and a redirect somewhere genuinely else is left alone
+/// because that is a fact about the URL worth reporting rather than a spelling
+/// to correct.
+async fn resolve_start_url(root_url: &str, config: &CrawlConfig) -> String {
+    if config.list_mode {
+        return root_url.to_string();
+    }
+    let Ok(client) = build_redirect_client(config) else {
+        return root_url.to_string();
+    };
+
+    let mut url = root_url.to_string();
+    for _ in 0..MAX_REDIRECT_HOPS {
+        let Some((_, target)) = fetch_redirect_target(&client, &url).await else {
+            break;
+        };
+        if !is_another_spelling_of_the_same_host(&url, &target) {
+            break;
+        }
+        url = target;
+    }
+
+    if url != root_url {
+        tracing::info!(from = %root_url, to = %url, "start URL redirects; crawling the target");
+    }
+    url
 }
 
 /// Fetches and analyzes one URL as a page of its own, outside the crawl.
@@ -1733,43 +1784,6 @@ const METRICS_AUTOMATION_JS: &str = r#"
 /// Maps a URL's file extension to a MIME type. Used as a fallback for
 /// subresources that spider fetches without response headers, so the Internal
 /// tab can still categorize them by content type.
-/// Heuristic body sniff: does this look like an HTML document? Used to recover
-/// the correct content type for navigated pages when Chrome's request
-/// interception reports a subresource's headers for the document. Checks the
-/// leading bytes (after any BOM/whitespace) for the doctype or an `<html>` tag.
-/// True when the response headers spider reported for a navigated page are some
-/// other request's. Chrome's request interception hands back whichever response
-/// it last saw, so a page that renders HTML arrives labelled `application/json`
-/// or `text/css` with the headers to match. A document that answers with HTML
-/// and says it is something else cannot have sent them, and reading anything out
-/// of them (`x-robots-tag`, the security headers, `Link:`) describes a request
-/// the page made rather than the page.
-///
-/// Only in Chrome mode: a plain HTTP crawl reads one response per row, and a
-/// server that mislabels its own HTML is a finding rather than a mix-up.
-fn headers_belong_to_another_request(
-    chrome_mode: bool,
-    body_is_html: bool,
-    content_type: Option<&str>,
-) -> bool {
-    chrome_mode
-        && body_is_html
-        && content_type.is_some_and(|content_type| {
-            !content_type.eq_ignore_ascii_case("text/html")
-                && !content_type.eq_ignore_ascii_case("application/xhtml+xml")
-        })
-}
-
-fn looks_like_html(body: &str) -> bool {
-    let head = body
-        .trim_start_matches('\u{feff}')
-        .trim_start()
-        .get(..512)
-        .unwrap_or(body)
-        .to_ascii_lowercase();
-    head.contains("<!doctype html") || head.contains("<html")
-}
-
 fn content_type_from_url(url: &str) -> Option<String> {
     let path = url::Url::parse(url)
         .ok()
@@ -1809,7 +1823,36 @@ pub fn is_same_domain(root: &str, url: &str) -> bool {
     let Ok(url_parsed) = url::Url::parse(url) else {
         return false;
     };
-    root_parsed.host_str() == url_parsed.host_str()
+    match (root_parsed.host_str(), url_parsed.host_str()) {
+        (Some(root_host), Some(host)) => without_www(root_host) == without_www(host),
+        (root_host, host) => root_host == host,
+    }
+}
+
+/// `www.example.com` and `example.com` are one site: one of the two is the
+/// canonical host and redirects to the other, and a site linking to itself
+/// under both spellings is linking to itself. Treating them as different hosts
+/// marks every page of a crawl started at the non-canonical spelling external,
+/// which skips the analysis that makes the row worth having.
+///
+/// Only `www` is folded away. Any other subdomain is a separate site unless the
+/// crawl asked for subdomains.
+fn without_www(host: &str) -> &str {
+    host.strip_prefix("www.").unwrap_or(host)
+}
+
+/// True when two URLs name the same site under different hosts: `www` against
+/// the bare domain, either direction. A redirect between them is the site
+/// picking its canonical spelling, which is the crawl's cue to follow rather
+/// than to record and stop.
+fn is_another_spelling_of_the_same_host(from: &str, to: &str) -> bool {
+    let (Ok(from), Ok(to)) = (url::Url::parse(from), url::Url::parse(to)) else {
+        return false;
+    };
+    let (Some(from_host), Some(to_host)) = (from.host_str(), to.host_str()) else {
+        return false;
+    };
+    from_host != to_host && without_www(from_host) == without_www(to_host)
 }
 
 fn build_ssr_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Error> {
@@ -1830,6 +1873,55 @@ fn build_ssr_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Er
         builder = builder.default_headers(headers);
     }
     builder.build()
+}
+
+/// The server's HTML for the page Chrome is showing, taken from Chrome rather
+/// than requested again.
+///
+/// `Page.getResourceContent` is what the DevTools Sources panel reads: the
+/// document's response body as it arrived, before any script ran, out of the
+/// frame's resource tree. That is exactly what the SSR diff wants, and it costs
+/// no request, so the fetch is only the fallback for when Chrome no longer has
+/// the body (evicted, or a document it declines to hand back as text).
+///
+/// Must be called while the tab is still open — `close_page()` takes the frame
+/// with it.
+async fn raw_html_from_chrome(page: &spider::page::Page, url: &str) -> Option<String> {
+    let chrome_page = page.get_chrome_page()?;
+    let frame_id = match chrome_page.mainframe().await {
+        Ok(Some(frame_id)) => frame_id,
+        Ok(None) => {
+            tracing::debug!(url = %url, "no main frame; falling back to the SSR fetch");
+            return None;
+        }
+        Err(e) => {
+            tracing::debug!(url = %url, error=%e, "reading the main frame failed");
+            return None;
+        }
+    };
+
+    let params = spider::chromiumoxide::cdp::browser_protocol::page::GetResourceContentParams::new(
+        frame_id, url,
+    );
+    match chrome_page.execute(params).await {
+        Ok(response) => {
+            // Base64 is how Chrome hands back what it does not consider text.
+            // Decoding it would only feed the HTML analyzers bytes they cannot
+            // read, so let the fetch answer for those documents instead.
+            if response.result.base64_encoded {
+                tracing::debug!(url = %url, "document returned base64-encoded; using the SSR fetch");
+                return None;
+            }
+            if response.result.content.is_empty() {
+                return None;
+            }
+            Some(response.result.content)
+        }
+        Err(e) => {
+            tracing::debug!(url = %url, error=%e, "getResourceContent failed; using the SSR fetch");
+            None
+        }
+    }
 }
 
 async fn fetch_and_analyze_ssr(
@@ -2157,61 +2249,76 @@ async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRec
 }
 
 #[cfg(test)]
-mod reported_header_tests {
+mod host_spelling_tests {
     use super::*;
 
-    /// The case from a real crawl: a rendered page arrived carrying an API
-    /// call's `application/json` response, `x-robots-tag: noindex` and all, and
-    /// was reported non-indexable while the document sends no such header.
+    /// The case from a real crawl: `https://www.mindgear.se` answers 301 to
+    /// `https://mindgear.se/`, and under exact host comparison every page found
+    /// afterwards belonged to "another site", so nothing was analysed.
     #[test]
-    fn a_rendered_page_labelled_json_did_not_send_those_headers() {
-        assert!(headers_belong_to_another_request(
-            true,
-            true,
-            Some("application/json")
+    fn www_and_the_bare_domain_are_one_site() {
+        assert!(is_same_domain(
+            "https://www.mindgear.se",
+            "https://mindgear.se/kontakt/"
         ));
-        assert!(headers_belong_to_another_request(
-            true,
-            true,
-            Some("text/css")
+        assert!(is_same_domain(
+            "https://mindgear.se",
+            "https://www.mindgear.se/kontakt/"
         ));
     }
 
     #[test]
-    fn a_page_whose_own_content_type_matches_its_body_keeps_its_headers() {
-        assert!(!headers_belong_to_another_request(
-            true,
-            true,
-            Some("text/html")
+    fn another_subdomain_is_another_site() {
+        assert!(!is_same_domain(
+            "https://mindgear.se",
+            "https://shop.mindgear.se/"
         ));
-        assert!(!headers_belong_to_another_request(
-            true,
-            true,
-            Some("application/xhtml+xml")
+        assert!(!is_same_domain(
+            "https://www.mindgear.se",
+            "https://shop.mindgear.se/"
         ));
-        // No Content-Type at all is spider fetching a subresource without
-        // headers, not a mix-up: there is nothing to disagree with.
-        assert!(!headers_belong_to_another_request(true, true, None));
-    }
-
-    /// A plain HTTP crawl reads one response per row, so a JSON content type on
-    /// an HTML body is the server's own doing and worth reporting as such.
-    #[test]
-    fn an_http_crawl_never_reports_another_requests_headers() {
-        assert!(!headers_belong_to_another_request(
-            false,
-            true,
-            Some("application/json")
+        // A domain that merely ends the same is not the same site.
+        assert!(!is_same_domain(
+            "https://mindgear.se",
+            "https://notmindgear.se/"
         ));
     }
 
-    /// A real JSON or CSS response, which is most of what a crawl records.
     #[test]
-    fn a_body_that_is_not_html_is_left_alone() {
-        assert!(!headers_belong_to_another_request(
-            true,
-            false,
-            Some("application/json")
+    fn a_hop_between_spellings_of_the_host_is_followed() {
+        assert!(is_another_spelling_of_the_same_host(
+            "https://www.mindgear.se",
+            "https://mindgear.se/"
+        ));
+        assert!(is_another_spelling_of_the_same_host(
+            "http://mindgear.se",
+            "https://www.mindgear.se/"
+        ));
+    }
+
+    /// A redirect inside the host is the crawl's to record, not to be scoped
+    /// by: adopting it would drop the row that says `/` redirects.
+    #[test]
+    fn a_hop_within_the_host_is_left_alone() {
+        assert!(!is_another_spelling_of_the_same_host(
+            "https://mindgear.se/",
+            "https://mindgear.se/sv/"
+        ));
+        assert!(!is_another_spelling_of_the_same_host(
+            "http://mindgear.se/",
+            "https://mindgear.se/"
+        ));
+    }
+
+    #[test]
+    fn a_hop_to_another_site_is_left_alone() {
+        assert!(!is_another_spelling_of_the_same_host(
+            "https://mindgear.se/",
+            "https://example.com/"
+        ));
+        assert!(!is_another_spelling_of_the_same_host(
+            "https://mindgear.se/",
+            "https://shop.mindgear.se/"
         ));
     }
 }

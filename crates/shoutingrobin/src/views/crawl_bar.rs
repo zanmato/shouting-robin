@@ -1,16 +1,24 @@
+use std::collections::HashMap;
+use std::time::Duration;
+
 use gpui::{
     AppContext, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    ParentElement, Render, Styled, Window, div, prelude::FluentBuilder, px,
+    ParentElement, Render, Styled, Task, Window, div, prelude::FluentBuilder, px,
 };
 use gpui_component::{
     ActiveTheme, Sizable as _,
     button::{Button, ButtonVariants as _},
-    input::{Input, InputEvent, InputState, Textarea, TextareaState},
+    input::{Input, InputEvent, InputState, NumberInput, Textarea, TextareaState},
     switch::Switch,
 };
 
+use crate::app_database::AppDatabase;
+use crate::app_settings::AppSettings;
 use crate::crawl::{CrawlConfig, RenderMode};
 use crate::ui::icon::Icon;
+
+const MIN_CONCURRENT: u32 = 1;
+const MAX_CONCURRENT: u32 = 100;
 
 #[derive(Clone, Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -36,6 +44,12 @@ pub struct CrawlBar {
     crawl_subdomains: bool,
     list_mode: bool,
     list_urls_input: gpui::Entity<TextareaState>,
+    concurrency_input: gpui::Entity<InputState>,
+    block_images: bool,
+    /// One in-flight save per setting key, so a save for one setting cannot
+    /// cancel another's. Dropping a task cancels it, which is what debounces a
+    /// key being edited repeatedly.
+    save_tasks: HashMap<&'static str, Task<()>>,
     _subscriptions: Vec<gpui::Subscription>,
 }
 
@@ -77,6 +91,29 @@ impl CrawlBar {
                 .auto_grow(4, 10)
         });
 
+        let concurrency_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .default_value(
+                    AppSettings::global(cx)
+                        .settings
+                        .crawl
+                        .max_concurrent
+                        .to_string(),
+                )
+                .step(1.)
+                .min(MIN_CONCURRENT as f64)
+                .max(MAX_CONCURRENT as f64)
+        });
+        let concurrency_sub = cx.subscribe_in(
+            &concurrency_input,
+            window,
+            |this, _state, event: &InputEvent, _window, cx| {
+                if matches!(event, InputEvent::Change) {
+                    this.persist_concurrency(cx);
+                }
+            },
+        );
+
         Self {
             focus_handle: cx.focus_handle(),
             url_input,
@@ -90,8 +127,57 @@ impl CrawlBar {
             crawl_subdomains: false,
             list_mode: false,
             list_urls_input,
-            _subscriptions: vec![input_sub],
+            concurrency_input,
+            block_images: AppSettings::global(cx).settings.crawl.block_images,
+            save_tasks: HashMap::new(),
+            _subscriptions: vec![input_sub, concurrency_sub],
         }
+    }
+
+    fn concurrency(&self, cx: &Context<Self>) -> Option<u32> {
+        self.concurrency_input
+            .read(cx)
+            .value()
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .map(|value| value.clamp(MIN_CONCURRENT, MAX_CONCURRENT))
+    }
+
+    /// Mirrors the bar's value into the global setting the settings dialog
+    /// shows, so both places stay in sync and the choice survives a restart.
+    fn persist_concurrency(&mut self, cx: &mut Context<Self>) {
+        let Some(value) = self.concurrency(cx) else {
+            return;
+        };
+        if AppSettings::global(cx).settings.crawl.max_concurrent == value {
+            return;
+        }
+        AppSettings::global_mut(cx).settings.crawl.max_concurrent = value;
+        self.save_setting("crawl.max_concurrent", value.to_string(), cx);
+    }
+
+    /// Kept in the global settings too, so the settings dialog and the next
+    /// launch agree with the panel. `resolve_config` reads the setting rather
+    /// than the config's field, a bool having no "unset" to fall back from.
+    fn set_block_images(&mut self, block_images: bool, cx: &mut Context<Self>) {
+        self.block_images = block_images;
+        AppSettings::global_mut(cx).settings.crawl.block_images = block_images;
+        self.save_setting("crawl.block_images", block_images.to_string(), cx);
+        cx.notify();
+    }
+
+    fn save_setting(&mut self, key: &'static str, value: String, cx: &mut Context<Self>) {
+        let database = AppDatabase::global(cx).clone();
+        let task = cx.spawn(async move |_, cx| {
+            cx.background_executor()
+                .timer(Duration::from_millis(500))
+                .await;
+            if let Err(error) = database.save_setting(key, &value).await {
+                tracing::error!("Failed to save setting {}: {}", key, error);
+            }
+        });
+        self.save_tasks.insert(key, task);
     }
 
     pub(crate) fn build_config(&self, cx: &Context<Self>) -> CrawlConfig {
@@ -136,12 +222,12 @@ impl CrawlBar {
 
         CrawlConfig {
             max_pages: 0,
-            max_concurrent: 0,
+            max_concurrent: self.concurrency(cx).unwrap_or(0),
             delay_ms: 0,
             timeout_seconds: 30,
             respect_robots_txt: true,
             follow_sitemaps: true,
-            block_images: false,
+            block_images: self.block_images,
             near_duplicate_threshold: 90,
             content_selector: String::new(),
             user_agent,
@@ -206,10 +292,16 @@ impl CrawlBar {
         self.list_urls_input.update(cx, |state, cx| {
             state.set_value(config.seed_urls.join("\n"), window, cx)
         });
+        if config.max_concurrent > 0 {
+            self.concurrency_input.update(cx, |state, cx| {
+                state.set_value(config.max_concurrent.to_string(), window, cx)
+            });
+        }
 
         self.default_mode = mode;
         self.crawl_subdomains = config.crawl_subdomains;
         self.list_mode = config.list_mode;
+        self.block_images = config.block_images;
         self.running = true;
         cx.notify();
     }
@@ -236,6 +328,7 @@ impl Render for CrawlBar {
         let advanced_open = self.advanced_open;
         let list_mode = self.list_mode;
         let crawl_subdomains = self.crawl_subdomains;
+        let block_images = self.block_images;
 
         let main_row = div()
             .id("crawl-bar-main")
@@ -322,122 +415,148 @@ impl Render for CrawlBar {
                 )
             });
 
-        let advanced_panel = div()
-            .id("crawl-bar-advanced")
-            .px_3()
-            .pb_2()
-            .pt_1()
-            .bg(cx.theme().background)
-            .child(
-                div()
-                    .flex()
-                    .gap_4()
-                    .flex_wrap()
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("List Mode"),
-                            )
-                            .child(
-                                Button::new("list-mode-toggle")
-                                    .xsmall()
-                                    .when(list_mode, |b| b.primary())
-                                    .when(!list_mode, |b| b.ghost())
-                                    .label(if list_mode { "On" } else { "Off" })
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.list_mode = !this.list_mode;
-                                        cx.notify();
-                                    })),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Subdomains"),
-                            )
-                            .child(
-                                Button::new("subdomains-toggle")
-                                    .xsmall()
-                                    .when(crawl_subdomains, |b| b.primary())
-                                    .when(!crawl_subdomains, |b| b.ghost())
-                                    .label(if crawl_subdomains { "On" } else { "Off" })
-                                    .on_click(cx.listener(|this, _, _, cx| {
-                                        this.crawl_subdomains = !this.crawl_subdomains;
-                                        cx.notify();
-                                    })),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .w(px(200.))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Include (regex)"),
-                            )
-                            .child(Textarea::new(&self.include_input)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .w(px(200.))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Exclude (regex)"),
-                            )
-                            .child(Textarea::new(&self.exclude_input)),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .flex_col()
-                            .gap_1()
-                            .w(px(200.))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(cx.theme().muted_foreground)
-                                    .child("Custom Headers"),
-                            )
-                            .child(Textarea::new(&self.headers_input)),
-                    ),
-            )
-            .when(list_mode, |el| {
-                el.child(
+        let advanced_panel =
+            div()
+                .id("crawl-bar-advanced")
+                .px_3()
+                .pb_2()
+                .pt_1()
+                .bg(cx.theme().background)
+                .child(
                     div()
                         .flex()
-                        .flex_col()
-                        .gap_1()
-                        .mt_1()
+                        .gap_4()
+                        .flex_wrap()
+                        // The switches and the number input are one line tall each,
+                        // so they stack in a column of their own rather than
+                        // sitting beside the auto-growing textareas, which would
+                        // stretch every one of them to the tallest control's height.
                         .child(
                             div()
-                                .text_xs()
-                                .text_color(cx.theme().muted_foreground)
-                                .child("URLs to crawl (one per line)"),
+                                .flex()
+                                .flex_col()
+                                .gap_2()
+                                .pr_4()
+                                .border_r_1()
+                                .border_color(cx.theme().border)
+                                .child(
+                                    Switch::new("list-mode-toggle")
+                                        .small()
+                                        .label("List Mode")
+                                        .tooltip(
+                                            "Crawl only the URLs you paste below, \
+                                         instead of following links from a start URL.",
+                                        )
+                                        .checked(list_mode)
+                                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                            this.list_mode = *checked;
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Switch::new("subdomains-toggle")
+                                        .small()
+                                        .label("Subdomains")
+                                        .tooltip(
+                                            "Treat subdomains as part of the site, \
+                                         so links to them are crawled rather than \
+                                         recorded as external.",
+                                        )
+                                        .checked(crawl_subdomains)
+                                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                            this.crawl_subdomains = *checked;
+                                            cx.notify();
+                                        })),
+                                )
+                                .child(
+                                    Switch::new("block-images-toggle")
+                                        .small()
+                                        .label("Block Images")
+                                        .tooltip(
+                                            "Stop Chrome loading images. Faster, far less \
+                                         traffic to the site, but image sizes and \
+                                         broken images go unreported.",
+                                        )
+                                        .checked(block_images)
+                                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                            this.set_block_images(*checked, cx);
+                                        })),
+                                )
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap_2()
+                                        .child(
+                                            div()
+                                                .text_xs()
+                                                .text_color(cx.theme().muted_foreground)
+                                                .child("Concurrency"),
+                                        )
+                                        .child(div().w(px(96.)).child(
+                                            NumberInput::new(&self.concurrency_input).small(),
+                                        )),
+                                ),
                         )
-                        .child(div().w_full().child(Textarea::new(&self.list_urls_input))),
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .w(px(200.))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Include (regex)"),
+                                )
+                                .child(Textarea::new(&self.include_input)),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .w(px(200.))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Exclude (regex)"),
+                                )
+                                .child(Textarea::new(&self.exclude_input)),
+                        )
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_1()
+                                .w(px(200.))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(cx.theme().muted_foreground)
+                                        .child("Custom Headers"),
+                                )
+                                .child(Textarea::new(&self.headers_input)),
+                        ),
                 )
-            });
+                .when(list_mode, |el| {
+                    el.child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_1()
+                            .mt_1()
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(cx.theme().muted_foreground)
+                                    .child("URLs to crawl (one per line)"),
+                            )
+                            .child(div().w_full().child(Textarea::new(&self.list_urls_input))),
+                    )
+                });
 
         div()
             .id("crawl-bar")

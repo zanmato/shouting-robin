@@ -754,38 +754,77 @@ pub struct CrawlRow {
     pub root_url: String,
     pub started_at: i64,
     pub finished_at: Option<i64>,
+    /// Every URL the crawl recorded, documents and resources alike. This is the
+    /// number on the sidebar badge, and it is far larger than the page count a
+    /// tab shows, so [`CrawlRow::breakdown`] splits it for the badge's tooltip.
     pub page_count: i64,
+    /// Of `page_count`, the rows that are a navigated HTML document.
+    pub document_count: i64,
+    /// Of `page_count`, the rows discovered but never requested: a resource
+    /// past the check cap, or a URL only a sitemap mentioned.
+    pub unfetched_count: i64,
     pub render_mode: String,
 }
 
+impl CrawlRow {
+    /// The badge's total split into the three groups it is made of, as counts
+    /// that add back up to it.
+    pub fn breakdown(&self) -> (i64, i64, i64) {
+        let others = (self.page_count - self.document_count - self.unfetched_count).max(0);
+        (self.document_count, others, self.unfetched_count)
+    }
+}
+
+/// The `SELECT` list every crawl-row query shares, so the sidebar and the
+/// baseline lookup describe a crawl the same way.
+const CRAWL_ROW_COLUMNS: &str = r#"
+    c.id, c.root_url, c.started_at, c.finished_at,
+    COUNT(p.id) as page_count,
+    COALESCE(SUM(p.is_page = 1), 0) as document_count,
+    COALESCE(SUM(p.status IS NULL AND p.redirect_url IS NULL), 0) as unfetched_count,
+    c.render_mode
+"#;
+
+type CrawlRowColumns = (i64, String, i64, Option<i64>, i64, i64, i64, String);
+
+fn crawl_row(columns: CrawlRowColumns) -> CrawlRow {
+    let (
+        id,
+        root_url,
+        started_at,
+        finished_at,
+        page_count,
+        document_count,
+        unfetched_count,
+        render_mode,
+    ) = columns;
+    CrawlRow {
+        id,
+        root_url,
+        started_at,
+        finished_at,
+        page_count,
+        document_count,
+        unfetched_count,
+        render_mode,
+    }
+}
+
 pub async fn list_crawls(pool: &SqlitePool) -> Result<Vec<CrawlRow>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (i64, String, i64, Option<i64>, i64, String)>(
+    let rows = sqlx::query_as::<_, CrawlRowColumns>(&format!(
         r#"
-        SELECT c.id, c.root_url, c.started_at, c.finished_at,
-               COUNT(p.id) as page_count, c.render_mode
+        SELECT {CRAWL_ROW_COLUMNS}
         FROM crawls c
         LEFT JOIN pages p ON p.crawl_id = c.id
         GROUP BY c.id
         ORDER BY c.started_at DESC
         LIMIT 100
-        "#,
-    )
+        "#
+    ))
     .fetch_all(pool)
     .await?;
 
-    Ok(rows
-        .into_iter()
-        .map(
-            |(id, root_url, started_at, finished_at, page_count, render_mode)| CrawlRow {
-                id,
-                root_url,
-                started_at,
-                finished_at,
-                page_count,
-                render_mode,
-            },
-        )
-        .collect())
+    Ok(rows.into_iter().map(crawl_row).collect())
 }
 
 /// Finds the crawl to use as a comparison baseline for a given root URL.
@@ -801,10 +840,9 @@ pub async fn find_previous_crawl(
 ) -> Result<Option<CrawlRow>, sqlx::Error> {
     let row = match current_crawl_id {
         Some(id) => {
-            sqlx::query_as::<_, (i64, String, i64, Option<i64>, i64, String)>(
+            sqlx::query_as::<_, CrawlRowColumns>(&format!(
                 r#"
-                SELECT c.id, c.root_url, c.started_at, c.finished_at,
-                       COUNT(p.id) as page_count, c.render_mode
+                SELECT {CRAWL_ROW_COLUMNS}
                 FROM crawls c
                 LEFT JOIN pages p ON p.crawl_id = c.id
                 WHERE c.root_url = ?
@@ -812,42 +850,32 @@ pub async fn find_previous_crawl(
                 GROUP BY c.id
                 ORDER BY c.started_at DESC
                 LIMIT 1
-                "#,
-            )
+                "#
+            ))
             .bind(root_url)
             .bind(id)
             .fetch_optional(pool)
             .await?
         }
         None => {
-            sqlx::query_as::<_, (i64, String, i64, Option<i64>, i64, String)>(
+            sqlx::query_as::<_, CrawlRowColumns>(&format!(
                 r#"
-                SELECT c.id, c.root_url, c.started_at, c.finished_at,
-                       COUNT(p.id) as page_count, c.render_mode
+                SELECT {CRAWL_ROW_COLUMNS}
                 FROM crawls c
                 LEFT JOIN pages p ON p.crawl_id = c.id
                 WHERE c.root_url = ?
                 GROUP BY c.id
                 ORDER BY c.started_at DESC
                 LIMIT 1 OFFSET 1
-                "#,
-            )
+                "#
+            ))
             .bind(root_url)
             .fetch_optional(pool)
             .await?
         }
     };
 
-    Ok(row.map(
-        |(id, root_url, started_at, finished_at, page_count, render_mode)| CrawlRow {
-            id,
-            root_url,
-            started_at,
-            finished_at,
-            page_count,
-            render_mode,
-        },
-    ))
+    Ok(row.map(crawl_row))
 }
 
 pub async fn load_pages_for_crawl(

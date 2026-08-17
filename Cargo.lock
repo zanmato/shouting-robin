@@ -1095,13 +1095,14 @@ dependencies = [
 
 [[package]]
 name = "chromey"
-version = "2.49.1"
+version = "2.54.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9aa5dfd55c002af6059875eff143c033dd2cf444436e502bd65bcf38b3f6e209"
+checksum = "6772c5d361271f52cdf86cfb67b3473650a746d076cbe4a9dc44cc04880c12a3"
 dependencies = [
  "aho-corasick",
  "base64 0.22.1",
  "case_insensitive_string",
+ "dashmap",
  "dunce",
  "fnv",
  "futures-util",
@@ -3712,7 +3713,7 @@ dependencies = [
  "tokio",
  "tower-service",
  "tracing",
- "windows-registry 0.5.3",
+ "windows-registry 0.4.0",
 ]
 
 [[package]]
@@ -3727,7 +3728,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -6156,6 +6157,16 @@ checksum = "958f21e8e7ceb5a1aa7fa87fab28e7c75976e0bfe7e23ff069e0a260f894067d"
 dependencies = [
  "memchr",
  "serde",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.41.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e660451e55124f798a69a5af3f49ccfbefbd41910eefd25caf2393e1f3473ec1"
+dependencies = [
+ "memchr",
+ "serde",
  "tokio",
 ]
 
@@ -7672,8 +7683,8 @@ dependencies = [
 
 [[package]]
 name = "spider"
-version = "2.51.207"
-source = "git+https://github.com/spider-rs/spider#6d496c0a81d04a5ec73bc6bc4437ac67310b9f24"
+version = "2.53.4"
+source = "git+https://github.com/zanmato/spider?branch=shouting-robin#5c7b4fa6f2cdad950a59ab3eac4b7e526208f063"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -7700,7 +7711,7 @@ dependencies = [
  "percent-encoding",
  "phf 0.13.1",
  "pin-project-lite",
- "quick-xml 0.39.2",
+ "quick-xml 0.41.0",
  "rand 0.9.4",
  "regex",
  "reqwest 0.13.3",
@@ -7724,8 +7735,8 @@ dependencies = [
 
 [[package]]
 name = "spider_agent_types"
-version = "2.51.207"
-source = "git+https://github.com/spider-rs/spider#6d496c0a81d04a5ec73bc6bc4437ac67310b9f24"
+version = "2.53.4"
+source = "git+https://github.com/zanmato/spider?branch=shouting-robin#5c7b4fa6f2cdad950a59ab3eac4b7e526208f063"
 dependencies = [
  "aho-corasick",
  "llm_models_spider",
@@ -10102,7 +10113,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.48.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

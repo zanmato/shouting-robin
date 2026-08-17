@@ -34,6 +34,14 @@ impl GlobalTokio {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             // Since we now have two executors, let's try to keep our footprint small
             .worker_threads(2)
+            // A chrome-mode fetch is one poll chain through spider's navigation
+            // futures, and those are large async state machines nested dozens
+            // deep. Unoptimized they do not fit in tokio's 2 MiB default: the
+            // worker overflows its stack partway into the first page, which
+            // aborts the process rather than failing the crawl. The stack is
+            // reserved address space, touched only as deep as it is used, so
+            // the headroom costs nothing in practice.
+            .thread_stack_size(16 * 1024 * 1024)
             .enable_all()
             .build()
             .expect("Failed to initialize Tokio");
