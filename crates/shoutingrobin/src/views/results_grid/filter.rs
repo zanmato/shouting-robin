@@ -516,6 +516,7 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
             | IssueFilter::Multiple
             | IssueFilter::SameAsH1
             | IssueFilter::NonSequential
+            | IssueFilter::MissingBodyTag
             | IssueFilter::MissingCanonical
             | IssueFilter::MissingHreflang
             | IssueFilter::HreflangMissingReturnTag

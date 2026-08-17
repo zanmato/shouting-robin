@@ -214,6 +214,15 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         .collect();
     let total = internal.len().max(1) as f32;
     let doc_total = documents.len().max(1) as f32;
+    // Sitemap rules are a share of the URLs submitted, not of the site: a URL a
+    // sitemap lists and nothing links to was never fetched, so it appears in
+    // neither set above and would otherwise be counted against a population it
+    // is not part of.
+    let sitemap_total = pages
+        .iter()
+        .filter(|p| p.is_internal && p.in_sitemap == Some(true))
+        .count()
+        .max(1) as f32;
     let all_total = pages.len().max(1) as f32;
     let mut entries = Vec::new();
 
@@ -737,6 +746,7 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         let denominator = match rule.denominator {
             Denominator::Documents => doc_total,
             Denominator::InternalUrls => total,
+            Denominator::SitemapUrls => sitemap_total,
         };
         let occurrences = occurrences_by_tab
             .entry(rule.tab)
@@ -766,6 +776,10 @@ enum Denominator {
     /// Every internal URL, including subresources, for rules that apply to
     /// assets as much as to pages (URL shape, response headers).
     InternalUrls,
+    /// The URLs a sitemap advertises. A sitemap rule asks what share of the
+    /// submitted URLs are wrong, and the URLs it counts need not be documents
+    /// at all: an orphan was never fetched, so it is in no other population.
+    SitemapUrls,
 }
 
 struct FilterDerivedRule {
@@ -897,7 +911,7 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         filter: IssueFilter::SitemapNon200,
         issue_type: IssueType::Issue,
         priority: IssuePriority::High,
-        denominator: Denominator::Documents,
+        denominator: Denominator::SitemapUrls,
         description: "URLs a sitemap advertises that answered with a redirect or an error.",
         hint: "A sitemap should list the final, indexable URL. Update the entry or drop it.",
     },
@@ -907,7 +921,7 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         filter: IssueFilter::NonIndexableInSitemap,
         issue_type: IssueType::Warning,
         priority: IssuePriority::Medium,
-        denominator: Denominator::Documents,
+        denominator: Denominator::SitemapUrls,
         description: "URLs a sitemap advertises that are noindex, canonicalised or redirected.",
         hint: "A sitemap is a list of URLs you want indexed. Remove the ones you don't.",
     },
@@ -917,7 +931,7 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         filter: IssueFilter::SitemapOrphans,
         issue_type: IssueType::Warning,
         priority: IssuePriority::Medium,
-        denominator: Denominator::Documents,
+        denominator: Denominator::SitemapUrls,
         description: "URLs listed in a sitemap that no page on the site links to.",
         hint: "Either link to them so they can be found, or drop them from the sitemap.",
     },
@@ -1617,11 +1631,78 @@ mod overview_denominator_tests {
             .map(|index| image_without_alt(&format!("/{index}.png")))
             .collect();
         offender.a11y_issues = (0..40).map(|_| critical_issue("image-alt")).collect();
-        let pages = vec![offender];
+        // A sitemap that lists far more URLs than the crawl reached, which is
+        // how a rule counting sitemap rows against the document total blows
+        // past 100%.
+        let mut pages = vec![offender];
+        pages.extend((0..40).map(|index| PageRecord {
+            url: format!("https://a.test/orphan-{index}"),
+            is_internal: true,
+            in_sitemap: Some(true),
+            ..Default::default()
+        }));
 
         for entry in build_issues_entries(&pages) {
             assert!(entry.pct <= 100.0, "{} reported {}%", entry.name, entry.pct);
         }
+    }
+
+    /// A sitemap rule is a share of the URLs the sitemap submits. An orphan was
+    /// never fetched, so it is not a document, and counting orphans against the
+    /// document total read 8 of 1 page on a real site.
+    #[test]
+    fn a_sitemap_rule_is_a_share_of_the_urls_the_sitemap_submits() {
+        let mut crawled = document("https://a.test/");
+        crawled.in_sitemap = Some(true);
+        // An orphan row is what the engine records for a URL nothing fetched:
+        // a sitemap entry and nothing else, not even `is_page`.
+        let orphans: Vec<PageRecord> = (0..8)
+            .map(|index| PageRecord {
+                url: format!("https://a.test/orphan-{index}"),
+                is_internal: true,
+                in_sitemap: Some(true),
+                ..Default::default()
+            })
+            .collect();
+        let mut pages = vec![crawled];
+        pages.extend(orphans);
+
+        let entries = build_issues_entries(&pages);
+        let orphaned = entry(&entries, "Sitemap URLs Not Crawled");
+        assert_eq!(orphaned.count, 8);
+        assert!(
+            (orphaned.pct - 88.89).abs() < 0.1,
+            "pct was {} of nine sitemap URLs",
+            orphaned.pct
+        );
+    }
+
+    /// A content rule is a share of the pages eligible for content issues, so
+    /// it may only count those pages. Missing `<body>` counted every document,
+    /// noindex ones included, and read 19 of 18 documents on a real site.
+    #[test]
+    fn a_content_rule_does_not_count_pages_outside_its_denominator() {
+        let mut eligible = document("https://a.test/");
+        eligible.has_body_tag = Some(false);
+        let mut noindex = document("https://a.test/staging");
+        noindex.has_body_tag = Some(false);
+        noindex.robots = Some("noindex".into());
+        noindex.compute_indexability();
+        let pages = vec![eligible, noindex];
+
+        let entries = build_issues_entries(&pages);
+        let body = entry(&entries, "Missing <body> Tag");
+        assert_eq!(body.count, 1, "the noindex page is not a content issue");
+        assert!((body.pct - 100.0).abs() < 0.01, "pct was {}", body.pct);
+        assert_eq!(
+            super::super::filter::matching_urls(
+                ResultTab::Content,
+                IssueFilter::MissingBodyTag,
+                &pages
+            ),
+            vec!["https://a.test/".to_string()],
+            "the drill-down lands on the rows the figure counted"
+        );
     }
 }
 
