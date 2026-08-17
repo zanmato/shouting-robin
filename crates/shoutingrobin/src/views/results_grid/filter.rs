@@ -429,14 +429,20 @@ const GENERATED_ASSET_EXTENSIONS: &[&str] = &[
     ".avif", ".ico", ".bmp", ".woff", ".woff2", ".ttf", ".otf", ".eot",
 ];
 
-/// True when a URL addresses a static asset rather than a page. Vite, webpack
-/// and every other bundler fingerprint what they emit with a mixed-case hash,
-/// `index-CCBwS7WZ.css`, so URL-casing rules have nothing to say about these:
-/// the name is generated, the case carries no meaning, and nobody can act on
-/// the row. Judged by extension as well as by `is_resource`, since an asset
-/// linked from the markup is crawled as a URL of its own rather than harvested
-/// as a subresource.
-fn is_generated_asset(page: &PageRecord) -> bool {
+/// True when a URL is not an address anyone navigates to: a harvested
+/// subresource, which covers both static assets and the XHR/fetch calls a page
+/// makes, or a file whose name a bundler generated.
+///
+/// The URL-quality rules are about addresses people share and search engines
+/// index. None of that applies here. A bundler fingerprints what it emits with
+/// a mixed-case hash, `index-CCBwS7WZ.css`, and an API call carries its
+/// arguments in the query string, `by-slug/privacy?locale=sv&sid=1`, which is
+/// what a query string is for. Both were being reported as URL problems that
+/// nobody can act on, and they buried the pages that have a real one.
+///
+/// Judged by extension as well as by `is_resource`, since an asset linked from
+/// the markup is crawled as a URL of its own rather than harvested.
+fn is_not_a_page_url(page: &PageRecord) -> bool {
     if page.is_resource {
         return true;
     }
@@ -447,6 +453,22 @@ fn is_generated_asset(page: &PageRecord) -> bool {
     GENERATED_ASSET_EXTENSIONS
         .iter()
         .any(|extension| path.ends_with(extension))
+}
+
+/// The filters that judge the shape of a URL, as opposed to what answered at
+/// it. Only a page URL has a shape worth judging, so these are gated on
+/// [`is_not_a_page_url`].
+fn is_url_quality_filter(filter: IssueFilter) -> bool {
+    matches!(
+        filter,
+        IssueFilter::UrlNonAscii
+            | IssueFilter::UrlUppercase
+            | IssueFilter::UrlUnderscores
+            | IssueFilter::UrlMultipleSlashes
+            | IssueFilter::UrlParameters
+            | IssueFilter::UrlOverLength
+            | IssueFilter::UrlSpaces
+    )
 }
 
 /// True when a Referrer-Policy value still hands the full URL to other origins,
@@ -1092,10 +1114,9 @@ pub(super) fn filter_for_tab(
                 });
             }
             IssueFilter::UrlNonAscii => indices.retain(|&idx| !pages[idx].url.is_ascii()),
-            IssueFilter::UrlUppercase => indices.retain(|&idx| {
-                let page = &pages[idx];
-                !is_generated_asset(page) && page.url.chars().any(|c| c.is_ascii_uppercase())
-            }),
+            IssueFilter::UrlUppercase => {
+                indices.retain(|&idx| pages[idx].url.chars().any(|c| c.is_ascii_uppercase()))
+            }
             IssueFilter::UrlUnderscores => indices.retain(|&idx| pages[idx].url.contains('_')),
             IssueFilter::UrlMultipleSlashes => indices.retain(|&idx| {
                 if let Ok(parsed) = url::Url::parse(&pages[idx].url) {
@@ -1210,6 +1231,9 @@ pub(super) fn filter_for_tab(
         // the same predicate.
         if is_content_issue_filter(issue_filter) {
             indices.retain(|&idx| is_content_eligible(&pages[idx]));
+        }
+        if is_url_quality_filter(issue_filter) {
+            indices.retain(|&idx| !is_not_a_page_url(&pages[idx]));
         }
     }
 
@@ -2050,7 +2074,7 @@ mod security_membership_tests {
 }
 
 #[cfg(test)]
-mod url_casing_tests {
+mod url_quality_tests {
     use super::*;
 
     fn asset(url: &str, is_resource: bool) -> PageRecord {
@@ -2096,5 +2120,60 @@ mod url_casing_tests {
     fn a_cache_busted_asset_is_still_an_asset() {
         let pages = vec![asset("https://a.test/assets/Main-9aB2.css?v=2", false)];
         assert!(matching_urls(ResultTab::Url, IssueFilter::UrlUppercase, &pages).is_empty());
+    }
+
+    /// An API call carries its arguments in the query string, which is what a
+    /// query string is for. It is a request a page makes, not an address anyone
+    /// navigates to, so no URL rule has anything to say about it.
+    #[test]
+    fn an_xhr_call_is_not_a_url_with_parameters() {
+        let pages = vec![
+            PageRecord {
+                url: "https://a.test/api/v1/pages/by-slug/privacy?locale=sv&sid=1".into(),
+                is_internal: true,
+                is_page: false,
+                is_resource: true,
+                resource_initiator: Some("fetch".into()),
+                status: Some(200),
+                content_type: Some("application/json".into()),
+                ..Default::default()
+            },
+            PageRecord {
+                url: "https://a.test/search?q=hat".into(),
+                is_internal: true,
+                is_page: true,
+                status: Some(200),
+                ..Default::default()
+            },
+        ];
+
+        assert_eq!(
+            matching_urls(ResultTab::Url, IssueFilter::UrlParameters, &pages),
+            vec!["https://a.test/search?q=hat".to_string()]
+        );
+        assert_eq!(
+            matching_urls(ResultTab::Url, IssueFilter::All, &pages).len(),
+            2,
+            "both rows are still listed, they are just not judged"
+        );
+    }
+
+    /// Every rule on the tab asks the same question, about the shape of an
+    /// address, so they all skip the rows that are not one.
+    #[test]
+    fn no_url_rule_judges_a_subresource() {
+        let pages = vec![asset(
+            "https://a.test/Assets/a_very Long-Nam\u{e9}//index-CCBwS7WZ.js?v=2",
+            true,
+        )];
+        for filter in filters_for_tab(ResultTab::Url) {
+            if *filter == IssueFilter::All {
+                continue;
+            }
+            assert!(
+                matching_urls(ResultTab::Url, *filter, &pages).is_empty(),
+                "{filter:?} judged a subresource"
+            );
+        }
     }
 }

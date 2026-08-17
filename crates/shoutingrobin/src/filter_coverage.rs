@@ -1047,6 +1047,18 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             resource_initiator: Some("css".to_string()),
             ..internal(format!("{base}/assets/index-CCBwS7WZ.css"))
         },
+        // An XHR the page makes: a request, not an address, and its arguments
+        // are what a query string is for. Chrome reports these through the
+        // Resource Timing API, which the coverage fixture cannot provoke.
+        PageRecord {
+            content_type: Some("application/json".to_string()),
+            is_page: false,
+            is_resource: true,
+            resource_initiator: Some("fetch".to_string()),
+            ..internal(format!(
+                "{base}/api/v1/pages/by-slug/privacy?locale=sv&sid=1"
+            ))
+        },
         PageRecord {
             images: vec![
                 ImageRef {
@@ -1288,7 +1300,10 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::UrlUppercase => both(&["/MixedCase"], &["/", "/assets/index-CCBwS7WZ.css"]),
         F::UrlUnderscores => both(&["/under_score"], &["/"]),
         F::UrlMultipleSlashes => both(&["/multi//slash"], &["/"]),
-        F::UrlParameters => both(&["/withparam?x=1"], &["/"]),
+        F::UrlParameters => both(
+            &["/withparam?x=1"],
+            &["/", "/api/v1/pages/by-slug/privacy?locale=sv&sid=1"],
+        ),
         F::UrlOverLength => both(&[LONG_PATH], &["/"]),
         F::UrlSpaces => both(&["/has space"], &["/"]),
 

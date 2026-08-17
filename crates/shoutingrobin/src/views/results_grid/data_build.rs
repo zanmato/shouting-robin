@@ -996,7 +996,8 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         issue_type: IssueType::Opportunity,
         priority: IssuePriority::Low,
         denominator: Denominator::InternalUrls,
-        description: "URLs carrying a query string.",
+        description: "Page URLs carrying a query string. Assets and XHR calls are \
+                      excluded: an API call's arguments belong in its query string.",
         hint: "Parameterised URLs multiply into near-duplicates. Canonicalise them to the \
                clean URL.",
     },
@@ -1007,8 +1008,8 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         issue_type: IssueType::Warning,
         priority: IssuePriority::Low,
         denominator: Denominator::InternalUrls,
-        description: "Page URLs containing uppercase characters. Bundled assets are \
-                      excluded: their file names are generated.",
+        description: "Page URLs containing uppercase characters. Assets and XHR calls \
+                      are excluded: their names are generated, not chosen.",
         hint: "Servers usually treat /Page and /page as different URLs. Standardise on \
                lowercase and redirect the rest.",
     },
