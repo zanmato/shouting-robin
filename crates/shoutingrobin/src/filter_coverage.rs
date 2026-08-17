@@ -1036,6 +1036,17 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             resource_initiator: Some("img".to_string()),
             ..internal(format!("{base}/syn-gone.png"))
         },
+        // A bundler's output, named by the bundler: the content hash is
+        // mixed-case, and the URL rules have nothing to say about it. Serving
+        // one from the fixture would make it an asset of the site under test,
+        // so it is synthetic like the other resource rows.
+        PageRecord {
+            content_type: Some("text/css".to_string()),
+            is_page: false,
+            is_resource: true,
+            resource_initiator: Some("css".to_string()),
+            ..internal(format!("{base}/assets/index-CCBwS7WZ.css"))
+        },
         PageRecord {
             images: vec![
                 ImageRef {
@@ -1274,7 +1285,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
 
         // URL hygiene
         F::UrlNonAscii => both(&["/café"], &["/"]),
-        F::UrlUppercase => both(&["/MixedCase"], &["/"]),
+        F::UrlUppercase => both(&["/MixedCase"], &["/", "/assets/index-CCBwS7WZ.css"]),
         F::UrlUnderscores => both(&["/under_score"], &["/"]),
         F::UrlMultipleSlashes => both(&["/multi//slash"], &["/"]),
         F::UrlParameters => both(&["/withparam?x=1"], &["/"]),

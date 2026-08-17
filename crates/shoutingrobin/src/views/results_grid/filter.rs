@@ -421,6 +421,34 @@ fn is_page_document(page: &PageRecord) -> bool {
     page.is_page && !page.is_resource && !page.is_redirect()
 }
 
+/// File types a build tool emits rather than a person names. Stylesheets,
+/// scripts, source maps, images and fonts all come out of a bundler with a
+/// content hash in the file name.
+const GENERATED_ASSET_EXTENSIONS: &[&str] = &[
+    ".css", ".js", ".mjs", ".cjs", ".map", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp",
+    ".avif", ".ico", ".bmp", ".woff", ".woff2", ".ttf", ".otf", ".eot",
+];
+
+/// True when a URL addresses a static asset rather than a page. Vite, webpack
+/// and every other bundler fingerprint what they emit with a mixed-case hash,
+/// `index-CCBwS7WZ.css`, so URL-casing rules have nothing to say about these:
+/// the name is generated, the case carries no meaning, and nobody can act on
+/// the row. Judged by extension as well as by `is_resource`, since an asset
+/// linked from the markup is crawled as a URL of its own rather than harvested
+/// as a subresource.
+fn is_generated_asset(page: &PageRecord) -> bool {
+    if page.is_resource {
+        return true;
+    }
+    let Ok(parsed) = url::Url::parse(&page.url) else {
+        return false;
+    };
+    let path = parsed.path().to_ascii_lowercase();
+    GENERATED_ASSET_EXTENSIONS
+        .iter()
+        .any(|extension| path.ends_with(extension))
+}
+
 /// True when a Referrer-Policy value still hands the full URL to other origins,
 /// which is what having no policy at all does. A header that says `unsafe-url`
 /// is not a policy worth crediting, so the security rules treat it as missing.
@@ -1064,9 +1092,10 @@ pub(super) fn filter_for_tab(
                 });
             }
             IssueFilter::UrlNonAscii => indices.retain(|&idx| !pages[idx].url.is_ascii()),
-            IssueFilter::UrlUppercase => {
-                indices.retain(|&idx| pages[idx].url.chars().any(|c| c.is_ascii_uppercase()))
-            }
+            IssueFilter::UrlUppercase => indices.retain(|&idx| {
+                let page = &pages[idx];
+                !is_generated_asset(page) && page.url.chars().any(|c| c.is_ascii_uppercase())
+            }),
             IssueFilter::UrlUnderscores => indices.retain(|&idx| pages[idx].url.contains('_')),
             IssueFilter::UrlMultipleSlashes => indices.retain(|&idx| {
                 if let Ok(parsed) = url::Url::parse(&pages[idx].url) {
@@ -2017,5 +2046,55 @@ mod security_membership_tests {
                 "{tab:?} dropped a URL it knows about"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod url_casing_tests {
+    use super::*;
+
+    fn asset(url: &str, is_resource: bool) -> PageRecord {
+        PageRecord {
+            url: url.into(),
+            is_internal: true,
+            is_page: !is_resource,
+            is_resource,
+            status: Some(200),
+            ..Default::default()
+        }
+    }
+
+    /// A bundler names its own output, and every one of them fingerprints it
+    /// with a mixed-case hash. Reporting those is a page of rows nobody can act
+    /// on, and it buries the pages that genuinely answer on two casings.
+    #[test]
+    fn a_bundled_asset_is_not_an_uppercase_url() {
+        let pages = vec![
+            asset("https://a.test/MixedCase", false),
+            asset("https://a.test/assets/index-CCBwS7WZ.css", false),
+            asset("https://a.test/assets/index-BQt1lNMd.js", false),
+            asset("https://a.test/assets/logo-D3kf9Xz1.svg", false),
+            asset("https://a.test/assets/inter-Ab12Cd34.woff2", false),
+            // Harvested from the resource timings rather than linked, which is
+            // how the same file arrives in a Chrome crawl.
+            asset("https://a.test/Static/App.js", true),
+        ];
+
+        assert_eq!(
+            matching_urls(ResultTab::Url, IssueFilter::UrlUppercase, &pages),
+            vec!["https://a.test/MixedCase".to_string()]
+        );
+        // The rows are still listed, they are just not judged on their casing.
+        assert_eq!(
+            matching_urls(ResultTab::Url, IssueFilter::All, &pages).len(),
+            pages.len()
+        );
+    }
+
+    /// The extension is read off the path, so a query string does not hide it.
+    #[test]
+    fn a_cache_busted_asset_is_still_an_asset() {
+        let pages = vec![asset("https://a.test/assets/Main-9aB2.css?v=2", false)];
+        assert!(matching_urls(ResultTab::Url, IssueFilter::UrlUppercase, &pages).is_empty());
     }
 }
