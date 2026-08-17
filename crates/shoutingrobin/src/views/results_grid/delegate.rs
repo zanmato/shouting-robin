@@ -37,6 +37,43 @@ use super::types::{
 };
 use crate::report::{Report, ReportIssue};
 
+/// Every tab's badge and sub-filter counts, for one set of pages. This is the
+/// expensive part of loading a crawl: it walks the page set once per filter of
+/// every tab, so on a few thousand pages it runs for seconds. Free-standing so
+/// a crawl being opened from history can do it on a background thread and hand
+/// the result to [`ResultsDelegate::prime_counts`].
+pub(super) fn compute_all_tab_filter_counts(
+    pages: &[PageRecord],
+    change_entries: &[ChangeEntry],
+    root_origin: Option<&str>,
+) -> HashMap<ResultTab, TabFilterCounts> {
+    let mut counts = HashMap::with_capacity(ResultTab::ALL.len());
+    for &tab in ResultTab::ALL {
+        counts.insert(
+            tab,
+            compute_tab_filter_counts(tab, pages, change_entries, root_origin),
+        );
+    }
+    counts
+}
+
+/// The baseline crawl's issue counts, keyed by rule name, which the Overview
+/// tab's delta column reads. Walks the baseline the same way the current crawl
+/// is walked, so it is worth the same background treatment.
+pub(super) fn baseline_issue_counts(pages: &[PageRecord]) -> HashMap<String, (usize, f32)> {
+    build_issues_entries(pages)
+        .into_iter()
+        .map(|entry| (entry.name, (entry.count, entry.pct)))
+        .collect()
+}
+
+/// The origin a root URL belongs to, as the delegate derives it.
+pub(super) fn root_origin_of(root_url: &str) -> Option<String> {
+    url::Url::parse(root_url)
+        .ok()
+        .map(|url| url.origin().ascii_serialization())
+}
+
 fn format_delta(delta: i64) -> String {
     match delta.cmp(&0) {
         std::cmp::Ordering::Greater => format!("+{delta}"),
@@ -117,24 +154,23 @@ impl ResultsDelegate {
     pub fn tab_filter_counts(&mut self) -> &HashMap<ResultTab, TabFilterCounts> {
         if self.counts_cache.is_none() {
             let change_entries = self.change_entries();
-            let root_origin = self.root_origin.clone();
-            let mut counts = HashMap::with_capacity(ResultTab::ALL.len());
-            for &tab in ResultTab::ALL {
-                counts.insert(
-                    tab,
-                    compute_tab_filter_counts(
-                        tab,
-                        &self.all_pages,
-                        &change_entries,
-                        root_origin.as_deref(),
-                    ),
-                );
-            }
-            self.counts_cache = Some(counts);
+            self.counts_cache = Some(compute_all_tab_filter_counts(
+                &self.all_pages,
+                &change_entries,
+                self.root_origin.as_deref(),
+            ));
         }
         self.counts_cache
             .as_ref()
             .expect("counts_cache populated above")
+    }
+
+    /// Installs counts computed elsewhere, skipping the lazy pass above. The
+    /// caller is responsible for having computed them from this same data, so
+    /// this must be the last step of a load: any mutation after it invalidates
+    /// the cache and the work is done again on the next render.
+    pub(super) fn prime_counts(&mut self, counts: HashMap<ResultTab, TabFilterCounts>) {
+        self.counts_cache = Some(counts);
     }
 
     fn rebuild_columns(&mut self) {
@@ -153,12 +189,37 @@ impl ResultsDelegate {
     }
 
     pub fn set_baseline(&mut self, pages: Vec<PageRecord>, started_at: i64) {
-        self.baseline_issue_counts = build_issues_entries(&pages)
-            .into_iter()
-            .map(|entry| (entry.name, (entry.count, entry.pct)))
-            .collect();
+        self.baseline_issue_counts = baseline_issue_counts(&pages);
         self.baseline_pages = Some(pages);
         self.baseline_started_at = Some(started_at);
+        self.invalidate_counts();
+        self.rebuild_columns();
+        self.rebuild_filter();
+    }
+
+    /// Installs a whole crawl at once, with the baseline's issue counts already
+    /// built. Records and baseline each rebuild the filtered rows on their own,
+    /// which on the Overview tab means building every issue entry, so setting
+    /// them one after the other did that work twice.
+    pub(super) fn apply_loaded_crawl(
+        &mut self,
+        pages: Vec<PageRecord>,
+        baseline: Option<(Vec<PageRecord>, i64)>,
+        baseline_issue_counts: HashMap<String, (usize, f32)>,
+    ) {
+        self.all_pages = pages;
+        match baseline {
+            Some((baseline_pages, started_at)) => {
+                self.baseline_pages = Some(baseline_pages);
+                self.baseline_started_at = Some(started_at);
+                self.baseline_issue_counts = baseline_issue_counts;
+            }
+            None => {
+                self.baseline_pages = None;
+                self.baseline_started_at = None;
+                self.baseline_issue_counts.clear();
+            }
+        }
         self.invalidate_counts();
         self.rebuild_columns();
         self.rebuild_filter();
@@ -195,9 +256,7 @@ impl ResultsDelegate {
 
     pub fn set_root_url(&mut self, root_url: &str) {
         self.root_url = Some(root_url.to_owned());
-        self.root_origin = url::Url::parse(root_url)
-            .ok()
-            .map(|u| u.origin().ascii_serialization());
+        self.root_origin = root_origin_of(root_url);
         // Directory aggregates on the Site Structure tab key off the origin.
         self.invalidate_counts();
     }

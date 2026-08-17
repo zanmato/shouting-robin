@@ -12,7 +12,7 @@ pub use delegate::ResultsDelegate;
 pub use filter::filters_for_tab;
 #[cfg(test)]
 pub use filter::{matching_urls, tab_filter_counts_for_test};
-pub use grid::ResultsGrid;
+pub use grid::{PreparedCrawl, ResultsGrid};
 #[cfg(test)]
 pub(crate) use types::tab_is_flattened;
 pub use types::{IssueFilter, ResultsGridEvent};

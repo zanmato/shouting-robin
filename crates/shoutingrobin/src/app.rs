@@ -27,7 +27,7 @@ use crate::views::{
     CrawlBar, CrawlsSidebar, DetailsPanel, ResultTab, ResultsGrid, StatusBar,
     crawl_bar::CrawlBarEvent,
     crawls_sidebar::CrawlsSidebarEvent,
-    results_grid::{IssueFilter, ResultsGridEvent, filters_for_tab},
+    results_grid::{IssueFilter, PreparedCrawl, ResultsGridEvent, filters_for_tab},
 };
 
 actions!(shoutingrobin_app, [Quit, OpenSettings]);
@@ -204,6 +204,10 @@ impl ShoutingRobinApp {
                     let root_url = root_url.clone();
                     let results_grid = sidebar_results_grid.clone();
                     let crawl_bar = sidebar_crawl_bar.clone();
+                    // Set before the spawn, so the frame that paints while the
+                    // two crawls are read out of the database is already
+                    // showing the spinner rather than the crawl being replaced.
+                    results_grid.update(cx, |grid, cx| grid.set_loading(true, cx));
                     cx.spawn(async move |_, cx| {
                         let pages =
                             crate::storage::load_pages_for_crawl(&pool, crawl_id, &root_url).await;
@@ -211,6 +215,10 @@ impl ShoutingRobinApp {
                             Ok(pages) => pages,
                             Err(e) => {
                                 tracing::error!(error=%e, "failed to load pages for crawl");
+                                cx.update(|cx| {
+                                    results_grid
+                                        .update(cx, |grid, cx| grid.set_loading(false, cx));
+                                });
                                 return;
                             }
                         };
@@ -243,20 +251,19 @@ impl ShoutingRobinApp {
                             }
                         };
 
+                        // Every aggregate the grid shows, built off the
+                        // foreground thread. Both crawls move into the task and
+                        // back out, so nothing is copied to get them there.
+                        let prepared = cx
+                            .background_spawn({
+                                let root_url = root_url.clone();
+                                async move { PreparedCrawl::prepare(pages, baseline, &root_url) }
+                            })
+                            .await;
+
                         cx.update(|cx| {
-                            results_grid.update(cx, |g, cx| {
-                                g.clear(cx);
-                                g.set_root_url(&root_url, cx);
-                                for record in pages {
-                                    g.push(record, cx);
-                                }
-                                match baseline {
-                                    Some((baseline_pages, started_at)) => {
-                                        g.set_baseline(baseline_pages, started_at, cx)
-                                    }
-                                    None => g.clear_baseline(cx),
-                                }
-                            });
+                            results_grid
+                                .update(cx, |g, cx| g.load_prepared(prepared, &root_url, cx));
                             crawl_bar.update(cx, |bar, cx| {
                                 bar.has_results = true;
                                 cx.notify();
