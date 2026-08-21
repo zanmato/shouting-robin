@@ -42,6 +42,9 @@ pub enum ResourceKind {
     Script,
     /// A link to another origin, from an `<a href>`.
     ExternalLink,
+    /// A request Chrome saw the page make that the HTML does not declare: a
+    /// fetch, an XHR, a dynamically imported chunk.
+    Other,
 }
 
 impl ResourceKind {
@@ -53,6 +56,17 @@ impl ResourceKind {
             Self::Stylesheet => "css",
             Self::Script => "script",
             Self::ExternalLink => "link",
+            Self::Other => "other",
+        }
+    }
+
+    /// The kind a Resource Timing row's initiator maps back to.
+    pub fn from_initiator(initiator: &str) -> Self {
+        match initiator {
+            "img" | "image" => Self::Image,
+            "css" => Self::Stylesheet,
+            "script" => Self::Script,
+            _ => Self::Other,
         }
     }
 
@@ -62,7 +76,7 @@ impl ResourceKind {
             Self::Image => None,
             Self::Stylesheet => Some("text/css"),
             Self::Script => Some("text/javascript"),
-            Self::ExternalLink => None,
+            Self::ExternalLink | Self::Other => None,
         }
     }
 }
