@@ -238,18 +238,121 @@ pub struct Backlink {
     pub rel: Option<String>,
 }
 
+/// The lowercase directive tokens of one robots value, with any leading
+/// crawler name (`googlebot: noindex, nofollow`) removed.
+pub fn robots_directives(value: &str) -> Vec<String> {
+    let value = value.trim();
+    let value = match value.split_once(':') {
+        Some((agent, rest))
+            if !agent.trim().is_empty()
+                && agent
+                    .trim()
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '*') =>
+        {
+            rest
+        }
+        _ => value,
+    };
+    value
+        .split(',')
+        .map(|token| token.trim().to_ascii_lowercase())
+        .filter(|token| !token.is_empty())
+        .collect()
+}
+
+/// Availability values that mean the product cannot be bought right now.
+pub fn availability_is_out_of_stock(availability: &str) -> bool {
+    matches!(
+        availability.trim().to_ascii_lowercase().as_str(),
+        "outofstock" | "soldout" | "discontinued"
+    )
+}
+
+/// True when `gtin` is a GTIN-8/12/13/14 (or ISBN-13) whose check digit is
+/// right. A GTIN that fails this is a typo, not an identifier, and Merchant
+/// Center rejects the product for it.
+pub fn gtin_checksum_valid(gtin: &str) -> bool {
+    let digits: Vec<u32> = gtin
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .map(|c| c.to_digit(10))
+        .collect::<Option<Vec<u32>>>()
+        .unwrap_or_default();
+    if !matches!(digits.len(), 8 | 12 | 13 | 14) {
+        return false;
+    }
+    let Some((&check, payload)) = digits.split_last() else {
+        return false;
+    };
+    // Weights alternate 3,1,3,1... counted from the digit nearest the check.
+    let sum: u32 = payload
+        .iter()
+        .rev()
+        .enumerate()
+        .map(|(position, digit)| if position % 2 == 0 { digit * 3 } else { *digit })
+        .sum();
+    (10 - sum % 10) % 10 == check
+}
+
 impl PageRecord {
+    /// True when nothing keeps this page out of the index: a 2xx document
+    /// that is neither a redirect, noindex, nor canonicalised elsewhere.
+    pub fn is_indexable(&self) -> bool {
+        self.status
+            .is_some_and(|status| (200..300).contains(&status))
+            && !self.is_redirect()
+            && !self.is_noindex()
+            && !self.is_canonicalised()
+    }
+
+    /// True when the body is (or may be) an HTML document worth auditing for
+    /// titles, headings and content. An unknown content type counts as HTML,
+    /// because a server that omits the header is still most likely serving a
+    /// page; a declared PDF, XML feed or JSON endpoint is not.
+    pub fn is_html_document(&self) -> bool {
+        match self.content_type.as_deref() {
+            None => true,
+            Some(content_type) => {
+                let media_type = content_type
+                    .split(';')
+                    .next()
+                    .unwrap_or(content_type)
+                    .trim()
+                    .to_ascii_lowercase();
+                media_type.is_empty()
+                    || media_type == "text/html"
+                    || media_type == "application/xhtml+xml"
+            }
+        }
+    }
+
     /// True when the page carries a `noindex` directive, from either the robots
     /// meta tag or the `X-Robots-Tag` response header. Search engines honour
     /// both, so a page is out of the index either way.
     pub fn is_noindex(&self) -> bool {
-        let mentions_noindex = |value: &str| value.to_ascii_lowercase().contains("noindex");
-        self.robots.as_deref().is_some_and(mentions_noindex)
-            || self
-                .headers
-                .iter()
-                .find(|(key, _)| key.eq_ignore_ascii_case("x-robots-tag"))
-                .is_some_and(|(_, value)| mentions_noindex(value))
+        self.has_robots_directive("noindex")
+    }
+
+    /// True when `directive` (`noindex`, `nofollow`, `noarchive`, ...) is set
+    /// by the robots meta tag or by any `X-Robots-Tag` header. Servers may send
+    /// several such headers, and each may be scoped to a crawler
+    /// (`googlebot: noindex`); `none` stands for `noindex, nofollow`.
+    pub fn has_robots_directive(&self, directive: &str) -> bool {
+        let header_values = self
+            .headers
+            .iter()
+            .filter(|(key, _)| key.eq_ignore_ascii_case("x-robots-tag"))
+            .map(|(_, value)| value.as_str());
+        self.robots
+            .as_deref()
+            .into_iter()
+            .chain(header_values)
+            .flat_map(robots_directives)
+            .any(|token| {
+                token == directive
+                    || (token == "none" && matches!(directive, "noindex" | "nofollow"))
+            })
     }
 
     /// True when the page declares a canonical pointing at a *different* URL,
@@ -330,7 +433,6 @@ impl PageRecord {
 pub enum CrawlEvent {
     Started { crawl_id: i64, root_url: String },
     Page(Box<PageRecord>),
-    Progress { crawled: u64, queued: u64 },
     Finished { crawl_id: i64, total: u64 },
     Error { url: String, message: String },
 }
@@ -423,6 +525,48 @@ mod tests {
             status_of(&mut record),
             ("Noindex".into(), "Non-Indexable".into())
         );
+    }
+
+    #[test]
+    fn gtin_check_digits() {
+        assert!(gtin_checksum_valid("0123456789012"));
+        assert!(gtin_checksum_valid("4006381333931"));
+        assert!(gtin_checksum_valid("96385074"));
+        assert!(gtin_checksum_valid("036000291452"));
+        assert!(gtin_checksum_valid("9780306406157"));
+        assert!(!gtin_checksum_valid("0123456789013"));
+        assert!(!gtin_checksum_valid("12345"));
+        assert!(!gtin_checksum_valid("SKU-123"));
+        assert!(!gtin_checksum_valid(""));
+    }
+
+    #[test]
+    fn none_means_noindex_and_nofollow() {
+        let mut record = page("https://example.com/a");
+        record.robots = Some("none".into());
+        assert!(record.is_noindex());
+        assert!(record.has_robots_directive("nofollow"));
+        assert!(!record.has_robots_directive("noarchive"));
+    }
+
+    #[test]
+    fn every_x_robots_tag_header_is_read() {
+        let mut record = page("https://example.com/a");
+        record.headers = vec![
+            ("x-robots-tag".into(), "googlebot: nosnippet".into()),
+            ("x-robots-tag".into(), "otherbot: noindex, nofollow".into()),
+        ];
+        assert!(record.is_noindex());
+        assert!(record.has_robots_directive("nosnippet"));
+        assert!(record.has_robots_directive("nofollow"));
+    }
+
+    #[test]
+    fn directive_substrings_do_not_match() {
+        let mut record = page("https://example.com/a");
+        record.robots = Some("index, follow, max-snippet:-1".into());
+        assert!(!record.is_noindex());
+        assert!(!record.has_robots_directive("nofollow"));
     }
 
     #[test]

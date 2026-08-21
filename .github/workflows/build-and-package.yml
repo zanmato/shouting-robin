@@ -157,11 +157,34 @@ jobs:
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+      # The updater refuses any asset whose SHA-256 is not listed here, and
+      # verifies the minisign signature over the list against the public key
+      # embedded in update_manager.rs once MINISIGN_SECRET_KEY is configured
+      # (scripts/generate-update-key.sh creates the pair).
+      - name: Write checksums
+        run: |
+          mkdir -p release
+          cp artifacts/shoutingrobin-*/shoutingrobin* release/
+          cd release
+          sha256sum shoutingrobin* > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Sign checksums
+        if: ${{ env.MINISIGN_SECRET_KEY != '' }}
+        env:
+          MINISIGN_SECRET_KEY: ${{ secrets.MINISIGN_SECRET_KEY }}
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          sudo apt-get update && sudo apt-get install -y minisign
+          printf '%s\n' "$MINISIGN_SECRET_KEY" > minisign.key
+          printf '%s\n' "$MINISIGN_PASSWORD" | minisign -S -s minisign.key -m release/SHA256SUMS -x release/SHA256SUMS.minisig
+          rm -f minisign.key
+
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           body: ${{ steps.changelog.outputs.body }}
           files: |
-            artifacts/shoutingrobin-*/shoutingrobin*
+            release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

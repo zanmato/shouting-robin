@@ -147,6 +147,10 @@ impl CrawlEngine {
                 website.with_delay(config.delay_ms);
             }
             website.with_request_timeout(Some(Duration::from_secs(config.timeout_seconds as u64)));
+            // A 429 or 5xx is retried after a jittered back-off (spider honours
+            // `Retry-After`) before it is recorded, so a burst of rate limiting
+            // is absorbed rather than reported as the site's error pages.
+            website.with_retry(RATE_LIMIT_RETRIES);
 
             if let Some(ref ua) = config.user_agent
                 && !ua.is_empty()
@@ -205,10 +209,33 @@ impl CrawlEngine {
                     let wait_cap = (config.timeout_seconds as u64)
                         .saturating_sub(5)
                         .clamp(3, 15);
+                    // Each page in a window of its own: a background tab is a
+                    // hidden document, and Chrome reports no LCP for a page
+                    // that was never visible, which left every page after the
+                    // first with LCP equal to FCP. A desktop viewport, rather
+                    // than the 800x600 default, is also what the vitals are
+                    // measured against.
+                    let mut viewport = spider::configuration::Viewport::new(1366, 768);
+                    viewport.own_window = true;
+                    // `RequestInterceptConfiguration::new(enabled)` ties every
+                    // block to the one switch, so "block images" also dropped
+                    // stylesheets (wrecking LCP and CLS) and leaving it off let
+                    // every analytics beacon through as a resource row: 2,240
+                    // of a reference crawl's 2,436 resources were Google
+                    // Analytics and ad-network pings with per-request query
+                    // strings. Analytics and ads are never the site's assets.
+                    let intercept = RequestInterceptConfiguration {
+                        enabled: true,
+                        block_visuals: config.block_images,
+                        block_analytics: true,
+                        block_ads: true,
+                        block_stylesheets: false,
+                        block_javascript: false,
+                        ..Default::default()
+                    };
                     website
-                        .with_chrome_intercept(RequestInterceptConfiguration::new(
-                            config.block_images,
-                        ))
+                        .with_viewport(Some(viewport))
+                        .with_chrome_intercept(intercept)
                         .with_stealth(true)
                         .with_wait_for_idle_dom(Some(WaitForSelector::new(
                             Some(Duration::from_secs(wait_cap)),
@@ -301,13 +328,7 @@ impl CrawlEngine {
             } else {
                 None
             };
-            // axe.min.js is a static asset identical for every page, so fetch it
-            // once per crawl and reuse it for all a11y scans.
-            let axe_js = if chrome_mode {
-                fetch_axe_js().await
-            } else {
-                None
-            };
+            let axe_js = chrome_mode.then_some(AXE_JS);
             let pump = tokio::spawn(async move {
                 let mut subscribe_guard = subscribe_guard;
                 let mut total: u64 = 0;
@@ -454,7 +475,26 @@ impl CrawlEngine {
                         record.url.as_str()
                     };
                     let analyzed_external = !is_same_domain(&root_for_pump, analyzed_url);
-                    let skip_analysis = redirected || analyzed_external;
+                    // A PDF or feed parsed as HTML reports a missing title,
+                    // H1, body and content on a document that has none of
+                    // those by design.
+                    let skip_analysis =
+                        redirected || analyzed_external || !record.is_html_document();
+                    // A 2xx HTML document with no bytes at all is a page the
+                    // crawler could not read: Chrome gave up on the render, or
+                    // the server answered with nothing. Left alone it reports
+                    // as a healthy page with a missing title; recording it as
+                    // bodiless and empty puts it where a reader looks for
+                    // broken pages.
+                    if !skip_analysis
+                        && html_bytes.is_empty()
+                        && record
+                            .status
+                            .is_some_and(|status| (200..300).contains(&status))
+                    {
+                        record.has_body_tag = Some(false);
+                        record.word_count = Some(0);
+                    }
                     if !skip_analysis
                         && !html_bytes.is_empty()
                         && let Ok(html) = std::str::from_utf8(html_bytes)
@@ -481,7 +521,15 @@ impl CrawlEngine {
                             page.close_page().await;
                         } else if page.get_chrome_page().is_some() {
                             collect_performance_metrics(&page, &mut record).await;
-                            if let Some(axe_js) = axe_js.as_deref() {
+                            // `get_duration_elapsed` spans the whole render
+                            // including paced auxiliary requests, which read as
+                            // five-second "response times" on a 70 ms server.
+                            // The navigation entry's TTFB is the comparable
+                            // number to an HTTP crawl.
+                            if let Some(ttfb) = record.ttfb_ms {
+                                record.response_time = Duration::from_millis(ttfb);
+                            }
+                            if let Some(axe_js) = axe_js {
                                 collect_a11y_violations(&page, &mut record, axe_js).await;
                             }
                             resource_timings = collect_resource_timings(&page).await;
@@ -557,7 +605,9 @@ impl CrawlEngine {
 
                     record.compute_indexability();
                     record.is_internal = is_same_domain(&root_for_pump, &record.url);
-                    if let Some((sm_url, lastmod, hreflang)) = sitemap_for_pump.get(&record.url) {
+                    let sitemap_key = crate::crawl::url_norm::normalize_url(&record.url)
+                        .unwrap_or_else(|| record.url.clone());
+                    if let Some((sm_url, lastmod, hreflang)) = sitemap_for_pump.get(&sitemap_key) {
                         record.in_sitemap = Some(true);
                         record.sitemap_url = Some(sm_url.clone());
                         record.sitemap_lastmod = lastmod.clone();
@@ -665,7 +715,9 @@ impl CrawlEngine {
                                 .then(|| resource.initiator.clone()),
                             ..Default::default()
                         };
-                        if let Some((sm_url, lastmod, _)) = sitemap_for_pump.get(&resource.url) {
+                        let sitemap_key = crate::crawl::url_norm::normalize_url(&resource.url)
+                            .unwrap_or_else(|| resource.url.clone());
+                        if let Some((sm_url, lastmod, _)) = sitemap_for_pump.get(&sitemap_key) {
                             resource_record.in_sitemap = Some(true);
                             resource_record.sitemap_url = Some(sm_url.clone());
                             resource_record.sitemap_lastmod = lastmod.clone();
@@ -683,17 +735,6 @@ impl CrawlEngine {
                         {
                             tracing::error!(error=%e, "failed to send resource event");
                         }
-                    }
-
-                    if total.is_multiple_of(10)
-                        && let Err(e) = tx_pages
-                            .send_async(CrawlEvent::Progress {
-                                crawled: total,
-                                queued: 0,
-                            })
-                            .await
-                    {
-                        tracing::warn!(error=%e, "failed to send progress event");
                     }
                 }
                 (total, discovered_resources)
@@ -757,13 +798,41 @@ impl CrawlEngine {
                 tracing::warn!(error=%e, "failed to finalize crawl record");
             }
 
-            run_near_duplicate_analysis(&pool, crawl_id, config.near_duplicate_threshold).await;
-
-            run_crawl_depth_analysis(&pool, crawl_id, &root_url).await;
-
-            run_pagerank_analysis(&pool, crawl_id).await;
-
-            run_hreflang_validation(&pool, crawl_id).await;
+            // A failed pass leaves its columns empty, which reads as "no
+            // issues" unless the reader is told otherwise.
+            let passes: [(&str, Result<(), sqlx::Error>); 4] = [
+                (
+                    "near-duplicate analysis",
+                    run_near_duplicate_analysis(&pool, crawl_id, config.near_duplicate_threshold)
+                        .await,
+                ),
+                (
+                    "crawl depth analysis",
+                    run_crawl_depth_analysis(&pool, crawl_id, &root_url).await,
+                ),
+                (
+                    "link score analysis",
+                    run_pagerank_analysis(&pool, crawl_id).await,
+                ),
+                (
+                    "hreflang validation",
+                    run_hreflang_validation(&pool, crawl_id).await,
+                ),
+            ];
+            for (pass, outcome) in passes {
+                if let Err(e) = outcome {
+                    tracing::warn!(error=%e, pass, "post-crawl pass failed");
+                    if let Err(send_error) = tx
+                        .send_async(CrawlEvent::Error {
+                            url: root_url.clone(),
+                            message: format!("{pass} failed: {e}"),
+                        })
+                        .await
+                    {
+                        tracing::warn!(error=%send_error, "failed to send pass failure event");
+                    }
+                }
+            }
 
             // Sitemap orphans and robots-blocked URLs: recorded, not just
             // announced. Both used to be live-only events, so reopening a crawl
@@ -869,16 +938,32 @@ async fn check_discovered_resources(
     discovered: Vec<(String, ResourceKind)>,
     cancel: &Arc<AtomicBool>,
 ) {
-    if !config.check_resources || discovered.is_empty() || cancel.load(Ordering::Relaxed) {
+    if !config.check_resources || cancel.load(Ordering::Relaxed) {
         return;
     }
-    let recorded = match storage::load_page_urls(pool, crawl_id).await {
+    let recorded = match storage::load_described_page_urls(pool, crawl_id).await {
         Ok(urls) => urls,
         Err(e) => {
             tracing::warn!(error=%e, "failed to read recorded URLs; skipping resource checks");
             return;
         }
     };
+    // Images Chrome loaded but could not describe (a cross-origin CDN
+    // without Timing-Allow-Origin reports no size) get a HEAD of their own,
+    // since the Images tab and the 100 kB rule need the size. Fetches, XHR
+    // calls and script chunks are left as Chrome reported them: their size
+    // and headers say nothing about SEO, and on a catalogue with two API
+    // calls per product that is a thousand requests for nothing.
+    let mut discovered = discovered;
+    match storage::load_undescribed_resources(pool, crawl_id).await {
+        Ok(undescribed) => discovered.extend(
+            undescribed
+                .into_iter()
+                .map(|(url, initiator)| (url, ResourceKind::from_initiator(&initiator)))
+                .filter(|(_, kind)| *kind == ResourceKind::Image),
+        ),
+        Err(e) => tracing::warn!(error=%e, "failed to read undescribed resources"),
+    }
     let planned = crate::crawl::resources::plan_checks(&discovered, &recorded);
     if planned.is_empty() {
         return;
@@ -925,7 +1010,7 @@ async fn check_discovered_resources(
                 tracing::debug!(url = %check.url, error = %error, "resource check failed");
             }
             record.compute_indexability();
-            if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
+            if let Err(e) = storage::record_resource_check(pool, crawl_id, &record).await {
                 tracing::warn!(error=%e, url=%record.url, "failed to persist resource");
             }
             if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
@@ -1324,22 +1409,20 @@ pub fn channel() -> (Sender<CrawlEvent>, Receiver<CrawlEvent>) {
     flume::unbounded()
 }
 
-async fn run_near_duplicate_analysis(pool: &SqlitePool, crawl_id: i64, threshold: u8) {
-    let pages = match storage::load_simhashes_for_crawl(pool, crawl_id).await {
-        Ok(pages) => pages,
-        Err(e) => {
-            tracing::warn!(error=%e, "failed to load simhashes for near-duplicate analysis");
-            return;
-        }
-    };
+async fn run_near_duplicate_analysis(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    threshold: u8,
+) -> Result<(), sqlx::Error> {
+    let pages = storage::load_simhashes_for_crawl(pool, crawl_id).await?;
 
     if pages.len() < 2 {
-        return;
+        return Ok(());
     }
 
     let results = crate::crawl::similarity::find_near_duplicates(&pages, threshold);
 
-    if let Err(e) = storage::update_near_duplicates(
+    storage::update_near_duplicates(
         pool,
         crawl_id,
         &results
@@ -1355,9 +1438,6 @@ async fn run_near_duplicate_analysis(pool: &SqlitePool, crawl_id: i64, threshold
             .collect::<Vec<_>>(),
     )
     .await
-    {
-        tracing::warn!(error=%e, "failed to persist near-duplicate results");
-    }
 }
 
 /// Assigns each crawled URL its click depth from the start page: a breadth-first
@@ -1366,34 +1446,24 @@ async fn run_near_duplicate_analysis(pool: &SqlitePool, crawl_id: i64, threshold
 /// URLs the walk can't reach (sitemap-only orphans, robots.txt-blocked URLs) are
 /// left untouched rather than reported as depth 0, which would put them level
 /// with the start page.
-async fn run_crawl_depth_analysis(pool: &SqlitePool, crawl_id: i64, root_url: &str) {
-    let link_rows = match sqlx::query_as::<_, (String, String)>(
+async fn run_crawl_depth_analysis(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    root_url: &str,
+) -> Result<(), sqlx::Error> {
+    let link_rows = sqlx::query_as::<_, (String, String)>(
         "SELECT src_url, dst_url FROM links WHERE crawl_id = ?",
     )
     .bind(crawl_id)
     .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::warn!(error=%e, "failed to load links for crawl depth");
-            return;
-        }
-    };
+    .await?;
 
-    let page_rows = match sqlx::query_as::<_, (String, Option<String>)>(
+    let page_rows = sqlx::query_as::<_, (String, Option<String>)>(
         "SELECT url, redirect_url FROM pages WHERE crawl_id = ?",
     )
     .bind(crawl_id)
     .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::warn!(error=%e, "failed to load pages for crawl depth");
-            return;
-        }
-    };
+    .await?;
 
     // Key the graph on normalised URLs so a link written as
     // `https://site.com` reaches the page stored as `https://site.com/`.
@@ -1434,7 +1504,7 @@ async fn run_crawl_depth_analysis(pool: &SqlitePool, crawl_id: i64, root_url: &s
             root_url,
             "start page not found among crawled pages; skipping depth"
         );
-        return;
+        return Ok(());
     }
 
     let mut depth_by_key: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
@@ -1462,53 +1532,59 @@ async fn run_crawl_depth_analysis(pool: &SqlitePool, crawl_id: i64, root_url: &s
         .flat_map(|(urls, depth)| urls.iter().map(move |url| (url.clone(), depth)))
         .collect();
 
-    if let Err(e) = storage::update_crawl_depths(pool, crawl_id, &depths).await {
-        tracing::warn!(error=%e, "failed to persist crawl depths");
-    }
+    storage::update_crawl_depths(pool, crawl_id, &depths).await
 }
 
-async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) {
-    let link_rows = match sqlx::query_as::<_, (String, String)>(
+/// How many times a rate-limited or failing fetch is retried before its
+/// status is recorded.
+const RATE_LIMIT_RETRIES: u8 = 2;
+
+async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
+    let link_rows = sqlx::query_as::<_, (String, String)>(
         "SELECT src_url, dst_url FROM links WHERE crawl_id = ? AND kind = 'internal'",
     )
     .bind(crawl_id)
     .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::warn!(error=%e, "failed to load links for PageRank");
-            return;
-        }
-    };
+    .await?;
 
     if link_rows.is_empty() {
-        return;
+        return Ok(());
     }
 
-    let all_urls: std::collections::HashSet<String> = link_rows
+    let results = compute_pagerank(&link_rows);
+
+    storage::update_link_scores(pool, crawl_id, &results).await
+}
+
+/// Normalised PageRank (0..100) over internal links. Each page's score is
+/// divided among the pages it links *to*; dangling pages spread theirs over
+/// the whole graph.
+pub(crate) fn compute_pagerank(link_rows: &[(String, String)]) -> Vec<(String, f32)> {
+    let mut all_urls: Vec<String> = link_rows
         .iter()
         .flat_map(|(src, dst)| [src.clone(), dst.clone()])
         .collect();
+    all_urls.sort();
+    all_urls.dedup();
 
     let url_count = all_urls.len();
-    let url_index: std::collections::HashMap<String, usize> = all_urls
+    if url_count == 0 {
+        return Vec::new();
+    }
+    let url_index: std::collections::HashMap<&str, usize> = all_urls
         .iter()
         .enumerate()
-        .map(|(i, url)| (url.clone(), i))
+        .map(|(i, url)| (url.as_str(), i))
         .collect();
 
-    let mut outlinks_count = vec![0usize; url_count];
-    let mut inlinks: Vec<Vec<usize>> = vec![Vec::new(); url_count];
-    for (src, dst) in &link_rows {
-        let Some(&src_idx) = url_index.get(src) else {
+    let mut outlinks: Vec<Vec<usize>> = vec![Vec::new(); url_count];
+    for (src, dst) in link_rows {
+        let (Some(&src_idx), Some(&dst_idx)) =
+            (url_index.get(src.as_str()), url_index.get(dst.as_str()))
+        else {
             continue;
         };
-        let Some(&dst_idx) = url_index.get(dst) else {
-            continue;
-        };
-        outlinks_count[src_idx] += 1;
-        inlinks[dst_idx].push(src_idx);
+        outlinks[src_idx].push(dst_idx);
     }
 
     let damping = 0.85f32;
@@ -1517,15 +1593,15 @@ async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) {
 
     for _ in 0..iterations {
         let mut new_scores = vec![(1.0 - damping) / url_count as f32; url_count];
-        for node in 0..url_count {
-            if outlinks_count[node] == 0 {
+        for (node, targets) in outlinks.iter().enumerate() {
+            if targets.is_empty() {
                 let share = scores[node] * damping / url_count as f32;
                 for new_score in &mut new_scores {
                     *new_score += share;
                 }
             } else {
-                let share = scores[node] * damping / outlinks_count[node] as f32;
-                for &target in &inlinks[node] {
+                let share = scores[node] * damping / targets.len() as f32;
+                for &target in targets {
                     new_scores[target] += share;
                 }
             }
@@ -1540,15 +1616,7 @@ async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) {
         }
     }
 
-    let results: Vec<(String, f32)> = all_urls
-        .into_iter()
-        .enumerate()
-        .map(|(i, url)| (url, scores[i]))
-        .collect();
-
-    if let Err(e) = storage::update_link_scores(pool, crawl_id, &results).await {
-        tracing::warn!(error=%e, "failed to persist PageRank scores");
-    }
+    all_urls.into_iter().zip(scores).collect()
 }
 
 /// What the crawl knows about one page, for hreflang validation.
@@ -1641,20 +1709,13 @@ pub(crate) fn hreflang_issues_for_page(
     issues
 }
 
-async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
-    let rows = match sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
         r#"SELECT url, hreflang_tags_json, canonical FROM pages WHERE crawl_id = ?"#,
     )
     .bind(crawl_id)
     .fetch_all(pool)
-    .await
-    {
-        Ok(rows) => rows,
-        Err(e) => {
-            tracing::warn!(error=%e, "failed to load pages for hreflang validation");
-            return;
-        }
-    };
+    .await?;
 
     let mut crawled: std::collections::HashMap<String, HreflangPage> =
         std::collections::HashMap::with_capacity(rows.len());
@@ -1684,7 +1745,7 @@ async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
     }
 
     if tagged.is_empty() {
-        return;
+        return Ok(());
     }
 
     let all_issues: Vec<(String, Vec<crate::crawl::event::HreflangIssue>)> = tagged
@@ -1695,32 +1756,91 @@ async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) {
         })
         .collect();
 
-    if let Err(e) = storage::update_hreflang_issues(pool, crawl_id, &all_issues).await {
-        tracing::warn!(error=%e, "failed to persist hreflang issues");
-    }
+    storage::update_hreflang_issues(pool, crawl_id, &all_issues).await
 }
 
+/// ISO 639-1 two-letter language codes.
+const ISO_639_1: &[&str] = &[
+    "aa", "ab", "ae", "af", "ak", "am", "an", "ar", "as", "av", "ay", "az", "ba", "be", "bg", "bh",
+    "bi", "bm", "bn", "bo", "br", "bs", "ca", "ce", "ch", "co", "cr", "cs", "cu", "cv", "cy", "da",
+    "de", "dv", "dz", "ee", "el", "en", "eo", "es", "et", "eu", "fa", "ff", "fi", "fj", "fo", "fr",
+    "fy", "ga", "gd", "gl", "gn", "gu", "gv", "ha", "he", "hi", "ho", "hr", "ht", "hu", "hy", "hz",
+    "ia", "id", "ie", "ig", "ii", "ik", "io", "is", "it", "iu", "ja", "jv", "ka", "kg", "ki", "kj",
+    "kk", "kl", "km", "kn", "ko", "kr", "ks", "ku", "kv", "kw", "ky", "la", "lb", "lg", "li", "ln",
+    "lo", "lt", "lu", "lv", "mg", "mh", "mi", "mk", "ml", "mn", "mr", "ms", "mt", "my", "na", "nb",
+    "nd", "ne", "ng", "nl", "nn", "no", "nr", "nv", "ny", "oc", "oj", "om", "or", "os", "pa", "pi",
+    "pl", "ps", "pt", "qu", "rm", "rn", "ro", "ru", "rw", "sa", "sc", "sd", "se", "sg", "si", "sk",
+    "sl", "sm", "sn", "so", "sq", "sr", "ss", "st", "su", "sv", "sw", "ta", "te", "tg", "th", "ti",
+    "tk", "tl", "tn", "to", "tr", "ts", "tt", "tw", "ty", "ug", "uk", "ur", "uz", "ve", "vi", "vo",
+    "wa", "wo", "xh", "yi", "yo", "za", "zh", "zu",
+];
+
+/// Three-letter codes Google documents or that appear in the wild for
+/// languages without a two-letter code (ISO 639-2/3).
+const ISO_639_3_COMMON: &[&str] = &[
+    "ast", "ceb", "chr", "fil", "gsw", "haw", "hmn", "ilo", "kok", "lus", "mai", "nso", "pap",
+    "sco", "syr", "tlh", "yue", "zxx",
+];
+
+/// ISO 3166-1 alpha-2 region codes, plus the user-assigned `UK` and `EU` that
+/// Google explicitly accepts.
+const ISO_3166_1: &[&str] = &[
+    "AD", "AE", "AF", "AG", "AI", "AL", "AM", "AO", "AQ", "AR", "AS", "AT", "AU", "AW", "AX", "AZ",
+    "BA", "BB", "BD", "BE", "BF", "BG", "BH", "BI", "BJ", "BL", "BM", "BN", "BO", "BQ", "BR", "BS",
+    "BT", "BV", "BW", "BY", "BZ", "CA", "CC", "CD", "CF", "CG", "CH", "CI", "CK", "CL", "CM", "CN",
+    "CO", "CR", "CU", "CV", "CW", "CX", "CY", "CZ", "DE", "DJ", "DK", "DM", "DO", "DZ", "EC", "EE",
+    "EG", "EH", "ER", "ES", "ET", "EU", "FI", "FJ", "FK", "FM", "FO", "FR", "GA", "GB", "GD", "GE",
+    "GF", "GG", "GH", "GI", "GL", "GM", "GN", "GP", "GQ", "GR", "GS", "GT", "GU", "GW", "GY", "HK",
+    "HM", "HN", "HR", "HT", "HU", "ID", "IE", "IL", "IM", "IN", "IO", "IQ", "IR", "IS", "IT", "JE",
+    "JM", "JO", "JP", "KE", "KG", "KH", "KI", "KM", "KN", "KP", "KR", "KW", "KY", "KZ", "LA", "LB",
+    "LC", "LI", "LK", "LR", "LS", "LT", "LU", "LV", "LY", "MA", "MC", "MD", "ME", "MF", "MG", "MH",
+    "MK", "ML", "MM", "MN", "MO", "MP", "MQ", "MR", "MS", "MT", "MU", "MV", "MW", "MX", "MY", "MZ",
+    "NA", "NC", "NE", "NF", "NG", "NI", "NL", "NO", "NP", "NR", "NU", "NZ", "OM", "PA", "PE", "PF",
+    "PG", "PH", "PK", "PL", "PM", "PN", "PR", "PS", "PT", "PW", "PY", "QA", "RE", "RO", "RS", "RU",
+    "RW", "SA", "SB", "SC", "SD", "SE", "SG", "SH", "SI", "SJ", "SK", "SL", "SM", "SN", "SO", "SR",
+    "SS", "ST", "SV", "SX", "SY", "SZ", "TC", "TD", "TF", "TG", "TH", "TJ", "TK", "TL", "TM", "TN",
+    "TO", "TR", "TT", "TV", "TW", "TZ", "UA", "UG", "UK", "UM", "US", "UY", "UZ", "VA", "VC", "VE",
+    "VG", "VI", "VN", "VU", "WF", "WS", "YE", "YT", "ZA", "ZM", "ZW",
+];
+
+/// Is `code` an hreflang value Google will act on: `x-default`, or an ISO 639
+/// language optionally followed by an ISO 15924 script and/or an ISO 3166-1
+/// region (or UN M.49 numeric area). Matching is case-insensitive, as the
+/// attribute is.
+///
+/// The language table matters more than the syntax: `dk`, `uk` and `be` are
+/// all well-formed, and all three are countries used as languages on real
+/// shops, which Search Console reports as "unknown language code".
 fn is_valid_bcp47(code: &str) -> bool {
-    if code == "x-default" {
+    let code = code.trim();
+    if code.eq_ignore_ascii_case("x-default") {
         return true;
     }
-    let parts: Vec<&str> = code.split('-').collect();
-    if parts.is_empty() {
+    let mut parts = code.split('-');
+    let Some(primary) = parts.next() else {
+        return false;
+    };
+    let primary = primary.to_ascii_lowercase();
+    let known_language = match primary.len() {
+        2 => ISO_639_1.contains(&primary.as_str()),
+        3 => ISO_639_3_COMMON.contains(&primary.as_str()),
+        _ => false,
+    };
+    if !known_language {
         return false;
     }
-    let primary = parts[0];
-    if primary.len() != 2 && primary.len() != 3 {
-        return false;
-    }
-    if !primary.chars().all(|c| c.is_ascii_lowercase()) {
-        return false;
-    }
-    for part in parts.iter().skip(1) {
-        if part.len() < 2 || part.len() > 8 {
-            return false;
-        }
-        if !part.chars().all(|c| c.is_ascii_alphanumeric()) {
-            return false;
+
+    let mut seen_script = false;
+    let mut seen_region = false;
+    for part in parts {
+        let is_script = part.len() == 4 && part.chars().all(|c| c.is_ascii_alphabetic());
+        let is_region = (part.len() == 2
+            && ISO_3166_1.contains(&part.to_ascii_uppercase().as_str()))
+            || (part.len() == 3 && part.chars().all(|c| c.is_ascii_digit()));
+        match (is_script, is_region) {
+            (true, _) if !seen_script && !seen_region => seen_script = true,
+            (_, true) if !seen_region => seen_region = true,
+            _ => return false,
         }
     }
     true
@@ -1758,11 +1878,10 @@ const METRICS_AUTOMATION_JS: &str = r#"
             }
         }
         var lcp = null;
-        var lcpEntries = performance.getEntriesByType('largest-contentful-paint');
-        if (lcpEntries && lcpEntries.length) {
+        var lcpEntries = window.__sr_lcp_entries || [];
+        if (lcpEntries.length) {
             lcp = Math.round(lcpEntries[lcpEntries.length - 1].startTime);
         }
-        if (lcp == null) lcp = fcp;
         var cls = 0;
         var shifts = performance.getEntriesByType('layout-shift');
         for (var j = 0; j < shifts.length; j++) {
@@ -1990,19 +2109,9 @@ async fn collect_performance_metrics(page: &spider::page::Page, record: &mut Pag
             if (window.__sr_lcp_entries && window.__sr_lcp_entries.length > 0) {
                 lcp = Math.round(window.__sr_lcp_entries[window.__sr_lcp_entries.length - 1].startTime);
             }
-            if (lcp == null) {
-                var entries = performance.getEntriesByType('largest-contentful-paint');
-                if (entries && entries.length > 0) lcp = Math.round(entries[entries.length - 1].startTime);
-            }
-            if (lcp == null) {
-                var paint = performance.getEntriesByType('paint');
-                for (var i = 0; i < paint.length; i++) {
-                    if (paint[i].name === 'first-contentful-paint') {
-                        lcp = Math.round(paint[i].startTime);
-                        break;
-                    }
-                }
-            }
+            // No fallback to FCP: largest-contentful-paint is observer-only
+            // (getEntriesByType never returns it) and a page that was hidden
+            // during load has none. A missing LCP must read as missing.
             result.lcp = lcp;
         } catch(e) {}
         try {
@@ -2135,32 +2244,11 @@ async fn collect_resource_timings(page: &spider::page::Page) -> Vec<ResourceTimi
         .unwrap_or_default()
 }
 
-async fn fetch_axe_js() -> Option<String> {
-    let axe_url = "https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.10.2/axe.min.js";
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-    {
-        Ok(client) => client,
-        Err(e) => {
-            tracing::warn!(error=%e, "failed to build axe client; a11y scans disabled");
-            return None;
-        }
-    };
-    match client.get(axe_url).send().await {
-        Ok(resp) => match resp.text().await {
-            Ok(text) => Some(text),
-            Err(e) => {
-                tracing::warn!(error=%e, "reading axe.js body failed; a11y scans disabled");
-                None
-            }
-        },
-        Err(e) => {
-            tracing::warn!(error=%e, "axe.js fetch failed; a11y scans disabled");
-            None
-        }
-    }
-}
+/// axe-core 4.10.2 (MPL-2.0), byte-identical to the npm release. Bundled
+/// rather than fetched per crawl: it is injected into every page the crawl
+/// renders, and code run that way must not depend on a CDN being honest and
+/// reachable at crawl time.
+const AXE_JS: &str = include_str!("../../assets/js/axe.min.js");
 
 async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRecord, axe_js: &str) {
     let Some(chrome_page) = page.get_chrome_page() else {
@@ -2245,6 +2333,46 @@ async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRec
                 html: None,
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod pagerank_tests {
+    use super::compute_pagerank;
+
+    fn link(src: &str, dst: &str) -> (String, String) {
+        (src.to_string(), dst.to_string())
+    }
+
+    fn score_of(results: &[(String, f32)], url: &str) -> f32 {
+        results
+            .iter()
+            .find(|(u, _)| u == url)
+            .map(|(_, s)| *s)
+            .unwrap_or(f32::NAN)
+    }
+
+    /// Score must flow along links, not against them: the page everyone links
+    /// to is the hub, the page nobody links to is the weakest.
+    #[test]
+    fn hub_outranks_leaf_pages() {
+        let rows = vec![
+            link("/a", "/home"),
+            link("/b", "/home"),
+            link("/c", "/home"),
+            link("/home", "/a"),
+            link("/orphan", "/home"),
+        ];
+        let results = compute_pagerank(&rows);
+        assert_eq!(score_of(&results, "/home"), 100.0);
+        assert!(score_of(&results, "/a") > score_of(&results, "/b"));
+        assert!((score_of(&results, "/b") - score_of(&results, "/orphan")).abs() < 1e-3);
+        assert!(score_of(&results, "/b") > 0.0);
+    }
+
+    #[test]
+    fn empty_input_has_no_scores() {
+        assert!(compute_pagerank(&[]).is_empty());
     }
 }
 
@@ -2451,6 +2579,44 @@ mod hreflang_tests {
             "got {:?}",
             missing_return_tags(&issues)
         );
+    }
+
+    #[test]
+    fn hreflang_codes_are_checked_against_real_languages_and_regions() {
+        for valid in [
+            "en",
+            "EN",
+            "en-GB",
+            "en-gb",
+            "EN-US",
+            "sv-SE",
+            "zh-Hant",
+            "zh-Hant-TW",
+            "es-419",
+            "fil",
+            "x-default",
+            "X-Default",
+            "en-UK",
+            "de-EU",
+        ] {
+            assert!(is_valid_bcp47(valid), "{valid} should be valid");
+        }
+        for invalid in [
+            "dk",
+            "be-BE-BE",
+            "se-SE-Latn",
+            "uk-ua-extra",
+            "",
+            "en-",
+            "xx",
+            "de-XX",
+            "eng-US",
+            "english",
+            "en_US",
+            "123",
+        ] {
+            assert!(!is_valid_bcp47(invalid), "{invalid} should be invalid");
+        }
     }
 
     #[test]
