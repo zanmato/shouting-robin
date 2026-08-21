@@ -224,11 +224,14 @@ impl CrawlBar {
             max_pages: 0,
             max_concurrent: self.concurrency(cx).unwrap_or(0),
             delay_ms: 0,
-            timeout_seconds: 30,
+            // Zero means "not set here": `ShoutingRobinApp::resolve_config`
+            // fills every unset value from the Settings dialog, so a number
+            // written here would silently override what the user configured.
+            timeout_seconds: 0,
             respect_robots_txt: true,
             follow_sitemaps: true,
             block_images: self.block_images,
-            near_duplicate_threshold: 90,
+            near_duplicate_threshold: 0,
             content_selector: String::new(),
             user_agent,
             extra_headers,

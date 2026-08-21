@@ -146,5 +146,122 @@ pub fn validate_type(type_name: &str, properties: &Map<String, Value>) -> Vec<Sd
         }
     }
 
+    if normalized == "Product" {
+        validate_product_offers(properties, &mut issues);
+    }
+
     issues
+}
+
+/// Google's product snippet requires one of `offers`, `review` or
+/// `aggregateRating`, and a merchant listing needs an offer with a price and
+/// currency. A product with none of them is valid schema.org and invisible as
+/// a rich result, which is the thing a shop marks it up for.
+fn validate_product_offers(properties: &Map<String, Value>, issues: &mut Vec<SdIssue>) {
+    let has_any = ["offers", "review", "aggregateRating"]
+        .iter()
+        .any(|key| properties.get(*key).is_some_and(|v| !v.is_null()));
+    if !has_any {
+        issues.push(SdIssue {
+            severity: SdSeverity::Error,
+            type_name: "Product".into(),
+            code: "missing-required:offers|review|aggregateRating".into(),
+            message: "Product needs one of 'offers', 'review' or 'aggregateRating' to be \
+                      eligible for rich results"
+                .into(),
+        });
+    }
+
+    let Some(offers) = properties.get("offers") else {
+        return;
+    };
+    let offer_objects: Vec<&Map<String, Value>> = match offers {
+        Value::Object(map) => vec![map],
+        Value::Array(items) => items.iter().filter_map(Value::as_object).collect(),
+        _ => Vec::new(),
+    };
+    for offer in offer_objects {
+        let is_aggregate = offer
+            .get("@type")
+            .and_then(Value::as_str)
+            .is_some_and(|t| normalize_type(t) == "AggregateOffer");
+        let has_price = if is_aggregate {
+            offer.contains_key("lowPrice") || offer.contains_key("price")
+        } else {
+            offer.contains_key("price") || offer.contains_key("priceSpecification")
+        };
+        if !has_price {
+            issues.push(SdIssue {
+                severity: SdSeverity::Error,
+                type_name: "Offer".into(),
+                code: "missing-required:price".into(),
+                message: "Required property 'price' is missing from Offer".into(),
+            });
+        }
+        if !offer.contains_key("priceCurrency") && !offer.contains_key("priceSpecification") {
+            issues.push(SdIssue {
+                severity: SdSeverity::Error,
+                type_name: "Offer".into(),
+                code: "missing-required:priceCurrency".into(),
+                message: "Required property 'priceCurrency' is missing from Offer".into(),
+            });
+        }
+        if !offer.contains_key("availability") {
+            issues.push(SdIssue {
+                severity: SdSeverity::Warning,
+                type_name: "Offer".into(),
+                code: "missing-recommended:availability".into(),
+                message: "Recommended property 'availability' is missing from Offer".into(),
+            });
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn issues_for(value: &Value) -> Vec<String> {
+        let map = value.as_object().cloned().unwrap_or_default();
+        validate_type("Product", &map)
+            .into_iter()
+            .map(|issue| issue.code)
+            .collect()
+    }
+
+    #[test]
+    fn product_without_offers_or_reviews_is_an_error() {
+        let codes = issues_for(&json!({"@type": "Product", "name": "Widget"}));
+        assert!(codes.contains(&"missing-required:offers|review|aggregateRating".to_string()));
+    }
+
+    #[test]
+    fn offer_without_price_or_currency_is_an_error() {
+        let codes = issues_for(&json!({
+            "@type": "Product", "name": "Widget",
+            "offers": {"@type": "Offer"}
+        }));
+        assert!(codes.contains(&"missing-required:price".to_string()));
+        assert!(codes.contains(&"missing-required:priceCurrency".to_string()));
+        assert!(codes.contains(&"missing-recommended:availability".to_string()));
+    }
+
+    #[test]
+    fn complete_offers_and_aggregate_offers_pass() {
+        let codes = issues_for(&json!({
+            "@type": "Product", "name": "Widget",
+            "offers": [
+                {"@type": "Offer", "price": "9.99", "priceCurrency": "SEK",
+                 "availability": "https://schema.org/InStock"},
+                {"@type": "AggregateOffer", "lowPrice": "5", "highPrice": "9",
+                 "priceCurrency": "SEK", "availability": "https://schema.org/InStock"}
+            ]
+        }));
+        assert!(
+            !codes
+                .iter()
+                .any(|code| code.starts_with("missing-required"))
+        );
+    }
 }

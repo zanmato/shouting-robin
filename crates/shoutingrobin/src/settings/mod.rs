@@ -67,7 +67,7 @@ impl Settings {
                     settings.crawl.max_pages = value.parse().unwrap_or(0);
                 }
                 "crawl.max_concurrent" => {
-                    settings.crawl.max_concurrent = value.parse().unwrap_or(10);
+                    settings.crawl.max_concurrent = value.parse().unwrap_or(5);
                 }
                 "crawl.delay_ms" => {
                     settings.crawl.delay_ms = value.parse().unwrap_or(0);
@@ -144,7 +144,7 @@ impl Default for CrawlSettings {
     fn default() -> Self {
         Self {
             max_pages: 0,
-            max_concurrent: 10,
+            max_concurrent: 5,
             delay_ms: 0,
             timeout_seconds: 30,
             respect_robots_txt: true,

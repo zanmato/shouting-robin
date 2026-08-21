@@ -83,9 +83,15 @@ async fn expand_sitemap(
 
     if let Some(entries) = parse_urlset(&body) {
         for entry in entries {
+            // Stored in the same spelling the crawler records pages under,
+            // so a `<loc>` with a fragment, an uppercase host or an explicit
+            // default port still matches its page instead of becoming an
+            // orphan.
+            let page_url = crate::crawl::url_norm::normalize_url(&entry.loc)
+                .unwrap_or_else(|| entry.loc.trim().to_string());
             results.push(SitemapUrl {
                 sitemap_url: root_sitemap.to_string(),
-                page_url: entry.loc,
+                page_url,
                 lastmod: entry.lastmod,
                 hreflang: entry.hreflang,
             });

@@ -6,6 +6,11 @@ pub struct SimilarityResult {
     pub near_duplicate_urls: Vec<String>,
 }
 
+/// How many matching URLs are kept per page. The count stays exact; the list
+/// is for the details panel, and a catalogue where every variant resembles
+/// every other would otherwise store the square of its size.
+pub const MAX_LISTED_NEAR_DUPLICATES: usize = 50;
+
 pub fn find_near_duplicates(
     pages: &[(String, u64, Option<String>)],
     threshold_percent: u8,
@@ -35,8 +40,12 @@ pub fn find_near_duplicates(
             if !is_exact {
                 counts[index] += 1;
                 counts[other] += 1;
-                dup_urls[index].push(pages[other].0.clone());
-                dup_urls[other].push(pages[index].0.clone());
+                if dup_urls[index].len() < MAX_LISTED_NEAR_DUPLICATES {
+                    dup_urls[index].push(pages[other].0.clone());
+                }
+                if dup_urls[other].len() < MAX_LISTED_NEAR_DUPLICATES {
+                    dup_urls[other].push(pages[index].0.clone());
+                }
             }
 
             if similarity > best_match[index] {

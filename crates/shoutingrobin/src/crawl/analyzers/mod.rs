@@ -19,11 +19,12 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
 
     record.has_body_tag = Some(has_element(html, "body"));
 
-    record.title = select_text(&doc, "title");
+    let titles = document_titles(&doc);
+    record.title = titles.first().cloned();
     record.meta_description = select_attr(&doc, r#"meta[name="description"]"#, "content");
     record.h1 = select_text(&doc, "h1");
     record.h2 = select_text(&doc, "h2");
-    record.title_2 = select_nth_text(&doc, "title", 1);
+    record.title_2 = titles.get(1).cloned();
     record.meta_description_2 = select_nth_attr(&doc, r#"meta[name="description"]"#, "content", 1);
     record.h1_2 = select_nth_text(&doc, "h1", 1);
     record.h2_2 = select_nth_text(&doc, "h2", 1);
@@ -49,7 +50,7 @@ pub fn analyze_html(record: &mut PageRecord, html: &str, content_selector: &str)
     );
     record.content_hash = Some(compute_content_hash(&content_text));
     record.simhash = Some(compute_simhash(&content_text));
-    record.title_count = count_elements(&doc, "title");
+    record.title_count = titles.len() as u32;
     record.h1_count = count_elements(&doc, "h1");
     record.h2_count = count_elements(&doc, "h2");
     record.h2_non_sequential = Some(h2_precedes_h1(&doc));
@@ -334,9 +335,14 @@ fn extract_hreflang(doc: &Html, record: &mut PageRecord) {
         };
         let href = el.value().attr("href").unwrap_or("").trim();
         if !lang.is_empty() && !href.is_empty() {
+            // Relative hrefs are legal here and must be resolved like
+            // canonicals, otherwise the return-tag and self-reference checks
+            // never find the target among the crawled pages.
+            let resolved = crate::crawl::url_norm::resolve_url(&record.url, href)
+                .unwrap_or_else(|| href.to_string());
             record
                 .hreflang_tags
-                .push((lang.trim().to_string(), href.to_string()));
+                .push((lang.trim().to_string(), resolved));
         }
     }
     if !record.hreflang_tags.is_empty() {
@@ -357,7 +363,7 @@ fn extract_structured_data(doc: &Html, record: &mut PageRecord) {
         record.sd_jsonld_count = record.sd_jsonld_count.saturating_add(1);
         match serde_json::from_str::<serde_json::Value>(trimmed) {
             Ok(value) => {
-                extract_schema_objects(&value, trimmed, SdFormat::JsonLd, record);
+                extract_schema_objects(&value, SdFormat::JsonLd, record);
             }
             Err(_) => {
                 record.sd_errors = record.sd_errors.saturating_add(1);
@@ -366,53 +372,72 @@ fn extract_structured_data(doc: &Html, record: &mut PageRecord) {
     }
 }
 
-fn extract_schema_objects(
-    value: &serde_json::Value,
-    raw_json: &str,
-    format: SdFormat,
-    record: &mut PageRecord,
-) {
+/// Properties that *contain* another entity rather than describe this one.
+/// Recursing through these finds a `Product` under `WebPage.mainEntity` or the
+/// products of a category `ItemList`, without turning every `brand`,
+/// `publisher` or `review` attribute into a separately validated item.
+const CONTAINER_PROPERTIES: &[&str] =
+    &["@graph", "mainEntity", "hasPart", "itemListElement", "item"];
+
+fn schema_type_names(value: &serde_json::Value) -> Vec<&str> {
+    match value {
+        serde_json::Value::String(t) => vec![t.as_str()],
+        serde_json::Value::Array(arr) => arr.iter().filter_map(|v| v.as_str()).collect(),
+        _ => Vec::new(),
+    }
+}
+
+fn extract_schema_objects(value: &serde_json::Value, format: SdFormat, record: &mut PageRecord) {
     match value {
         serde_json::Value::Array(arr) => {
             for item in arr {
-                extract_schema_objects(item, raw_json, format, record);
+                extract_schema_objects(item, format, record);
             }
         }
         serde_json::Value::Object(map) => {
-            if let Some(serde_json::Value::String(t)) = map.get("@type") {
-                let normalized = schema_org::normalize_type(t).to_string();
-                if !record.sd_types.contains(&normalized) {
-                    record.sd_types.push(normalized.clone());
-                }
-
-                if !schema_org::is_valid_type(t) {
-                    record.sd_issues.push(SdIssue {
-                        severity: SdSeverity::Error,
-                        type_name: normalized.clone(),
-                        code: "unknown-type".into(),
-                        message: format!("Unknown schema.org type '{normalized}'"),
-                    });
-                    record.sd_errors = record.sd_errors.saturating_add(1);
-                }
-
-                let issues = rich_results::validate_type(t, map);
-                for issue in &issues {
-                    if issue.severity == SdSeverity::Error {
-                        record.sd_errors = record.sd_errors.saturating_add(1);
-                    } else {
-                        record.sd_warnings = record.sd_warnings.saturating_add(1);
+            let type_names = map.get("@type").map(schema_type_names).unwrap_or_default();
+            if !type_names.is_empty() {
+                // Serialising the object itself, not the enclosing script, is
+                // what lets the ecommerce audit and the details panel see a
+                // Product that lives inside `@graph` or an array.
+                let raw_json = serde_json::to_string_pretty(map).unwrap_or_default();
+                for t in type_names {
+                    let normalized = schema_org::normalize_type(t).to_string();
+                    if !record.sd_types.contains(&normalized) {
+                        record.sd_types.push(normalized.clone());
                     }
-                }
-                record.sd_issues.extend(issues);
 
-                record.sd_items.push(SdItem {
-                    format,
-                    type_name: normalized,
-                    raw_json: raw_json.to_string(),
-                });
+                    if !schema_org::is_valid_type(t) {
+                        record.sd_issues.push(SdIssue {
+                            severity: SdSeverity::Error,
+                            type_name: normalized.clone(),
+                            code: "unknown-type".into(),
+                            message: format!("Unknown schema.org type '{normalized}'"),
+                        });
+                        record.sd_errors = record.sd_errors.saturating_add(1);
+                    }
+
+                    let issues = rich_results::validate_type(t, map);
+                    for issue in &issues {
+                        if issue.severity == SdSeverity::Error {
+                            record.sd_errors = record.sd_errors.saturating_add(1);
+                        } else {
+                            record.sd_warnings = record.sd_warnings.saturating_add(1);
+                        }
+                    }
+                    record.sd_issues.extend(issues);
+
+                    record.sd_items.push(SdItem {
+                        format,
+                        type_name: normalized,
+                        raw_json: raw_json.clone(),
+                    });
+                }
             }
-            if let Some(graph) = map.get("@graph") {
-                extract_schema_objects(graph, raw_json, format, record);
+            for property in CONTAINER_PROPERTIES {
+                if let Some(nested) = map.get(*property) {
+                    extract_schema_objects(nested, format, record);
+                }
             }
         }
         _ => {}
@@ -452,12 +477,97 @@ fn extract_microdata(doc: &Html, record: &mut PageRecord) {
             record.sd_errors = record.sd_errors.saturating_add(1);
         }
 
+        let properties = microdata_properties(el);
+        let issues = rich_results::validate_type(&type_name, &properties);
+        for issue in &issues {
+            if issue.severity == SdSeverity::Error {
+                record.sd_errors = record.sd_errors.saturating_add(1);
+            } else {
+                record.sd_warnings = record.sd_warnings.saturating_add(1);
+            }
+        }
+        record.sd_issues.extend(issues);
+
+        let mut object = properties;
+        object.insert("@type".into(), serde_json::Value::String(type_name.clone()));
         record.sd_items.push(SdItem {
             format: SdFormat::Microdata,
             type_name,
-            raw_json: String::new(),
+            raw_json: serde_json::to_string_pretty(&object).unwrap_or_default(),
         });
     }
+}
+
+/// The `itemprop`s of one `itemscope`, as the JSON-LD-shaped object the
+/// validators and the ecommerce audit already understand. Nested scopes become
+/// nested objects; a property given more than once becomes an array.
+fn microdata_properties(
+    scope: scraper::ElementRef<'_>,
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut properties = serde_json::Map::new();
+    let mut stack: Vec<ego_tree::NodeRef<'_, scraper::Node>> = scope.children().collect();
+    while let Some(node) = stack.pop() {
+        let Some(el) = scraper::ElementRef::wrap(node) else {
+            continue;
+        };
+        let value = el.value();
+        let is_scope = value.attr("itemscope").is_some();
+        if let Some(names) = value.attr("itemprop") {
+            let prop_value = if is_scope {
+                let mut nested = microdata_properties(el);
+                if let Some(type_url) = value.attr("itemtype") {
+                    let type_name = type_url.trim().rsplit('/').next().unwrap_or(type_url);
+                    nested.insert(
+                        "@type".into(),
+                        serde_json::Value::String(type_name.to_string()),
+                    );
+                }
+                serde_json::Value::Object(nested)
+            } else {
+                serde_json::Value::String(microdata_text_value(el))
+            };
+            for name in names.split_whitespace() {
+                match properties.get_mut(name) {
+                    Some(serde_json::Value::Array(existing)) => existing.push(prop_value.clone()),
+                    Some(existing) => {
+                        let first = existing.take();
+                        *existing = serde_json::Value::Array(vec![first, prop_value.clone()]);
+                    }
+                    None => {
+                        properties.insert(name.to_string(), prop_value.clone());
+                    }
+                }
+            }
+        }
+        if !is_scope {
+            stack.extend(el.children());
+        }
+    }
+    properties
+}
+
+fn microdata_text_value(el: scraper::ElementRef<'_>) -> String {
+    let value = el.value();
+    let attr = match value.name() {
+        "meta" => Some("content"),
+        "img" | "audio" | "video" | "embed" | "iframe" | "source" | "track" => Some("src"),
+        "a" | "link" | "area" => Some("href"),
+        "object" => Some("data"),
+        "data" | "meter" => Some("value"),
+        "time" => Some("datetime"),
+        _ => None,
+    };
+    if let Some(text) = attr.and_then(|a| value.attr(a)) {
+        return text.trim().to_string();
+    }
+    if let Some(content) = value.attr("content") {
+        return content.trim().to_string();
+    }
+    el.text()
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Replaces an inline `data:` image's payload with its media type, a hash of
@@ -487,20 +597,27 @@ fn summarize_inline_image_src(src: &str) -> String {
     format!("{prefix},#{digest:016x} ({bytes} B)")
 }
 
+/// Attributes lazy-loading libraries park the real image in while `src`
+/// holds a placeholder.
+const LAZY_SRC_ATTRIBUTES: &[&str] = &["data-src", "data-lazy-src", "data-original", "data-lazy"];
+const LAZY_SRCSET_ATTRIBUTES: &[&str] = &["data-srcset", "data-lazy-srcset"];
+
+/// The URLs in a `srcset` value, without their width/density descriptors.
+fn srcset_candidates(srcset: &str) -> Vec<&str> {
+    srcset
+        .split(',')
+        .filter_map(|candidate| candidate.split_whitespace().next())
+        .filter(|url| !url.is_empty())
+        .collect()
+}
+
 fn extract_images(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse("img") else {
         return;
     };
     let base = url::Url::parse(&record.url).ok();
-    for el in doc.select(&sel) {
-        let Some(src) = el.value().attr("src") else {
-            continue;
-        };
-        let src = src.trim();
-        if src.is_empty() {
-            continue;
-        }
-        let src = if src.to_ascii_lowercase().starts_with("data:") {
+    let resolve = |src: &str| -> String {
+        if src.to_ascii_lowercase().starts_with("data:") {
             summarize_inline_image_src(src)
         } else {
             // Resolved against the page, so an image is identified by where it
@@ -511,19 +628,72 @@ fn extract_images(doc: &Html, record: &mut PageRecord) {
                 Some(resolved) => resolved.to_string(),
                 None => src.to_string(),
             }
+        }
+    };
+    for el in doc.select(&sel) {
+        let attr = |name: &str| {
+            el.value()
+                .attr(name)
+                .map(str::trim)
+                .filter(|v| !v.is_empty())
         };
+        // A lazy-loaded image's `src` is a placeholder (a data: pixel or a
+        // spacer) and the picture a shopper sees is in a data-* attribute;
+        // reporting the placeholder would hide every product image on a
+        // lazy-loading theme from the alt and size rules.
+        let src = attr("src");
+        let lazy_src = LAZY_SRC_ATTRIBUTES.iter().find_map(|name| attr(name));
+        let effective_src = match (src, lazy_src) {
+            (Some(src), Some(lazy)) if src.to_ascii_lowercase().starts_with("data:") => Some(lazy),
+            (Some(src), _) => Some(src),
+            (None, lazy) => lazy,
+        };
+
+        let mut sources: Vec<String> = Vec::new();
+        if let Some(src) = effective_src {
+            sources.push(resolve(src));
+        }
+        // Responsive candidates, on the image itself and on the `<source>`
+        // elements of an enclosing `<picture>`.
+        let srcsets = ["srcset"]
+            .iter()
+            .chain(LAZY_SRCSET_ATTRIBUTES)
+            .filter_map(|name| attr(name));
+        for srcset in srcsets {
+            sources.extend(srcset_candidates(srcset).into_iter().map(resolve));
+        }
+        if let Some(picture) = el
+            .parent()
+            .and_then(scraper::ElementRef::wrap)
+            .filter(|parent| parent.value().name().eq_ignore_ascii_case("picture"))
+        {
+            for child in picture.children().filter_map(scraper::ElementRef::wrap) {
+                if child.value().name().eq_ignore_ascii_case("source")
+                    && let Some(srcset) = child.value().attr("srcset")
+                {
+                    sources.extend(srcset_candidates(srcset).into_iter().map(resolve));
+                }
+            }
+        }
+        // One row per distinct URL for this element; the same URL used by
+        // another <img> on the page is another reference and stays.
+        let mut seen = std::collections::HashSet::new();
+        sources.retain(|src| seen.insert(src.clone()));
+
         let has_alt_attr = el.value().attr("alt").is_some();
         let alt = el.value().attr("alt").map(|a| a.to_string());
         let width = el.value().attr("width").and_then(|w| w.parse().ok());
         let height = el.value().attr("height").and_then(|h| h.parse().ok());
 
-        record.images.push(ImageRef {
-            src,
-            alt,
-            width,
-            height,
-            has_alt_attr,
-        });
+        for src in sources {
+            record.images.push(ImageRef {
+                src,
+                alt: alt.clone(),
+                width,
+                height,
+                has_alt_attr,
+            });
+        }
     }
 }
 
@@ -565,13 +735,30 @@ fn extract_subresources(doc: &Html, record: &mut PageRecord) {
     }
 }
 
+/// The absolute destination of a link, or `None` for links that are not
+/// navigations at all. The scheme and fragment checks run on the raw `href`:
+/// once joined, `#main` has become the page's own URL and `javascript:` has
+/// been rejected by the parser anyway. The fragment is dropped from the result
+/// because `/a#reviews` and `/a` are the same document to a crawler.
 fn resolve_href(base_url: &url::Url, href: &str) -> Option<String> {
-    let resolved = base_url.join(href).ok()?;
-    let dst = resolved.to_string();
-    if dst.starts_with('#') || dst.starts_with("javascript:") || dst.starts_with("mailto:") {
+    let href = href.trim();
+    if href.is_empty() || href.starts_with('#') {
         return None;
     }
-    Some(dst)
+    let lowered = href.to_ascii_lowercase();
+    if ["javascript:", "mailto:", "tel:", "sms:", "data:"]
+        .iter()
+        .any(|scheme| lowered.starts_with(scheme))
+    {
+        return None;
+    }
+    let href = decode_entities(href);
+    let mut resolved = base_url.join(&href).ok()?;
+    if !matches!(resolved.scheme(), "http" | "https") {
+        return None;
+    }
+    resolved.set_fragment(None);
+    Some(resolved.to_string())
 }
 
 /// Collapses runs of whitespace, returning `None` when nothing is left.
@@ -686,21 +873,15 @@ fn compute_ecommerce_audit(record: &mut PageRecord) {
         {
             audit.has_review_or_rating = true;
         }
-        if let Some(brand) = map.get("brand") {
+        if let Some(brand) = map.get("brand").or_else(|| map.get("manufacturer")) {
             audit.brand = extract_brand_name(brand);
         }
-        if let Some(sku) = map.get("sku").and_then(|v| v.as_str()) {
-            audit.sku = Some(sku.to_string());
+        if let Some(sku) = map.get("sku").and_then(scalar_to_string) {
+            audit.sku = Some(sku);
         }
-        let gtin_key = ["gtin", "gtin13", "gtin12", "gtin8", "gtin14"]
+        audit.gtin = ["gtin", "gtin13", "gtin12", "gtin8", "gtin14", "isbn"]
             .iter()
-            .find(|&&k| map.contains_key(k));
-        if let Some(key) = gtin_key {
-            audit.gtin = map
-                .get(*key)
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-        }
+            .find_map(|k| map.get(*k).and_then(scalar_to_string));
 
         if let Some(offers) = map.get("offers") {
             extract_offers(offers, &mut audit);
@@ -731,6 +912,16 @@ fn extract_brand_name(brand: &serde_json::Value) -> Option<String> {
     }
 }
 
+/// A JSON string or number as text. Shops routinely emit `"sku": 12345` and
+/// `"gtin13": 7312345678901` as bare numbers, which are still identifiers.
+fn scalar_to_string(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+        serde_json::Value::Number(n) => Some(n.to_string()),
+        _ => None,
+    }
+}
+
 fn extract_offers(offers: &serde_json::Value, audit: &mut EcommerceAudit) {
     let offer_maps = match offers {
         serde_json::Value::Object(map) => vec![map],
@@ -739,16 +930,16 @@ fn extract_offers(offers: &serde_json::Value, audit: &mut EcommerceAudit) {
     };
 
     for map in &offer_maps {
+        // An `AggregateOffer` wraps the individual offers and carries the
+        // price range itself.
+        if let Some(nested) = map.get("offers") {
+            extract_offers(nested, audit);
+        }
         if audit.price.is_none() {
             audit.price = map
                 .get("price")
-                .and_then(|v| v.as_f64())
-                .map(|p| p.to_string())
-                .or_else(|| {
-                    map.get("price")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.to_string())
-                });
+                .or_else(|| map.get("lowPrice"))
+                .and_then(scalar_to_string);
         }
         if audit.currency.is_none() {
             audit.currency = map
@@ -769,6 +960,27 @@ fn extract_offers(offers: &serde_json::Value, audit: &mut EcommerceAudit) {
                 .map(|s| s.to_string());
         }
     }
+}
+
+/// The document's `<title>` texts, in order. Inline `<svg><title>` elements
+/// are accessibility labels for icons, not page titles, so they are skipped;
+/// counting them reported "multiple titles" on every page with an icon set.
+fn document_titles(doc: &Html) -> Vec<String> {
+    let Ok(sel) = Selector::parse("title") else {
+        return Vec::new();
+    };
+    doc.select(&sel)
+        .filter(|el| {
+            !el.ancestors().any(|node| {
+                scraper::ElementRef::wrap(node)
+                    .is_some_and(|ancestor| ancestor.value().name().eq_ignore_ascii_case("svg"))
+            })
+        })
+        .map(|el| {
+            let text: String = el.text().collect::<Vec<_>>().join(" ");
+            text.split_whitespace().collect::<Vec<_>>().join(" ")
+        })
+        .collect()
 }
 
 fn count_elements(doc: &Html, selector: &str) -> u32 {
@@ -810,6 +1022,12 @@ fn select_nth_attr(doc: &Html, selector: &str, attr: &str, index: usize) -> Opti
         .map(|s| s.trim().to_string())
 }
 
+/// The page's own text: the body minus scripts, styles and the chrome every
+/// page of the site shares. Navigation, sidebars and the site header and
+/// footer are left out, otherwise two product pages that differ only in one
+/// paragraph hash as near-identical and a 300-word footer makes every thin
+/// page look substantial. A `<header>` or `<footer>` inside an `<article>`,
+/// `<section>` or `<main>` belongs to that content and is kept.
 fn extract_body_text(doc: &Html) -> String {
     let Ok(body_sel) = Selector::parse("body") else {
         return String::new();
@@ -819,18 +1037,22 @@ fn extract_body_text(doc: &Html) -> String {
     };
     let mut out = String::new();
     let mut skip_depth: usize = 0;
+    let mut content_section_depth: usize = 0;
     for edge in body.traverse() {
         match edge {
             ego_tree::iter::Edge::Open(node) => {
                 if let scraper::node::Node::Element(el) = node.value() {
                     let tag = el.name();
-                    if (tag == "script" || tag == "style" || tag == "noscript") && skip_depth == 0 {
+                    if skip_depth == 0 && is_boilerplate_element(el, content_section_depth) {
                         skip_depth = 1;
                         continue;
                     }
                     if skip_depth > 0 {
                         skip_depth += 1;
                         continue;
+                    }
+                    if matches!(tag, "article" | "section" | "main") {
+                        content_section_depth += 1;
                     }
                 }
                 if skip_depth == 0
@@ -848,7 +1070,14 @@ fn extract_body_text(doc: &Html) -> String {
                     if let scraper::node::Node::Element(_) = node.value() {
                         skip_depth -= 1;
                     }
-                } else if let scraper::node::Node::Element(el) = node.value()
+                    continue;
+                }
+                if let scraper::node::Node::Element(el) = node.value()
+                    && matches!(el.name(), "article" | "section" | "main")
+                {
+                    content_section_depth = content_section_depth.saturating_sub(1);
+                }
+                if let scraper::node::Node::Element(el) = node.value()
                     && is_block_element(el.name())
                     && !out.is_empty()
                     && !out.trim_end().ends_with('.')
@@ -862,6 +1091,25 @@ fn extract_body_text(doc: &Html) -> String {
         }
     }
     out
+}
+
+fn is_boilerplate_element(el: &scraper::node::Element, content_section_depth: usize) -> bool {
+    let tag = el.name();
+    if matches!(
+        tag,
+        "script" | "style" | "noscript" | "template" | "nav" | "aside"
+    ) {
+        return true;
+    }
+    if matches!(tag, "header" | "footer") && content_section_depth == 0 {
+        return true;
+    }
+    el.attr("role").is_some_and(|role| {
+        matches!(
+            role.trim().to_ascii_lowercase().as_str(),
+            "navigation" | "banner" | "contentinfo" | "complementary"
+        )
+    })
 }
 
 fn is_block_element(tag: &str) -> bool {
@@ -1112,7 +1360,8 @@ mod tests {
             </body></html>"#,
         );
         assert_eq!(r.title.as_deref(), Some("Page Title"));
-        assert_eq!(r.title_count, 2);
+        assert_eq!(r.title_count, 1);
+        assert_eq!(r.title_2, None);
     }
 
     #[test]
@@ -1149,6 +1398,32 @@ mod tests {
         assert_eq!(
             r.hreflang_tags[2],
             ("x-default".into(), "https://example.com/".into())
+        );
+    }
+
+    #[test]
+    fn relative_hreflang_hrefs_resolve_against_the_page() {
+        let mut record = PageRecord {
+            url: "https://example.com/en/shoes".into(),
+            ..Default::default()
+        };
+        analyze_html(
+            &mut record,
+            r#"<html><head><title>T</title>
+            <link rel="alternate" hreflang="de" href="/de/schuhe">
+            <link rel="alternate" hreflang="en" href="shoes">
+            </head><body></body></html>"#,
+            "",
+        );
+        assert_eq!(
+            record.hreflang_tags,
+            vec![
+                (
+                    "de".to_string(),
+                    "https://example.com/de/schuhe".to_string()
+                ),
+                ("en".to_string(), "https://example.com/en/shoes".to_string()),
+            ]
         );
     }
 
@@ -1570,6 +1845,91 @@ mod tests {
     }
 
     #[test]
+    fn ecommerce_audit_from_product_inside_graph() {
+        let r = analyze(
+            r#"<html><head><title>T</title>
+            <script type="application/ld+json">{
+                "@context": "https://schema.org",
+                "@graph": [
+                    {"@type": "WebSite", "name": "Shop"},
+                    {"@type": ["Product", "IndividualProduct"], "name": "Widget",
+                     "sku": 12345, "gtin13": 7312345678901,
+                     "manufacturer": {"@type": "Organization", "name": "Acme"},
+                     "image": "https://example.com/w.jpg",
+                     "offers": {"@type": "AggregateOffer", "lowPrice": "5.00", "highPrice": "9.00",
+                                "priceCurrency": "SEK",
+                                "offers": [{"@type": "Offer", "availability": "https://schema.org/OutOfStock"}]}}
+                ]
+            }</script>
+            </head><body></body></html>"#,
+        );
+        assert!(r.sd_types.contains(&"Product".to_string()));
+        assert!(r.sd_types.contains(&"IndividualProduct".to_string()));
+        let audit = r.ecommerce.as_ref().unwrap();
+        assert_eq!(audit.sku.as_deref(), Some("12345"));
+        assert_eq!(audit.gtin.as_deref(), Some("7312345678901"));
+        assert_eq!(audit.brand.as_deref(), Some("Acme"));
+        assert_eq!(audit.price.as_deref(), Some("5.00"));
+        assert_eq!(audit.currency.as_deref(), Some("SEK"));
+        assert_eq!(audit.availability.as_deref(), Some("outofstock"));
+        assert!(audit.has_image);
+        let product = r
+            .sd_items
+            .iter()
+            .find(|i| i.type_name == "Product")
+            .unwrap();
+        assert!(!product.raw_json.contains("WebSite"));
+    }
+
+    #[test]
+    fn ecommerce_audit_from_product_under_main_entity() {
+        let r = analyze(
+            r#"<html><head><title>T</title>
+            <script type="application/ld+json">[{
+                "@type": "WebPage",
+                "mainEntity": {"@type": "Product", "name": "Widget",
+                    "offers": {"@type": "Offer", "price": "1", "priceCurrency": "USD"}}
+            }]</script>
+            </head><body></body></html>"#,
+        );
+        assert!(r.sd_types.contains(&"Product".to_string()));
+        assert_eq!(r.ecommerce.as_ref().unwrap().price.as_deref(), Some("1"));
+    }
+
+    #[test]
+    fn ecommerce_audit_from_microdata_product() {
+        let r = analyze(
+            r#"<html><head><title>T</title></head><body>
+            <div itemscope itemtype="https://schema.org/Product">
+                <h1 itemprop="name">Widget</h1>
+                <img itemprop="image" src="/w.jpg">
+                <meta itemprop="sku" content="WDG-1">
+                <div itemprop="brand" itemscope itemtype="https://schema.org/Brand">
+                    <span itemprop="name">Acme</span>
+                </div>
+                <div itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+                    <span itemprop="price" content="9.99">9,99</span>
+                    <meta itemprop="priceCurrency" content="EUR">
+                    <link itemprop="availability" href="https://schema.org/InStock">
+                </div>
+            </div></body></html>"#,
+        );
+        let audit = r.ecommerce.as_ref().unwrap();
+        assert_eq!(audit.sku.as_deref(), Some("WDG-1"));
+        assert_eq!(audit.brand.as_deref(), Some("Acme"));
+        assert_eq!(audit.price.as_deref(), Some("9.99"));
+        assert_eq!(audit.currency.as_deref(), Some("EUR"));
+        assert_eq!(audit.availability.as_deref(), Some("instock"));
+        assert!(audit.has_image);
+        assert!(
+            !r.sd_issues
+                .iter()
+                .any(|i| i.code == "missing-required:name"),
+            "microdata name must be seen by the validator"
+        );
+    }
+
+    #[test]
     fn ecommerce_audit_from_og_type() {
         let r = analyze(
             r#"<html><head><title>T</title>
@@ -1654,11 +2014,26 @@ mod tests {
     }
 
     #[test]
-    fn empty_selector_uses_full_body() {
+    fn empty_selector_uses_body_minus_site_chrome() {
         let r = analyze(
             r#"<html><head><title>T</title></head><body><nav>Nav</nav><main><p>Content</p></main></body></html>"#,
         );
-        assert_eq!(r.word_count, Some(2));
+        assert_eq!(r.word_count, Some(1));
+    }
+
+    #[test]
+    fn boilerplate_is_left_out_of_content_but_article_headers_are_kept() {
+        let r = analyze(
+            r#"<html><head><title>T</title></head><body>
+            <header>Site header words</header>
+            <nav><a href="/">home</a> <a href="/shop">shop</a></nav>
+            <div role="navigation">breadcrumb trail here</div>
+            <main><article><header>Article title</header><p>Body text</p></article></main>
+            <aside>Related products listing</aside>
+            <footer>Footer legal words</footer>
+            </body></html>"#,
+        );
+        assert_eq!(r.word_count, Some(4));
     }
 
     #[test]
@@ -2009,6 +2384,53 @@ mod tests {
             r.outlinks[0].anchor.as_deref(),
             Some("Read the full review"),
             "an author's explicit label is what a browser announces"
+        );
+    }
+
+    #[test]
+    fn lazy_and_responsive_images_are_recorded_by_their_real_urls() {
+        let r = analyze_at(
+            "https://example.com/p",
+            r#"<html><head><title>T</title></head><body>
+            <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="/img/a.jpg" alt="A">
+            <img src="/img/b.jpg" srcset="/img/b-400.jpg 400w, /img/b-800.jpg 800w" alt="B">
+            <picture>
+              <source srcset="/img/c.webp" type="image/webp">
+              <img src="/img/c.jpg" alt="">
+            </picture>
+            </body></html>"#,
+        );
+        let sources: Vec<&str> = r.images.iter().map(|i| i.src.as_str()).collect();
+        assert_eq!(
+            sources,
+            vec![
+                "https://example.com/img/a.jpg",
+                "https://example.com/img/b.jpg",
+                "https://example.com/img/b-400.jpg",
+                "https://example.com/img/b-800.jpg",
+                "https://example.com/img/c.jpg",
+                "https://example.com/img/c.webp",
+            ]
+        );
+        assert!(r.images.iter().all(|i| i.has_alt_attr));
+    }
+
+    #[test]
+    fn fragment_and_non_navigation_hrefs_are_not_outlinks() {
+        let r = analyze_at(
+            "https://example.com/page",
+            r##"<html><head><title>T</title></head><body>
+            <a href="#main">Skip</a>
+            <a href="JavaScript:void(0)">Menu</a>
+            <a href="mailto:a@b.c">Mail</a>
+            <a href="tel:+4612345">Call</a>
+            <a href="/shoes?size=42&amp;colour=red#reviews">Shoes</a>
+            </body></html>"##,
+        );
+        let destinations: Vec<&str> = r.outlinks.iter().map(|o| o.dst_url.as_str()).collect();
+        assert_eq!(
+            destinations,
+            vec!["https://example.com/shoes?size=42&colour=red"]
         );
     }
 
