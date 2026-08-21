@@ -1,9 +1,13 @@
 use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
 use gpui_component::ActiveTheme;
 
+/// Live counts for the footer. Each figure is the number of rows of one kind
+/// the crawl has produced so far, so it only ever goes up.
 pub struct StatusBar {
-    pub crawled: u64,
-    pub queued: u64,
+    /// HTML documents the crawler navigated to.
+    pub pages: u64,
+    /// Images, scripts, styles, fonts and API calls those pages pulled in.
+    pub resources: u64,
     pub errors: u64,
     pub running: bool,
 }
@@ -11,11 +15,17 @@ pub struct StatusBar {
 impl StatusBar {
     pub fn new() -> Self {
         Self {
-            crawled: 0,
-            queued: 0,
+            pages: 0,
+            resources: 0,
             errors: 0,
             running: false,
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.pages = 0;
+        self.resources = 0;
+        self.errors = 0;
     }
 }
 
@@ -39,8 +49,8 @@ impl Render for StatusBar {
             .text_xs()
             .text_color(theme.muted_foreground)
             .child(div().child(label))
-            .child(div().child(format!("Crawled {}", self.crawled)))
-            .child(div().child(format!("Queue {}", self.queued)))
+            .child(div().child(format!("Pages {}", self.pages)))
+            .child(div().child(format!("Resources {}", self.resources)))
             .child(div().child(format!("Errors {}", self.errors)))
     }
 }

@@ -16,7 +16,8 @@ use crate::views::details_panel::DetailsSelection;
 
 use super::data_build::{build_change_entries, overview_issue_target};
 use super::delegate::{
-    ResultsDelegate, baseline_issue_counts, compute_all_tab_filter_counts, root_origin_of,
+    CrawlSnapshot, ResultsDelegate, baseline_issue_counts, compute_all_tab_filter_counts,
+    root_origin_of,
 };
 use super::types::{FlatRow, IssueFilter, ResultsGridEvent, TabCounts, TabFilterCounts};
 
@@ -111,9 +112,9 @@ impl ResultsGrid {
         cx.notify();
     }
 
-    pub fn replace_records(&mut self, records: Vec<PageRecord>, cx: &mut Context<Self>) {
+    pub fn push_many(&mut self, records: Vec<PageRecord>, cx: &mut Context<Self>) {
         self.state.update(cx, |state, cx| {
-            state.delegate_mut().replace_records(records);
+            state.delegate_mut().push_many(records);
             state.refresh(cx);
         });
         cx.notify();
@@ -175,27 +176,6 @@ impl ResultsGrid {
         cx.notify();
     }
 
-    pub fn set_baseline(
-        &mut self,
-        pages: Vec<PageRecord>,
-        started_at: i64,
-        cx: &mut Context<Self>,
-    ) {
-        self.state.update(cx, |state, cx| {
-            state.delegate_mut().set_baseline(pages, started_at);
-            state.refresh(cx);
-        });
-        cx.notify();
-    }
-
-    pub fn clear_baseline(&mut self, cx: &mut Context<Self>) {
-        self.state.update(cx, |state, cx| {
-            state.delegate_mut().clear_baseline();
-            state.refresh(cx);
-        });
-        cx.notify();
-    }
-
     pub fn has_baseline(&self, cx: &App) -> bool {
         self.state.read(cx).delegate().has_baseline()
     }
@@ -245,6 +225,10 @@ impl ResultsGrid {
 
     pub fn export_csv(&self, cx: &App) -> Result<String, csv::Error> {
         self.state.read(cx).delegate().export_csv()
+    }
+
+    pub fn snapshot(&self, cx: &App) -> CrawlSnapshot {
+        self.state.read(cx).delegate().snapshot()
     }
 
     /// The loaded crawl, in the form the PDF report renders.

@@ -160,6 +160,17 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Multiple H1" => Some((ResultTab::H1, IssueFilter::Multiple)),
         "Canonicalised" => Some((ResultTab::Canonicals, IssueFilter::Canonicalised)),
         "Noindex" => Some((ResultTab::Directives, IssueFilter::DirectiveNoindex)),
+        "Redirect Chains" => Some((ResultTab::ResponseCodes, IssueFilter::RedirectChain)),
+        "Canonical to Non-Indexable Page" => Some((
+            ResultTab::Canonicals,
+            IssueFilter::CanonicalTargetNotIndexable,
+        )),
+        "Indexable Parameter URLs" => Some((ResultTab::Url, IssueFilter::IndexableParameterUrl)),
+        "Out of Stock Products" => Some((ResultTab::Ecommerce, IssueFilter::OutOfStockIndexable)),
+        "Invalid GTIN" => Some((ResultTab::Ecommerce, IssueFilter::InvalidGtin)),
+        "Product Pages Missing Breadcrumbs" => {
+            Some((ResultTab::Ecommerce, IssueFilter::MissingBreadcrumbs))
+        }
         "Missing <body> Tag" => Some((ResultTab::Content, IssueFilter::MissingBodyTag)),
         "Images Missing Alt Attribute" => {
             Some((ResultTab::Images, IssueFilter::MissingAltAttribute))
@@ -507,17 +518,21 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let blocked_by_robots = documents
+    // A blocked URL was never fetched, so it is in neither `internal` nor
+    // `documents`; it is a row of its own and counted against every internal
+    // URL the crawl knows of.
+    let blocked_by_robots = pages
         .iter()
-        .filter(|p| p.blocked_by_robots == Some(true))
+        .filter(|p| p.is_internal && p.blocked_by_robots == Some(true))
         .count();
     if blocked_by_robots > 0 {
+        let known_internal = pages.iter().filter(|p| p.is_internal).count().max(1) as f32;
         entries.push(IssueEntry {
             name: "Blocked by robots.txt".into(),
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: blocked_by_robots,
-            pct: blocked_by_robots as f32 / doc_total * 100.0,
+            pct: blocked_by_robots as f32 / known_internal * 100.0,
             description: "These internal URLs are disallowed by the site's robots.txt file.".into(),
             hint: "Review robots.txt rules to ensure important pages are not accidentally blocked."
                 .into(),
@@ -584,7 +599,16 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
         });
     }
 
-    let missing_https = internal
+    // The Security tab lists only rows whose headers were seen (a Resource
+    // Timing entry has a status but no headers), so these three rules count
+    // the same population or the overview and its drill-down disagree.
+    let with_headers: Vec<&PageRecord> = internal
+        .iter()
+        .copied()
+        .filter(|p| !p.headers.is_empty())
+        .collect();
+    let with_headers_total = with_headers.len().max(1) as f32;
+    let missing_https = with_headers
         .iter()
         .filter(|p| !p.url.starts_with("https://"))
         .count();
@@ -594,13 +618,13 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: missing_https,
-            pct: missing_https as f32 / total * 100.0,
+            pct: missing_https as f32 / with_headers_total * 100.0,
             description: "Pages served over HTTP instead of HTTPS.".into(),
             hint: "Enable HTTPS across the entire site and redirect HTTP to HTTPS.".into(),
         });
     }
 
-    let missing_hsts = internal
+    let missing_hsts = with_headers
         .iter()
         .filter(|p| !header_exists(&p.headers, "strict-transport-security"))
         .count();
@@ -610,20 +634,20 @@ pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
             issue_type: IssueType::Warning,
             priority: IssuePriority::Low,
             count: missing_hsts,
-            pct: missing_hsts as f32 / total * 100.0,
+            pct: missing_hsts as f32 / with_headers_total * 100.0,
             description: "Pages missing the Strict-Transport-Security header.".into(),
             hint: "Add the Strict-Transport-Security header to enforce HTTPS.".into(),
         });
     }
 
-    let mixed_content = internal.iter().filter(|p| p.has_mixed_content).count();
+    let mixed_content = with_headers.iter().filter(|p| p.has_mixed_content).count();
     if mixed_content > 0 {
         entries.push(IssueEntry {
             name: "Mixed Content".into(),
             issue_type: IssueType::Issue,
             priority: IssuePriority::High,
             count: mixed_content,
-            pct: mixed_content as f32 / total * 100.0,
+            pct: mixed_content as f32 / with_headers_total * 100.0,
             description: "HTTPS pages that load scripts, styles, images or other \
                           subresources over insecure HTTP."
                 .into(),
@@ -1102,10 +1126,12 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         issue_type: IssueType::Issue,
         priority: IssuePriority::High,
         denominator: Denominator::Documents,
-        description: "Pages whose markup has no <body> element.",
+        description: "Pages whose markup has no <body> element, or that answered 2xx \
+                      with an empty document.",
         hint: "Wrap the page content in <body>. A browser invents one and renders \
                anyway, so this is easy to ship without noticing, and what every other \
-               consumer of the page then reads is a guess.",
+               consumer of the page then reads is a guess. An empty 2xx response is a \
+               render or server failure to investigate.",
     },
     FilterDerivedRule {
         name: "Noindex",
@@ -1131,6 +1157,82 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         denominator: Denominator::InternalUrls,
         description: "URLs missing a Content-Security-Policy header.",
         hint: "Add a policy restricting where scripts, styles and frames may load from.",
+    },
+    FilterDerivedRule {
+        name: "Redirect Chains",
+        tab: ResultTab::ResponseCodes,
+        filter: IssueFilter::RedirectChain,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::InternalUrls,
+        description: "Redirects whose target is itself a redirect.",
+        hint: "Point every redirect, and every internal link, straight at the final URL. \
+               Crawlers follow a limited number of hops and each one leaks link equity.",
+    },
+    FilterDerivedRule {
+        name: "Canonical to Non-Indexable Page",
+        tab: ResultTab::Canonicals,
+        filter: IssueFilter::CanonicalTargetNotIndexable,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::High,
+        denominator: Denominator::Documents,
+        description: "Pages whose canonical points at a redirect, an error, a noindex page or a \
+                      page that is itself canonicalised elsewhere.",
+        hint: "A canonical target must be the indexable final URL, otherwise the hint is \
+               ignored or the page drops out of the index with its target.",
+    },
+    FilterDerivedRule {
+        name: "Indexable Parameter URLs",
+        tab: ResultTab::Url,
+        filter: IssueFilter::IndexableParameterUrl,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages with a query string that are indexable as they stand.",
+        hint: "Faceted navigation, sorting and tracking parameters multiply one page into \
+               many. Canonicalise or noindex the variants, or block the parameters in \
+               robots.txt, so crawl budget goes to real pages.",
+    },
+    FilterDerivedRule {
+        name: "Out of Stock Products",
+        tab: ResultTab::Ecommerce,
+        filter: IssueFilter::OutOfStockIndexable,
+        issue_type: IssueType::Opportunity,
+        // Low, and deliberately not "noindex these": a product that is out
+        // of stock for a fortnight keeps the rankings and links it earned
+        // only if the page stays live. The list is for spotting the ones
+        // that are gone for good and the pages that leave shoppers stranded.
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Indexable product pages whose structured data says out of stock, sold \
+                      out or discontinued.",
+        hint: "Keep temporarily unavailable products indexable; a noindex or a removal \
+               forfeits the page's rankings and links. Show a restock date, a back-in-stock \
+               signup and alternatives, and keep the price and availability markup current. \
+               Only a product that will never return should 301 to its successor or the \
+               category, or serve a 410.",
+    },
+    FilterDerivedRule {
+        name: "Invalid GTIN",
+        tab: ResultTab::Ecommerce,
+        filter: IssueFilter::InvalidGtin,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::High,
+        denominator: Denominator::Documents,
+        description: "Product pages whose GTIN fails its check digit or length.",
+        hint: "Google Merchant Center rejects products with a malformed GTIN. Use the \
+               8, 12, 13 or 14 digit code printed under the barcode, without a prefix.",
+    },
+    FilterDerivedRule {
+        name: "Product Pages Missing Breadcrumbs",
+        tab: ResultTab::Ecommerce,
+        filter: IssueFilter::MissingBreadcrumbs,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Product pages without BreadcrumbList structured data.",
+        hint: "Breadcrumb markup earns the category path in the search snippet and tells \
+               search engines where the product sits in the catalogue.",
     },
 ];
 

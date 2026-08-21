@@ -25,7 +25,6 @@ use std::time::Duration;
 use crate::crawl::CrawlConfig;
 use crate::crawl::event::{CrawlEvent, PageRecord};
 use crate::crawl::render_mode::RenderMode;
-use crate::views::ResultTab;
 use crate::views::results_grid::ResultsDelegate;
 
 /// Crawls `root_url` and returns the records as the app has them after the
@@ -135,9 +134,8 @@ fn export_all_tabs(pages: Vec<PageRecord>, root_url: &str, out_dir: &Path) {
     delegate.set_root_url(root_url);
     delegate.replace_records(pages);
 
-    for &tab in ResultTab::ALL {
-        delegate.switch_tab(tab);
-        let csv = match delegate.export_csv() {
+    for (tab, csv) in crate::views::results_grid::export_every_tab(delegate.snapshot()) {
+        let csv = match csv {
             Ok(csv) => csv,
             Err(e) => {
                 eprintln!("export failed for {tab:?}: {e}");
@@ -146,11 +144,11 @@ fn export_all_tabs(pages: Vec<PageRecord>, root_url: &str, out_dir: &Path) {
         };
         let name = format!("{tab:?}").to_lowercase();
         let path = out_dir.join(format!("sr-{name}.csv"));
-        std::fs::write(&path, csv).expect("write csv");
+        std::fs::write(&path, &csv).expect("write csv");
         eprintln!(
             "{:>16}  {:>6} rows  {}",
             format!("{tab:?}"),
-            delegate.filtered_count(),
+            csv.lines().count().saturating_sub(1),
             path.display()
         );
     }

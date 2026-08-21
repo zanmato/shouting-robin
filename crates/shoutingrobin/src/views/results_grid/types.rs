@@ -162,6 +162,12 @@ pub enum IssueFilter {
     MissingAvailability,
     MissingSku,
     MissingGtin,
+    InvalidGtin,
+    OutOfStockIndexable,
+    MissingBreadcrumbs,
+    IndexableParameterUrl,
+    RedirectChain,
+    CanonicalTargetNotIndexable,
     MissingBrand,
     MissingReviewRating,
     MissingProductImage,
@@ -289,6 +295,12 @@ impl IssueFilter {
             IssueFilter::MissingAvailability => "Missing Availability",
             IssueFilter::MissingSku => "Missing SKU",
             IssueFilter::MissingGtin => "Missing GTIN",
+            IssueFilter::InvalidGtin => "Invalid GTIN",
+            IssueFilter::OutOfStockIndexable => "Out of Stock",
+            IssueFilter::MissingBreadcrumbs => "Missing Breadcrumbs",
+            IssueFilter::IndexableParameterUrl => "Indexable Parameter URLs",
+            IssueFilter::RedirectChain => "Redirect Chain",
+            IssueFilter::CanonicalTargetNotIndexable => "Canonical to Non-Indexable",
             IssueFilter::MissingBrand => "Missing Brand",
             IssueFilter::MissingReviewRating => "Missing Review/Rating",
             IssueFilter::MissingProductImage => "Missing Image",
@@ -413,6 +425,9 @@ impl IssueFilter {
             | Self::SitemapOrphans
             | Self::SitemapNon200
             | Self::RedirectLoop
+            | Self::RedirectChain
+            | Self::InvalidGtin
+            | Self::CanonicalTargetNotIndexable
             | Self::MissingHttps
             | Self::MixedContent
             | Self::ExactDuplicates
@@ -459,6 +474,9 @@ impl IssueFilter {
             | Self::MissingAvailability
             | Self::MissingSku
             | Self::MissingGtin
+            | Self::OutOfStockIndexable
+            | Self::MissingBreadcrumbs
+            | Self::IndexableParameterUrl
             | Self::MissingBrand
             | Self::MissingReviewRating
             | Self::MissingProductImage

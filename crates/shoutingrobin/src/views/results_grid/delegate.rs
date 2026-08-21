@@ -120,6 +120,36 @@ pub struct ResultsDelegate {
     counts_cache: Option<HashMap<ResultTab, TabFilterCounts>>,
 }
 
+/// The loaded crawl, detached from the grid.
+pub struct CrawlSnapshot {
+    pages: Vec<PageRecord>,
+    baseline: Option<(Vec<PageRecord>, i64)>,
+    root_url: String,
+}
+
+/// One CSV per tab, each exactly what that tab's own export button produces.
+/// Pure, so it belongs on a background thread: it rebuilds every tab's rows.
+pub fn export_every_tab(snapshot: CrawlSnapshot) -> Vec<(ResultTab, Result<String, csv::Error>)> {
+    let mut delegate = ResultsDelegate::new();
+    delegate.set_root_url(&snapshot.root_url);
+    delegate.all_pages = snapshot.pages;
+    if let Some((baseline_pages, started_at)) = snapshot.baseline {
+        delegate.baseline_issue_counts = baseline_issue_counts(&baseline_pages);
+        delegate.baseline_pages = Some(baseline_pages);
+        delegate.baseline_started_at = Some(started_at);
+    }
+    delegate.invalidate_counts();
+    let has_baseline = delegate.baseline_pages.is_some();
+    ResultTab::ALL
+        .iter()
+        .filter(|&&tab| tab != ResultTab::Changes || has_baseline)
+        .map(|&tab| {
+            delegate.switch_tab(tab);
+            (tab, delegate.export_csv())
+        })
+        .collect()
+}
+
 impl ResultsDelegate {
     pub fn new() -> Self {
         let tab = ResultTab::Internal;
@@ -188,15 +218,6 @@ impl ResultsDelegate {
         self.rebuild_filter();
     }
 
-    pub fn set_baseline(&mut self, pages: Vec<PageRecord>, started_at: i64) {
-        self.baseline_issue_counts = baseline_issue_counts(&pages);
-        self.baseline_pages = Some(pages);
-        self.baseline_started_at = Some(started_at);
-        self.invalidate_counts();
-        self.rebuild_columns();
-        self.rebuild_filter();
-    }
-
     /// Installs a whole crawl at once, with the baseline's issue counts already
     /// built. Records and baseline each rebuild the filtered rows on their own,
     /// which on the Overview tab means building every issue entry, so setting
@@ -220,15 +241,6 @@ impl ResultsDelegate {
                 self.baseline_issue_counts.clear();
             }
         }
-        self.invalidate_counts();
-        self.rebuild_columns();
-        self.rebuild_filter();
-    }
-
-    pub fn clear_baseline(&mut self) {
-        self.baseline_pages = None;
-        self.baseline_started_at = None;
-        self.baseline_issue_counts.clear();
         self.invalidate_counts();
         self.rebuild_columns();
         self.rebuild_filter();
@@ -265,19 +277,46 @@ impl ResultsDelegate {
         self.root_url.as_deref()
     }
 
-    pub fn push(&mut self, record: PageRecord) {
-        self.all_pages.push(record);
+    /// Test-facing: swaps in a fresh set of records, keeping the active tab,
+    /// filter, root URL and baseline. The application installs crawls through
+    /// `apply_loaded_crawl` with aggregates prepared off the foreground thread.
+    #[cfg(test)]
+    pub fn replace_records(&mut self, records: Vec<PageRecord>) {
+        self.all_pages = records;
         self.invalidate_counts();
         self.rebuild_filter();
     }
 
-    /// Swaps in a fresh set of records, keeping the active tab, filter, root
-    /// URL and baseline. Used after a crawl finishes to pick up the columns the
-    /// post-crawl passes (link aggregation, PageRank, near-duplicates, hreflang
-    /// validation) write straight to the database, which the streamed records
-    /// never carried.
-    pub fn replace_records(&mut self, records: Vec<PageRecord>) {
-        self.all_pages = records;
+    #[cfg(test)]
+    pub fn set_baseline(&mut self, pages: Vec<PageRecord>, started_at: i64) {
+        self.baseline_issue_counts = baseline_issue_counts(&pages);
+        self.baseline_pages = Some(pages);
+        self.baseline_started_at = Some(started_at);
+        self.invalidate_counts();
+        self.rebuild_columns();
+        self.rebuild_filter();
+    }
+
+    #[cfg(test)]
+    pub fn clear_baseline(&mut self) {
+        self.baseline_pages = None;
+        self.baseline_started_at = None;
+        self.baseline_issue_counts.clear();
+        self.invalidate_counts();
+        self.rebuild_columns();
+        self.rebuild_filter();
+    }
+
+    pub fn push(&mut self, record: PageRecord) {
+        self.push_many(vec![record]);
+    }
+
+    /// One rebuild for a whole batch of streamed pages.
+    pub fn push_many(&mut self, records: Vec<PageRecord>) {
+        if records.is_empty() {
+            return;
+        }
+        self.all_pages.extend(records);
         self.invalidate_counts();
         self.rebuild_filter();
     }
@@ -646,7 +685,21 @@ impl ResultsDelegate {
         let bytes = wtr
             .into_inner()
             .map_err(|e| csv::Error::from(std::io::Error::other(e)))?;
-        Ok(String::from_utf8_lossy(&bytes).into_owned())
+        // Excel assumes a legacy code page for a CSV without a byte order
+        // mark and mangles every non-ASCII title.
+        let mut csv = String::from("\u{FEFF}");
+        csv.push_str(&String::from_utf8_lossy(&bytes));
+        Ok(csv)
+    }
+
+    /// A copy of the loaded crawl and its baseline, for work that should run
+    /// off the foreground thread (see [`export_every_tab`]).
+    pub fn snapshot(&self) -> CrawlSnapshot {
+        CrawlSnapshot {
+            pages: self.all_pages.clone(),
+            baseline: self.baseline_pages.clone().zip(self.baseline_started_at),
+            root_url: self.root_url.clone().unwrap_or_default(),
+        }
     }
 
     fn flat_row_cell_text(&self, row: &FlatRow, col_key: &str) -> String {

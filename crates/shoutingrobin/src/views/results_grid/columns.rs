@@ -37,8 +37,10 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("h1", "H1", 220., None),
             col("h2", "H2", 220., None),
             col("robots", "Meta Robots", 120., None),
+            col("x_robots_tag", "X-Robots-Tag", 140., None),
             col("canonical", "Canonical", 280., None),
             col("size", "Size", 80., None),
+            col("response_time", "Response Time", 110., None),
             col("words", "Words", 80., None),
             col("depth", "Depth", 60., None),
             col("folder_depth", "Folder Depth", 90., None),
@@ -54,6 +56,7 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("csr_outlinks_pct", "CSR Out %", 80., None),
             col("last_modified", "Last Modified", 130., None),
             col("redirect_url", "Redirect URI", 350., None),
+            col("redirect_type", "Redirect Type", 110., None),
             col("closest_similarity", "Closest Sim.", 90., None),
             col("near_duplicate_count", "Near Dups", 80., None),
             col("link_score", "Link Score", 80., None),
@@ -72,7 +75,11 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("status_code", "Code", 70., None),
             col("status", "Status", 90., None),
             col("indexability", "Indexability", 110., None),
+            col("indexability_status", "Index. Status", 120., None),
+            col("inlinks", "Inlinks", 70., None),
+            col("response_time", "Response Time", 110., None),
             col("redirect_url", "Redirect URI", 350., None),
+            col("redirect_type", "Redirect Type", 110., None),
         ],
         ResultTab::PageTitles => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
@@ -173,6 +180,9 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("sd_type", "Type", 200., None),
             col("sd_errors", "Errors", 70., None),
             col("sd_warnings", "Warnings", 80., None),
+            col("sd_total_types", "Total Types", 90., None),
+            col("sd_jsonld", "JSON-LD", 80., None),
+            col("sd_microdata", "Microdata", 90., None),
             col("indexability", "Indexability", 110., None),
         ],
         ResultTab::Sitemaps => vec![
@@ -191,6 +201,8 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("a11y_impact", "Impact", 100., None),
             col("a11y_target", "Target", 250., None),
             col("a11y_html", "HTML", 300., None),
+            col("a11y_errors", "Errors", 70., None),
+            col("a11y_warnings", "Warnings", 80., None),
             col("indexability", "Indexability", 110., None),
         ],
         ResultTab::Performance => vec![
@@ -472,6 +484,12 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "dir_non_indexable"
             | "ssr_words"
             | "ssr_diff"
+            | "response_time"
+            | "sd_total_types"
+            | "sd_jsonld"
+            | "sd_microdata"
+            | "a11y_errors"
+            | "a11y_warnings"
     )
 }
 

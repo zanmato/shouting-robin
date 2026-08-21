@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::crawl::CrawlConfig;
-use crate::crawl::event::{A11yIssue, CrawlEvent, ImageRef, Outlink, PageRecord};
+use crate::crawl::event::{A11yIssue, CrawlEvent, EcommerceAudit, ImageRef, Outlink, PageRecord};
 use crate::crawl::render_mode::RenderMode;
 use crate::views::ResultTab;
 use crate::views::results_grid::{
@@ -85,6 +85,7 @@ fn linked_paths() -> Vec<String> {
         "/robots-meta",
         "/directive-none",
         "/x-robots",
+        "/blocked",
         "/external",
         "/links",
         "/a11y",
@@ -232,7 +233,7 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
         "/robots.txt" => (
             ok,
             no_headers,
-            format!("User-agent: *\nAllow: /\nSitemap: {base}/sitemap.xml\n"),
+            format!("User-agent: *\nDisallow: /blocked\nAllow: /\nSitemap: {base}/sitemap.xml\n"),
         ),
         "/sitemap.xml" => {
             let xml = format!(
@@ -702,6 +703,15 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                 "the unique x robots tag header body text",
             ),
         ),
+        "/blocked" => (
+            ok,
+            no_headers,
+            doc(
+                "Blocked By Robots Page Title Value Goes Here",
+                "<meta name=\"description\" content=\"A page robots.txt disallows, which the crawler must record without fetching.\">",
+                "<h1>Blocked Heading</h1><h2>Sub</h2><p>never fetched</p>",
+            ),
+        ),
         "/external" => (
             ok,
             no_headers,
@@ -955,6 +965,48 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             redirect_url: Some(format!("{base}/large")),
             ..internal(format!("{base}/syn-redirect"))
         },
+        // Two hops: a chain, but not a loop.
+        PageRecord {
+            redirect_url: Some(format!("{base}/syn-redirect")),
+            ..internal(format!("{base}/syn-chain"))
+        },
+        // Canonicalised to a page that is itself noindex.
+        PageRecord {
+            canonical: Some(format!("{base}/robots-meta")),
+            ..internal(format!("{base}/syn-canonical-to-noindex"))
+        },
+        // Products: one out of stock and indexable, one with a GTIN whose
+        // check digit is wrong.
+        PageRecord {
+            ecommerce: Some(EcommerceAudit {
+                price: Some("10".into()),
+                currency: Some("EUR".into()),
+                availability: Some("outofstock".into()),
+                sku: Some("OOS-1".into()),
+                gtin: Some("4006381333931".into()),
+                brand: Some("Acme".into()),
+                has_image: true,
+                has_description: true,
+                has_review_or_rating: true,
+            }),
+            sd_types: vec!["Product".into(), "BreadcrumbList".into()],
+            ..internal(format!("{base}/syn-out-of-stock"))
+        },
+        PageRecord {
+            ecommerce: Some(EcommerceAudit {
+                price: Some("10".into()),
+                currency: Some("EUR".into()),
+                availability: Some("instock".into()),
+                sku: Some("BAD-1".into()),
+                gtin: Some("0123456789013".into()),
+                brand: Some("Acme".into()),
+                has_image: true,
+                has_description: true,
+                has_review_or_rating: true,
+            }),
+            sd_types: vec!["Product".into(), "BreadcrumbList".into()],
+            ..internal(format!("{base}/syn-bad-gtin"))
+        },
         PageRecord {
             redirect_url: Some(format!("{base}/syn-loop-b")),
             ..internal(format!("{base}/syn-loop-a"))
@@ -1187,7 +1239,8 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::Status4xx => both(&["/not-found"], &["/"]),
         F::Status5xx => both(&["/server-error"], &["/"]),
         F::Redirects => both(&["/syn-redirect", "/syn-3xx"], &["/"]),
-        F::RedirectLoop => both(&["/syn-loop-a"], &["/syn-redirect"]),
+        F::RedirectLoop => both(&["/syn-loop-a"], &["/syn-redirect", "/syn-chain"]),
+        F::RedirectChain => both(&["/syn-chain", "/syn-loop-a"], &["/syn-redirect"]),
 
         // Titles / meta / headings (uniform across the four heading tabs)
         F::Missing => both(&["/missing-all"], &["/", "/syn-3xx"]),
@@ -1204,7 +1257,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::NearDuplicates => both(&["/near-dup-a", "/near-dup-b"], &["/"]),
         F::LowContent => both(&["/low-content"], &["/large"]),
         F::SsrContentMissing => chrome(&["/spa"], &[]),
-        F::BlockedByRobots => both(&[], &[]),
+        F::BlockedByRobots => both(&["/blocked"], &["/"]),
 
         // Images
         F::MissingAltText => both(&["/images"], &[]),
@@ -1216,6 +1269,9 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::ContainsCanonical => both(&["/canonical-self", "/canonical-other"], &["/missing-all"]),
         F::SelfReferencing => both(&["/canonical-self"], &["/canonical-other"]),
         F::Canonicalised => both(&["/canonical-other"], &["/canonical-self"]),
+        F::CanonicalTargetNotIndexable => {
+            both(&["/syn-canonical-to-noindex"], &["/canonical-other"])
+        }
         F::MissingCanonical => both(&["/missing-all"], &["/canonical-self"]),
 
         // Hreflang
@@ -1265,6 +1321,9 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::MissingAvailability => both(&["/product-bare"], &["/sd-product"]),
         F::MissingSku => both(&["/product-bare"], &["/sd-product"]),
         F::MissingGtin => both(&["/product-bare"], &["/sd-product"]),
+        F::InvalidGtin => both(&["/syn-bad-gtin"], &["/sd-product", "/product-bare"]),
+        F::OutOfStockIndexable => both(&["/syn-out-of-stock"], &["/sd-product", "/syn-bad-gtin"]),
+        F::MissingBreadcrumbs => both(&["/product-bare", "/sd-product"], &["/syn-out-of-stock"]),
         F::MissingBrand => both(&["/product-bare"], &["/sd-product"]),
         F::MissingReviewRating => both(&["/product-bare"], &["/sd-product"]),
         F::MissingProductImage => both(&["/product-bare"], &["/sd-product"]),
@@ -1301,6 +1360,10 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::UrlUnderscores => both(&["/under_score"], &["/"]),
         F::UrlMultipleSlashes => both(&["/multi//slash"], &["/"]),
         F::UrlParameters => both(
+            &["/withparam?x=1"],
+            &["/", "/api/v1/pages/by-slug/privacy?locale=sv&sid=1"],
+        ),
+        F::IndexableParameterUrl => both(
             &["/withparam?x=1"],
             &["/", "/api/v1/pages/by-slug/privacy?locale=sv&sid=1"],
         ),

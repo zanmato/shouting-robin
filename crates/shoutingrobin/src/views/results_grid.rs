@@ -9,6 +9,7 @@ mod types;
 pub use cell::ssr_diff_label;
 #[cfg(test)]
 pub use delegate::ResultsDelegate;
+pub use delegate::export_every_tab;
 pub use filter::filters_for_tab;
 #[cfg(test)]
 pub use filter::{matching_urls, tab_filter_counts_for_test};

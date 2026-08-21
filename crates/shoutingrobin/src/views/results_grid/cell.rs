@@ -279,7 +279,12 @@ pub(super) fn cell_text(
                 .map(|d| d.to_string())
                 .unwrap_or_else(|| NO_VALUE.into()),
         ),
-        "response_time" => SharedString::from(format!("{}ms", record.response_time.as_millis())),
+        // Orphans and blocked URLs were never fetched, so they have no time.
+        "response_time" => SharedString::from(if record.status.is_some() {
+            format!("{}ms", record.response_time.as_millis())
+        } else {
+            NO_VALUE.to_string()
+        }),
         "closest_similarity" => SharedString::from(
             record
                 .closest_similarity
@@ -576,6 +581,7 @@ pub(super) fn cell_text(
             SharedString::from(header_value(&record.headers, "last-modified").unwrap_or(NO_VALUE))
         }
         "redirect_url" => SharedString::from(record.redirect_url.as_deref().unwrap_or(NO_VALUE)),
+        "redirect_type" => SharedString::from(redirect_type_label(record).unwrap_or(NO_VALUE)),
         "url_length" => SharedString::from(char_length(&record.url).to_string()),
         "x_robots_tag" => {
             SharedString::from(header_value(&record.headers, "x-robots-tag").unwrap_or(NO_VALUE))
@@ -946,4 +952,20 @@ mod length_tests {
             "21"
         );
     }
+}
+
+/// How a redirect was expressed: the HTTP status family Screaming Frog's
+/// "Redirect Type" column distinguishes, since a 302 that should be a 301 is
+/// the usual finding.
+fn redirect_type_label(record: &PageRecord) -> Option<&'static str> {
+    record.redirect_url.as_ref()?;
+    Some(match record.redirect_status.or(record.status) {
+        Some(301) => "HTTP 301 Permanent",
+        Some(302) => "HTTP 302 Temporary",
+        Some(303) => "HTTP 303 See Other",
+        Some(307) => "HTTP 307 Temporary",
+        Some(308) => "HTTP 308 Permanent",
+        Some(status) if (300..400).contains(&status) => "HTTP Redirect",
+        _ => "Redirect",
+    })
 }

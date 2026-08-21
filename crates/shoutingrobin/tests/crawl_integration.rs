@@ -437,6 +437,15 @@ fn test_chrome_crawl() {
         about.cls.is_some(),
         "Chrome mode should populate CLS for about"
     );
+    // Home is the one page that was always in a visible tab. Every other
+    // page used to load in a hidden background tab, for which Chrome reports
+    // no largest-contentful-paint at all.
+    let performance = find_page(&pages, "/performance.html").expect("performance page crawled");
+    assert!(
+        performance.lcp_ms.is_some_and(|ms| ms > 0),
+        "Chrome mode should populate LCP for pages after the first, got {:?}",
+        performance.lcp_ms
+    );
     assert!(
         pages.iter().any(|p| p.ttfb_ms.is_some_and(|v| v > 0)),
         "at least one page should have TTFB > 0"

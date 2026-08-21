@@ -1,7 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::crawl::engine::is_same_domain;
-use crate::crawl::event::{A11yIssue, HreflangIssue, PageRecord, SdFormat, SdItem};
+use crate::crawl::event::{
+    A11yIssue, HreflangIssue, PageRecord, SdFormat, SdItem, availability_is_out_of_stock,
+    gtin_checksum_valid,
+};
+use crate::crawl::url_norm::{normalize_url, resolve_url};
 use crate::ui::tag::Tone;
 use crate::views::ResultTab;
 
@@ -38,6 +42,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::Status4xx,
             IssueFilter::Status5xx,
             IssueFilter::Redirects,
+            IssueFilter::RedirectChain,
             IssueFilter::RedirectLoop,
         ],
         ResultTab::PageTitles => &[
@@ -99,6 +104,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::ContainsCanonical,
             IssueFilter::SelfReferencing,
             IssueFilter::Canonicalised,
+            IssueFilter::CanonicalTargetNotIndexable,
             IssueFilter::MissingCanonical,
         ],
         ResultTab::Hreflang => &[
@@ -153,9 +159,12 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::MissingAvailability,
             IssueFilter::MissingSku,
             IssueFilter::MissingGtin,
+            IssueFilter::InvalidGtin,
             IssueFilter::MissingBrand,
             IssueFilter::MissingReviewRating,
             IssueFilter::MissingProductImage,
+            IssueFilter::MissingBreadcrumbs,
+            IssueFilter::OutOfStockIndexable,
         ],
         ResultTab::Sitemaps => &[
             IssueFilter::All,
@@ -182,6 +191,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::UrlUnderscores,
             IssueFilter::UrlMultipleSlashes,
             IssueFilter::UrlParameters,
+            IssueFilter::IndexableParameterUrl,
             IssueFilter::UrlOverLength,
             IssueFilter::UrlSpaces,
         ],
@@ -418,7 +428,7 @@ fn was_fetched(page: &PageRecord) -> bool {
 /// to skip them. A redirect belongs on Response Codes, where its status is the
 /// point.
 fn is_page_document(page: &PageRecord) -> bool {
-    page.is_page && !page.is_resource && !page.is_redirect()
+    page.is_page && !page.is_resource && !page.is_redirect() && page.is_html_document()
 }
 
 /// File types a build tool emits rather than a person names. Stylesheets,
@@ -577,10 +587,10 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
             | IssueFilter::MissingStructuredData
             | IssueFilter::SdErrors
             | IssueFilter::SdWarnings
+            | IssueFilter::ExactDuplicates
             | IssueFilter::NearDuplicates
             | IssueFilter::LowContent
             | IssueFilter::SsrContentMissing
-            | IssueFilter::BlockedByRobots
             | IssueFilter::SlowLcp
             | IssueFilter::SlowCls
             | IssueFilter::MissingAltText
@@ -969,6 +979,81 @@ pub(super) fn filter_for_tab(
             IssueFilter::MissingProductImage => {
                 indices.retain(|&idx| pages[idx].ecommerce.as_ref().is_some_and(|a| !a.has_image))
             }
+            IssueFilter::InvalidGtin => indices.retain(|&idx| {
+                pages[idx].ecommerce.as_ref().is_some_and(|a| {
+                    a.gtin
+                        .as_deref()
+                        .is_some_and(|gtin| !gtin_checksum_valid(gtin))
+                })
+            }),
+            IssueFilter::OutOfStockIndexable => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.ecommerce.as_ref().is_some_and(|a| {
+                    a.availability
+                        .as_deref()
+                        .is_some_and(availability_is_out_of_stock)
+                }) && page.is_indexable()
+            }),
+            IssueFilter::MissingBreadcrumbs => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.ecommerce.is_some() && !page.sd_types.iter().any(|t| t == "BreadcrumbList")
+            }),
+            IssueFilter::IndexableParameterUrl => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.url.contains('?') && is_page_document(page) && page.is_indexable()
+            }),
+            // The target of this page's redirect is itself a redirect. Every
+            // extra hop is a request a crawler may decline to make, and a
+            // chain usually means an old redirect was never updated.
+            IssueFilter::RedirectChain => {
+                let redirect_targets: HashMap<String, String> = pages
+                    .iter()
+                    .filter_map(|p| {
+                        p.redirect_url.as_ref().map(|r| {
+                            (
+                                normalize_url(&p.url).unwrap_or_else(|| p.url.clone()),
+                                r.clone(),
+                            )
+                        })
+                    })
+                    .collect();
+                let redirects_without_target: HashSet<String> = pages
+                    .iter()
+                    .filter(|p| p.is_redirect() && p.redirect_url.is_none())
+                    .map(|p| normalize_url(&p.url).unwrap_or_else(|| p.url.clone()))
+                    .collect();
+                indices.retain(|&idx| {
+                    let Some(target) = pages[idx].redirect_url.as_deref() else {
+                        return false;
+                    };
+                    let key = normalize_url(target).unwrap_or_else(|| target.to_string());
+                    redirect_targets.contains_key(&key) || redirects_without_target.contains(&key)
+                });
+            }
+            // Canonicalising to a page search engines will not index hands
+            // the signal to nowhere: a redirect, an error, a noindex page, or
+            // a page that in turn canonicalises elsewhere.
+            IssueFilter::CanonicalTargetNotIndexable => {
+                let by_url: HashMap<String, &PageRecord> = pages
+                    .iter()
+                    .map(|p| (normalize_url(&p.url).unwrap_or_else(|| p.url.clone()), p))
+                    .collect();
+                indices.retain(|&idx| {
+                    let page = &pages[idx];
+                    if !page.is_canonicalised() {
+                        return false;
+                    }
+                    let Some(canonical) = page.canonical.as_deref() else {
+                        return false;
+                    };
+                    let resolved = resolve_url(&page.url, canonical)
+                        .unwrap_or_else(|| canonical.trim().to_string());
+                    let key = normalize_url(&resolved).unwrap_or(resolved);
+                    by_url
+                        .get(&key)
+                        .is_some_and(|target| !target.is_indexable())
+                });
+            }
             IssueFilter::A11yImageAlt => {
                 indices.retain(|&idx| pages[idx].a11y_issues.iter().any(|i| i.rule == "image-alt"))
             }
@@ -1004,7 +1089,7 @@ pub(super) fn filter_for_tab(
             }),
             IssueFilter::ExactDuplicates => {
                 let mut hash_counts: HashMap<&str, usize> = HashMap::new();
-                for page in pages {
+                for page in pages.iter().filter(|p| is_content_eligible(p)) {
                     if let Some(hash) = page.content_hash.as_deref() {
                         *hash_counts.entry(hash).or_insert(0) += 1;
                     }
@@ -1128,50 +1213,21 @@ pub(super) fn filter_for_tab(
             IssueFilter::UrlParameters => indices.retain(|&idx| pages[idx].url.contains('?')),
             IssueFilter::UrlOverLength => indices.retain(|&idx| char_length(&pages[idx].url) > 115),
             IssueFilter::UrlSpaces => indices.retain(|&idx| pages[idx].url.contains(' ')),
-            IssueFilter::DirectiveNoindex => indices.retain(|&idx| {
-                let page = &pages[idx];
-                page.robots
-                    .as_deref()
-                    .is_some_and(|r| r.to_ascii_lowercase().contains("noindex"))
-                    || header_value(&page.headers, "x-robots-tag")
-                        .is_some_and(|v| v.to_ascii_lowercase().contains("noindex"))
-            }),
-            IssueFilter::DirectiveNofollow => indices.retain(|&idx| {
-                let page = &pages[idx];
-                page.robots
-                    .as_deref()
-                    .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"))
-                    || header_value(&page.headers, "x-robots-tag")
-                        .is_some_and(|v| v.to_ascii_lowercase().contains("nofollow"))
-            }),
-            IssueFilter::DirectiveNoarchive => indices.retain(|&idx| {
-                let page = &pages[idx];
-                page.robots
-                    .as_deref()
-                    .is_some_and(|r| r.to_ascii_lowercase().contains("noarchive"))
-                    || header_value(&page.headers, "x-robots-tag")
-                        .is_some_and(|v| v.to_ascii_lowercase().contains("noarchive"))
-            }),
-            IssueFilter::DirectiveNosnippet => indices.retain(|&idx| {
-                let page = &pages[idx];
-                page.robots
-                    .as_deref()
-                    .is_some_and(|r| r.to_ascii_lowercase().contains("nosnippet"))
-                    || header_value(&page.headers, "x-robots-tag")
-                        .is_some_and(|v| v.to_ascii_lowercase().contains("nosnippet"))
-            }),
-            IssueFilter::DirectiveNone => indices.retain(|&idx| {
-                let page = &pages[idx];
-                page.robots.as_deref().is_some_and(|r| {
-                    r.to_ascii_lowercase()
-                        .split(',')
-                        .any(|d| d.trim() == "none")
-                }) || header_value(&page.headers, "x-robots-tag").is_some_and(|v| {
-                    v.to_ascii_lowercase()
-                        .split(',')
-                        .any(|d| d.trim() == "none")
-                })
-            }),
+            IssueFilter::DirectiveNoindex => {
+                indices.retain(|&idx| pages[idx].has_robots_directive("noindex"))
+            }
+            IssueFilter::DirectiveNofollow => {
+                indices.retain(|&idx| pages[idx].has_robots_directive("nofollow"))
+            }
+            IssueFilter::DirectiveNoarchive => {
+                indices.retain(|&idx| pages[idx].has_robots_directive("noarchive"))
+            }
+            IssueFilter::DirectiveNosnippet => {
+                indices.retain(|&idx| pages[idx].has_robots_directive("nosnippet"))
+            }
+            IssueFilter::DirectiveNone => {
+                indices.retain(|&idx| pages[idx].has_robots_directive("none"))
+            }
             IssueFilter::Redirects => indices.retain(|&idx| pages[idx].is_redirect()),
             IssueFilter::RedirectLoop => {
                 let url_set: HashMap<String, String> = pages
@@ -1189,8 +1245,10 @@ pub(super) fn filter_for_tab(
                         if current == page.url {
                             return true;
                         }
+                        // A chain that circles without coming back to this
+                        // page still never resolves.
                         if visited.contains(&current) {
-                            return false;
+                            return true;
                         }
                         visited.push(current.clone());
                         let Some(next) = url_set.get(&current) else {

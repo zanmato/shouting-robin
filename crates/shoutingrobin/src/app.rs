@@ -3,9 +3,9 @@ use std::sync::{Arc, atomic::AtomicBool};
 use flume::Receiver;
 use gpui::prelude::FluentBuilder as _;
 use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    Menu, MenuItem, ParentElement, Render, ScrollHandle, SharedString, StatefulInteractiveElement,
-    Styled, Subscription, Window, actions, div, px, svg,
+    App, AppContext, AsyncApp, Context, Entity, FocusHandle, Focusable, InteractiveElement,
+    IntoElement, Menu, MenuItem, ParentElement, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, WeakEntity, Window, actions, div, px, svg,
 };
 use gpui_component::{
     ActiveTheme, Icon as UiIcon, Root, Sizable as _, TitleBar, WindowExt,
@@ -208,69 +208,7 @@ impl ShoutingRobinApp {
                     // two crawls are read out of the database is already
                     // showing the spinner rather than the crawl being replaced.
                     results_grid.update(cx, |grid, cx| grid.set_loading(true, cx));
-                    cx.spawn(async move |_, cx| {
-                        let pages =
-                            crate::storage::load_pages_for_crawl(&pool, crawl_id, &root_url).await;
-                        let pages = match pages {
-                            Ok(pages) => pages,
-                            Err(e) => {
-                                tracing::error!(error=%e, "failed to load pages for crawl");
-                                cx.update(|cx| {
-                                    results_grid
-                                        .update(cx, |grid, cx| grid.set_loading(false, cx));
-                                });
-                                return;
-                            }
-                        };
-                        tracing::info!(count = pages.len(), "loaded pages for crawl");
-
-                        let baseline = match crate::storage::find_previous_crawl(
-                            &pool,
-                            &root_url,
-                            Some(crawl_id),
-                        )
-                        .await
-                        {
-                            Ok(Some(previous)) => match crate::storage::load_pages_for_crawl(
-                                &pool,
-                                previous.id,
-                                &previous.root_url,
-                            )
-                            .await
-                            {
-                                Ok(baseline_pages) => Some((baseline_pages, previous.started_at)),
-                                Err(e) => {
-                                    tracing::error!(error=%e, "failed to load baseline pages");
-                                    None
-                                }
-                            },
-                            Ok(None) => None,
-                            Err(e) => {
-                                tracing::error!(error=%e, "failed to find previous crawl");
-                                None
-                            }
-                        };
-
-                        // Every aggregate the grid shows, built off the
-                        // foreground thread. Both crawls move into the task and
-                        // back out, so nothing is copied to get them there.
-                        let prepared = cx
-                            .background_spawn({
-                                let root_url = root_url.clone();
-                                async move { PreparedCrawl::prepare(pages, baseline, &root_url) }
-                            })
-                            .await;
-
-                        cx.update(|cx| {
-                            results_grid
-                                .update(cx, |g, cx| g.load_prepared(prepared, &root_url, cx));
-                            crawl_bar.update(cx, |bar, cx| {
-                                bar.has_results = true;
-                                cx.notify();
-                            });
-                        });
-                    })
-                    .detach();
+                    Self::load_crawl_into_grid(pool, crawl_id, root_url, results_grid, crawl_bar, cx);
                 }
                 CrawlsSidebarEvent::Deleted {
                     crawl_id,
@@ -499,9 +437,7 @@ impl ShoutingRobinApp {
         });
         self.status_bar.update(cx, |status, cx| {
             status.running = true;
-            status.crawled = 0;
-            status.errors = 0;
-            status.queued = 0;
+            status.reset();
             cx.notify();
         });
     }
@@ -520,40 +456,36 @@ impl ShoutingRobinApp {
     /// hreflang validation), which write their results straight to the
     /// database. Without this the live session shows empty link scores,
     /// similarity and hreflang issues until the crawl is reopened from history.
-    fn reload_finished_crawl(&mut self, crawl_id: i64, root_url: String, cx: &mut Context<Self>) {
-        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
-        let results_grid = self.results_grid.clone();
-        cx.spawn(async move |_, cx| {
-            let pages = match crate::storage::load_pages_for_crawl(&pool, crawl_id, &root_url).await
-            {
+    /// Reads a crawl and its baseline out of the database, builds every
+    /// aggregate the grid shows on a background thread, and installs the
+    /// result. Used both when a crawl is picked from the sidebar and when a
+    /// live crawl finishes, since the post-crawl passes (link aggregation,
+    /// PageRank, near-duplicates, hreflang validation) write straight to the
+    /// database and the streamed records never carried those columns.
+    fn load_crawl_into_grid(
+        pool: sqlx::SqlitePool,
+        crawl_id: i64,
+        root_url: String,
+        results_grid: Entity<ResultsGrid>,
+        crawl_bar: Entity<CrawlBar>,
+        cx: &mut App,
+    ) {
+        cx.spawn(async move |cx| {
+            let pages = crate::storage::load_pages_for_crawl(&pool, crawl_id, &root_url).await;
+            let pages = match pages {
                 Ok(pages) => pages,
                 Err(e) => {
-                    tracing::error!(error=%e, crawl_id, "failed to reload pages after crawl");
+                    tracing::error!(error=%e, crawl_id, "failed to load pages for crawl");
+                    cx.update(|cx| {
+                        results_grid.update(cx, |grid, cx| grid.set_loading(false, cx));
+                    });
                     return;
                 }
             };
-            tracing::info!(count = pages.len(), crawl_id, "reloaded pages after crawl");
-            cx.update(|cx| {
-                results_grid.update(cx, |g, cx| {
-                    g.replace_records(pages, cx);
-                });
-            });
-        })
-        .detach();
-    }
+            tracing::info!(count = pages.len(), crawl_id, "loaded pages for crawl");
 
-    fn apply_baseline(
-        &mut self,
-        root_url: String,
-        current_crawl_id: Option<i64>,
-        cx: &mut Context<Self>,
-    ) {
-        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
-        let results_grid = self.results_grid.clone();
-        cx.spawn(async move |_, cx| {
             let baseline =
-                match crate::storage::find_previous_crawl(&pool, &root_url, current_crawl_id).await
-                {
+                match crate::storage::find_previous_crawl(&pool, &root_url, Some(crawl_id)).await {
                     Ok(Some(previous)) => match crate::storage::load_pages_for_crawl(
                         &pool,
                         previous.id,
@@ -573,12 +505,21 @@ impl ShoutingRobinApp {
                         None
                     }
                 };
+
+            // Both crawls move into the task and back out, so nothing is
+            // copied to get them there.
+            let prepared = cx
+                .background_spawn({
+                    let root_url = root_url.clone();
+                    async move { PreparedCrawl::prepare(pages, baseline, &root_url) }
+                })
+                .await;
+
             cx.update(|cx| {
-                results_grid.update(cx, |g, cx| match baseline {
-                    Some((baseline_pages, started_at)) => {
-                        g.set_baseline(baseline_pages, started_at, cx)
-                    }
-                    None => g.clear_baseline(cx),
+                results_grid.update(cx, |g, cx| g.load_prepared(prepared, &root_url, cx));
+                crawl_bar.update(cx, |bar, cx| {
+                    bar.has_results = true;
+                    cx.notify();
                 });
             });
         })
@@ -635,6 +576,93 @@ impl ShoutingRobinApp {
                     }
                 },
             );
+        })
+        .detach();
+    }
+
+    /// The `host-date` stem the export files are named with.
+    fn export_file_stem(&self, cx: &App) -> String {
+        let hostname_part = self
+            .results_grid
+            .read(cx)
+            .root_url(cx)
+            .and_then(|url| url::Url::parse(&url).ok())
+            .and_then(|parsed| parsed.host_str().map(|h| h.to_owned()))
+            .unwrap_or_else(|| "unknown".to_owned())
+            .replace('.', "-");
+        let date_part = chrono::Local::now().format("%Y-%m-%d").to_string();
+        format!("{hostname_part}-{date_part}")
+    }
+
+    /// Writes one CSV per tab into a folder the user picks, each file what
+    /// that tab's own Export CSV button would have written.
+    fn export_all_csv(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let snapshot = self.results_grid.read(cx).snapshot(cx);
+        let stem = self.export_file_stem(cx);
+        let picked = cx.prompt_for_paths(gpui::PathPromptOptions {
+            files: false,
+            directories: true,
+            multiple: false,
+            prompt: Some("Export here".into()),
+        });
+
+        cx.spawn_in(window, async move |_, cx| {
+            let directory = match picked.await {
+                Ok(Ok(Some(mut paths))) if !paths.is_empty() => paths.remove(0),
+                Ok(Ok(_)) => return,
+                Ok(Err(e)) => {
+                    tracing::error!(error=%e, "folder dialog error");
+                    return;
+                }
+                Err(_) => return,
+            };
+
+            let outcome = cx
+                .background_spawn({
+                    let directory = directory.clone();
+                    async move {
+                        let mut written = 0usize;
+                        let mut failures: Vec<String> = Vec::new();
+                        for (tab, csv) in crate::views::results_grid::export_every_tab(snapshot) {
+                            let file_name = format!(
+                                "{stem}-{}.csv",
+                                tab.label().to_lowercase().replace(' ', "-")
+                            );
+                            let path = directory.join(file_name);
+                            match csv.map_err(anyhow::Error::from).and_then(|csv| {
+                                std::fs::write(&path, csv).map_err(anyhow::Error::from)
+                            }) {
+                                Ok(()) => written += 1,
+                                Err(e) => failures.push(format!("{}: {e}", tab.label())),
+                            }
+                        }
+                        (written, failures)
+                    }
+                })
+                .await;
+
+            let (written, failures) = outcome;
+            let (message, kind) = if failures.is_empty() {
+                (
+                    format!("Exported {written} CSV files to {}", directory.display()),
+                    NotificationType::Success,
+                )
+            } else {
+                tracing::error!(?failures, "some tabs failed to export");
+                (
+                    format!(
+                        "Exported {written} CSV files, {} failed: {}",
+                        failures.len(),
+                        failures.join(", ")
+                    ),
+                    NotificationType::Error,
+                )
+            };
+            if let Err(e) = cx.update(|window, cx| {
+                window.push_notification(Notification::new().message(message).with_type(kind), cx);
+            }) {
+                tracing::error!(error=%e, "failed to report the export outcome");
+            }
         })
         .detach();
     }
@@ -727,24 +755,28 @@ impl ShoutingRobinApp {
                     }
                     _ => {}
                 }
-                cx.update(|cx| match event {
-                    CrawlEvent::Started { crawl_id, root_url } => {
-                        results_grid.update(cx, |g, cx| {
-                            g.set_root_url(root_url.as_str(), cx);
-                        });
-                        if let Some(this) = this.upgrade() {
-                            this.update(cx, |this, cx| {
-                                this.load_crawl_history(cx);
-                                this.sidebar.update(cx, |sidebar, cx| {
-                                    sidebar.set_selected_id(crawl_id, cx);
-                                });
-                            });
+                // Every pushed page re-derives the grid's filters and every
+                // tab's counts, which is quadratic over a crawl. Pages that
+                // arrived while the previous batch was being applied are
+                // folded into one push, and the pump then rests briefly so a
+                // fast crawl produces a few rebuilds per second, not hundreds.
+                if let CrawlEvent::Page(first) = event {
+                    let mut records = vec![*first];
+                    let mut trailing = None;
+                    while let Ok(next) = rx.try_recv() {
+                        match next {
+                            CrawlEvent::Page(record) => records.push(*record),
+                            other => {
+                                trailing = Some(other);
+                                break;
+                            }
                         }
                     }
-                    CrawlEvent::Page(boxed_record) => {
-                        let record = *boxed_record;
+                    let pages_pushed = records.iter().filter(|r| r.is_page).count() as u64;
+                    let resources_pushed = records.len() as u64 - pages_pushed;
+                    cx.update(|cx| {
                         results_grid.update(cx, |g, cx| {
-                            g.push(record, cx);
+                            g.push_many(records, cx);
                         });
                         if let Some(this) = this.upgrade() {
                             this.update(cx, |app, cx| {
@@ -757,49 +789,107 @@ impl ShoutingRobinApp {
                             });
                         }
                         status_bar.update(cx, |s, cx| {
-                            s.crawled = s.crawled.saturating_add(1);
+                            s.pages = s.pages.saturating_add(pages_pushed);
+                            s.resources = s.resources.saturating_add(resources_pushed);
                             cx.notify();
                         });
+                    });
+                    if let Some(other) = trailing {
+                        Self::apply_crawl_event(other, &results_grid, &status_bar, &this, cx);
                     }
-                    CrawlEvent::Progress { crawled, queued } => {
-                        status_bar.update(cx, |s, cx| {
-                            s.crawled = crawled;
-                            s.queued = queued;
-                            cx.notify();
-                        });
-                    }
-                    CrawlEvent::Error { url, message } => {
-                        tracing::warn!(%url, %message, "crawl error");
-                        status_bar.update(cx, |s, cx| {
-                            s.errors = s.errors.saturating_add(1);
-                            cx.notify();
-                        });
-                    }
-                    CrawlEvent::Finished { crawl_id, total } => {
-                        tracing::info!(total, "crawl finished");
-                        status_bar.update(cx, |s, cx| {
-                            s.running = false;
-                            cx.notify();
-                        });
-                        if let Some(this) = this.upgrade() {
-                            this.update(cx, |this, cx| {
-                                this.crawl_bar.update(cx, |bar, cx| {
-                                    bar.running = false;
-                                    cx.notify();
-                                });
-                                this.load_crawl_history(cx);
-                                if let Some(root_url) = this.results_grid.read(cx).root_url(cx) {
-                                    this.reload_finished_crawl(crawl_id, root_url.clone(), cx);
-                                    this.apply_baseline(root_url, Some(crawl_id), cx);
-                                }
-                            });
-                        }
-                    }
-                });
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(250))
+                        .await;
+                    continue;
+                }
+                Self::apply_crawl_event(event, &results_grid, &status_bar, &this, cx);
             }
             tracing::info!("UI event pump ended (channel closed)");
         })
         .detach();
+    }
+
+    fn apply_crawl_event(
+        event: CrawlEvent,
+        results_grid: &Entity<ResultsGrid>,
+        status_bar: &Entity<StatusBar>,
+        this: &WeakEntity<Self>,
+        cx: &mut AsyncApp,
+    ) {
+        cx.update(|cx| match event {
+            CrawlEvent::Started { crawl_id, root_url } => {
+                results_grid.update(cx, |g, cx| {
+                    g.set_root_url(root_url.as_str(), cx);
+                });
+                if let Some(this) = this.upgrade() {
+                    this.update(cx, |this, cx| {
+                        this.load_crawl_history(cx);
+                        this.sidebar.update(cx, |sidebar, cx| {
+                            sidebar.set_selected_id(crawl_id, cx);
+                        });
+                    });
+                }
+            }
+            CrawlEvent::Page(boxed_record) => {
+                let record = *boxed_record;
+                let is_page = record.is_page;
+                results_grid.update(cx, |g, cx| {
+                    g.push(record, cx);
+                });
+                if let Some(this) = this.upgrade() {
+                    this.update(cx, |app, cx| {
+                        app.crawl_bar.update(cx, |bar, cx| {
+                            if !bar.has_results {
+                                bar.has_results = true;
+                                cx.notify();
+                            }
+                        });
+                    });
+                }
+                status_bar.update(cx, |s, cx| {
+                    if is_page {
+                        s.pages = s.pages.saturating_add(1);
+                    } else {
+                        s.resources = s.resources.saturating_add(1);
+                    }
+                    cx.notify();
+                });
+            }
+            CrawlEvent::Error { url, message } => {
+                tracing::warn!(%url, %message, "crawl error");
+                status_bar.update(cx, |s, cx| {
+                    s.errors = s.errors.saturating_add(1);
+                    cx.notify();
+                });
+            }
+            CrawlEvent::Finished { crawl_id, total } => {
+                tracing::info!(total, "crawl finished");
+                status_bar.update(cx, |s, cx| {
+                    s.running = false;
+                    cx.notify();
+                });
+                if let Some(this) = this.upgrade() {
+                    this.update(cx, |this, cx| {
+                        this.crawl_bar.update(cx, |bar, cx| {
+                            bar.running = false;
+                            cx.notify();
+                        });
+                        this.load_crawl_history(cx);
+                        if let Some(root_url) = this.results_grid.read(cx).root_url(cx) {
+                            let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+                            Self::load_crawl_into_grid(
+                                pool,
+                                crawl_id,
+                                root_url,
+                                this.results_grid.clone(),
+                                this.crawl_bar.clone(),
+                                cx,
+                            );
+                        }
+                    });
+                }
+            }
+        });
     }
 
     fn on_quit(&mut self, _: &Quit, _window: &mut Window, cx: &mut Context<Self>) {
@@ -1094,16 +1184,27 @@ impl Render for ShoutingRobinApp {
         }
 
         if has_results {
-            filter_bar = filter_bar.child(
-                Button::new("export-csv")
-                    .xsmall()
-                    .outline()
-                    .flex_shrink_0()
-                    .label("Export CSV")
-                    .on_click(cx.listener(|this, _, _, cx| {
-                        this.export_csv(cx);
-                    })),
-            );
+            filter_bar = filter_bar
+                .child(
+                    Button::new("export-csv")
+                        .xsmall()
+                        .outline()
+                        .flex_shrink_0()
+                        .label("Export CSV")
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.export_csv(cx);
+                        })),
+                )
+                .child(
+                    Button::new("export-all-csv")
+                        .xsmall()
+                        .outline()
+                        .flex_shrink_0()
+                        .label("Export All")
+                        .on_click(cx.listener(|this, _, window, cx| {
+                            this.export_all_csv(window, cx);
+                        })),
+                );
         }
 
         div()
