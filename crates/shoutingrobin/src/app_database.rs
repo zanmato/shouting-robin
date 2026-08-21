@@ -19,8 +19,16 @@ impl AppDatabase {
     pub async fn new() -> Result<Self, sqlx::Error> {
         let db_path = Self::app_db_path();
 
+        // WAL lets the grid read a crawl while the crawler is still writing
+        // it, the busy timeout makes a contended write wait instead of
+        // failing, and the cascade that `delete_crawl` relies on only runs
+        // when foreign keys are enforced on this connection.
         let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", db_path.display()))?
             .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
+            .busy_timeout(std::time::Duration::from_secs(10))
+            .foreign_keys(true)
             .disable_statement_logging();
 
         let pool = SqlitePool::connect_with(options).await?;
@@ -73,27 +81,6 @@ impl AppDatabase {
         .await?;
 
         crate::storage::run_migrations(&self.pool).await?;
-
-        Ok(())
-    }
-
-    #[allow(dead_code)]
-    pub async fn save_user_settings(&self, user_setting: &UserSetting) -> Result<(), sqlx::Error> {
-        let now = chrono::Utc::now().timestamp();
-
-        sqlx::query(
-            r#"
-            INSERT INTO user_settings (id, theme, updated_at) VALUES (1, ?, ?)
-                ON CONFLICT (id)
-                DO UPDATE
-                SET theme = excluded.theme,
-                updated_at = excluded.updated_at
-            "#,
-        )
-        .bind(&user_setting.theme)
-        .bind(now)
-        .execute(&self.pool)
-        .await?;
 
         Ok(())
     }

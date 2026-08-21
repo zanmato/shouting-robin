@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS issues;
+DROP TABLE IF EXISTS redirect_hops;
