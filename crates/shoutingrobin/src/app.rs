@@ -1291,10 +1291,7 @@ impl Render for ShoutingRobinApp {
                                             .min_w_0()
                                             .h_full()
                                             .overflow_hidden()
-                                            // The main card shares the shell
-                                            // colour, so the 1px border is what
-                                            // makes its rounded outline readable.
-                                            .bg(cx.theme().background)
+                                            .bg(cx.theme().tab_active)
                                             .rounded(PANEL_RADIUS)
                                             .border_1()
                                             .border_color(cx.theme().border)
