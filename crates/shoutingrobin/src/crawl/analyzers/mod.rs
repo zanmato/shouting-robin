@@ -1151,18 +1151,47 @@ fn is_boilerplate_element(el: &scraper::node::Element, content_section_depth: us
     let tag = el.name();
     if matches!(
         tag,
-        "script" | "style" | "noscript" | "template" | "nav" | "aside"
+        "script" | "style" | "noscript" | "template" | "nav" | "aside" | "dialog"
     ) {
         return true;
     }
     if matches!(tag, "header" | "footer") && content_section_depth == 0 {
         return true;
     }
-    el.attr("role").is_some_and(|role| {
+    if el.attr("role").is_some_and(|role| {
         matches!(
             role.trim().to_ascii_lowercase().as_str(),
-            "navigation" | "banner" | "contentinfo" | "complementary"
+            "navigation" | "banner" | "contentinfo" | "complementary" | "dialog" | "alertdialog"
         )
+    }) {
+        return true;
+    }
+    if el
+        .attr("aria-modal")
+        .is_some_and(|modal| modal.trim().eq_ignore_ascii_case("true"))
+    {
+        return true;
+    }
+    // Google's own marker for text that must not be treated as page content.
+    // Every major consent platform sets it on its banner container, so it
+    // catches cookie dialogs that carry no dialog role.
+    if el.attr("data-nosnippet").is_some() {
+        return true;
+    }
+    // Consent-platform containers that render without a dialog role.
+    static CONSENT_CONTAINER_IDS: &[&str] = &[
+        "didomi-host",
+        "usercentrics-root",
+        "truste-consent-track",
+        "iubenda-cs-banner",
+        "hs-eu-cookie-confirmation",
+        "BorlabsCookieBox",
+        "termly-code-snippet-support",
+        "axeptio_overlay",
+    ];
+    el.attr("id").is_some_and(|id| {
+        let id = id.trim();
+        CONSENT_CONTAINER_IDS.contains(&id) || id.starts_with("sp_message_container_")
     })
 }
 
@@ -2611,5 +2640,84 @@ mod tests {
             </body></html>"#,
         );
         assert_eq!(r.outlinks[0].anchor.as_deref(), Some("Next page"));
+    }
+
+    const MAIN_CONTENT_16_WORDS: &str = "<main><h1>Kontakt</h1><p>Kontakta oss gärna via telefon eller e-post för offert och support på alla våra system</p></main>";
+
+    fn consent_block(open_tag: &str, close_tag: &str) -> String {
+        format!(
+            r#"{open_tag}
+            <h2>This site uses cookies to improve your experience and to measure how our visitors use the pages and which content matters</h2>
+            <label>Necessary cookies</label><label>Statistics cookies</label><label>Marketing cookies</label>
+            <button>Accept all cookies</button><button>Reject all cookies</button><button>Save my choices</button>
+            <a href="/cookies">Read our cookie policy</a><a href="/privacy">Read our privacy policy</a>
+            {close_tag}"#
+        )
+    }
+
+    #[test]
+    fn consent_dialogs_are_not_counted_as_page_content() {
+        let cases = [
+            (
+                r#"<div role="dialog" aria-labelledby="consent-title">"#,
+                "</div>",
+            ),
+            (r#"<div role="alertdialog">"#, "</div>"),
+            (r#"<div aria-modal="true">"#, "</div>"),
+            (r#"<div data-nosnippet>"#, "</div>"),
+            ("<dialog open>", "</dialog>"),
+            (r#"<div id="didomi-host">"#, "</div>"),
+            (r#"<div id="sp_message_container_1234567">"#, "</div>"),
+        ];
+        for (open_tag, close_tag) in cases {
+            let html = format!(
+                "<html><head><title>Kontakt</title></head><body>{MAIN_CONTENT_16_WORDS}{}</body></html>",
+                consent_block(open_tag, close_tag)
+            );
+            let r = analyze_at("https://www.example.test/sv/kontakt", &html);
+            assert_eq!(
+                r.word_count,
+                Some(16),
+                "{open_tag} was counted as page content"
+            );
+        }
+    }
+
+    #[test]
+    fn a_client_side_consent_dialog_does_not_make_a_page_look_unrendered_on_the_server() {
+        let raw = format!(
+            "<html><head><title>Kontakt</title></head><body>{MAIN_CONTENT_16_WORDS}</body></html>"
+        );
+        let rendered = format!(
+            "<html><head><title>Kontakt</title></head><body>{MAIN_CONTENT_16_WORDS}{}</body></html>",
+            consent_block(
+                r#"<div role="dialog" aria-labelledby="consent-title">"#,
+                "</div>"
+            )
+        );
+        let mut record = PageRecord {
+            url: "https://www.example.test/sv/kontakt".to_string(),
+            ..Default::default()
+        };
+        analyze_html(&mut record, &rendered, "");
+        analyze_ssr(&mut record, &raw, "");
+        assert_eq!(record.word_count, Some(16));
+        assert_eq!(record.ssr_word_count, Some(16));
+        assert_eq!(record.ssr_content_missing, Some(false));
+    }
+
+    #[test]
+    fn an_article_about_cookies_is_still_counted_as_content() {
+        let r = analyze_at(
+            "https://example.com/recipes/cookies",
+            r#"<html><head><title>Cookies</title></head><body><main>
+            <div class="cookie-recipe">
+            <p>A short article about baking that mentions cookies many times because the recipe is the actual subject of this page</p>
+            <p>Mix butter and sugar until light then fold in the flour and chocolate before chilling the dough for one hour</p>
+            <p>Bake the cookies at two hundred degrees for ten minutes and let them cool completely on a wire rack afterwards</p>
+            </div>
+            </main></body></html>"#,
+        );
+        assert_eq!(r.word_count, Some(60));
     }
 }
