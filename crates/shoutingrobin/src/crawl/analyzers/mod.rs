@@ -354,6 +354,7 @@ fn extract_structured_data(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse(r#"script[type="application/ld+json"]"#) else {
         return;
     };
+    let base = url::Url::parse(&record.url).ok();
     for el in doc.select(&sel) {
         let text: String = el.text().collect();
         let trimmed = text.trim();
@@ -363,7 +364,7 @@ fn extract_structured_data(doc: &Html, record: &mut PageRecord) {
         record.sd_jsonld_count = record.sd_jsonld_count.saturating_add(1);
         match serde_json::from_str::<serde_json::Value>(trimmed) {
             Ok(value) => {
-                extract_schema_objects(&value, SdFormat::JsonLd, record);
+                extract_schema_objects(&value, SdFormat::JsonLd, base.as_ref(), record);
             }
             Err(_) => {
                 record.sd_errors = record.sd_errors.saturating_add(1);
@@ -387,11 +388,16 @@ fn schema_type_names(value: &serde_json::Value) -> Vec<&str> {
     }
 }
 
-fn extract_schema_objects(value: &serde_json::Value, format: SdFormat, record: &mut PageRecord) {
+fn extract_schema_objects(
+    value: &serde_json::Value,
+    format: SdFormat,
+    base: Option<&url::Url>,
+    record: &mut PageRecord,
+) {
     match value {
         serde_json::Value::Array(arr) => {
             for item in arr {
-                extract_schema_objects(item, format, record);
+                extract_schema_objects(item, format, base, record);
             }
         }
         serde_json::Value::Object(map) => {
@@ -417,7 +423,7 @@ fn extract_schema_objects(value: &serde_json::Value, format: SdFormat, record: &
                         record.sd_errors = record.sd_errors.saturating_add(1);
                     }
 
-                    let issues = rich_results::validate_type(t, map);
+                    let issues = rich_results::validate_type(t, map, base);
                     for issue in &issues {
                         if issue.severity == SdSeverity::Error {
                             record.sd_errors = record.sd_errors.saturating_add(1);
@@ -436,7 +442,7 @@ fn extract_schema_objects(value: &serde_json::Value, format: SdFormat, record: &
             }
             for property in CONTAINER_PROPERTIES {
                 if let Some(nested) = map.get(*property) {
-                    extract_schema_objects(nested, format, record);
+                    extract_schema_objects(nested, format, base, record);
                 }
             }
         }
@@ -448,6 +454,7 @@ fn extract_microdata(doc: &Html, record: &mut PageRecord) {
     let Ok(sel) = Selector::parse("[itemscope][itemtype]") else {
         return;
     };
+    let base = url::Url::parse(&record.url).ok();
     for el in doc.select(&sel) {
         let Some(type_url) = el.value().attr("itemtype") else {
             continue;
@@ -477,8 +484,8 @@ fn extract_microdata(doc: &Html, record: &mut PageRecord) {
             record.sd_errors = record.sd_errors.saturating_add(1);
         }
 
-        let properties = microdata_properties(el);
-        let issues = rich_results::validate_type(&type_name, &properties);
+        let properties = microdata_properties(el, base.as_ref());
+        let issues = rich_results::validate_type(&type_name, &properties, base.as_ref());
         for issue in &issues {
             if issue.severity == SdSeverity::Error {
                 record.sd_errors = record.sd_errors.saturating_add(1);
@@ -503,6 +510,7 @@ fn extract_microdata(doc: &Html, record: &mut PageRecord) {
 /// nested objects; a property given more than once becomes an array.
 fn microdata_properties(
     scope: scraper::ElementRef<'_>,
+    base: Option<&url::Url>,
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut properties = serde_json::Map::new();
     let mut stack: Vec<ego_tree::NodeRef<'_, scraper::Node>> = scope.children().collect();
@@ -514,7 +522,7 @@ fn microdata_properties(
         let is_scope = value.attr("itemscope").is_some();
         if let Some(names) = value.attr("itemprop") {
             let prop_value = if is_scope {
-                let mut nested = microdata_properties(el);
+                let mut nested = microdata_properties(el, base);
                 if let Some(type_url) = value.attr("itemtype") {
                     let type_name = type_url.trim().rsplit('/').next().unwrap_or(type_url);
                     nested.insert(
@@ -522,9 +530,25 @@ fn microdata_properties(
                         serde_json::Value::String(type_name.to_string()),
                     );
                 }
+                // The identifier and the URL of a nested entity sit on the
+                // scope element itself rather than on an `itemprop` of it,
+                // which is how Google's breadcrumb example spells a crumb:
+                // `<a itemscope itemprop="item" itemid="..." href="...">`.
+                if let Some(item_id) = value.attr("itemid")
+                    && let Some(resolved) = resolve_microdata_url(item_id, base)
+                {
+                    nested.insert("@id".into(), serde_json::Value::String(resolved));
+                }
+                if !nested.contains_key("url")
+                    && let Some(resolved) = microdata_url_attribute(el.value().name())
+                        .and_then(|attr| value.attr(attr))
+                        .and_then(|raw| resolve_microdata_url(raw, base))
+                {
+                    nested.insert("url".into(), serde_json::Value::String(resolved));
+                }
                 serde_json::Value::Object(nested)
             } else {
-                serde_json::Value::String(microdata_text_value(el))
+                serde_json::Value::String(microdata_text_value(el, base))
             };
             for name in names.split_whitespace() {
                 match properties.get_mut(name) {
@@ -546,18 +570,48 @@ fn microdata_properties(
     properties
 }
 
-fn microdata_text_value(el: scraper::ElementRef<'_>) -> String {
-    let value = el.value();
-    let attr = match value.name() {
-        "meta" => Some("content"),
+/// The attribute an element carries a URL in, if it is one of the elements
+/// microdata reads a URL property from.
+fn microdata_url_attribute(element_name: &str) -> Option<&'static str> {
+    match element_name {
         "img" | "audio" | "video" | "embed" | "iframe" | "source" | "track" => Some("src"),
         "a" | "link" | "area" => Some("href"),
         "object" => Some("data"),
+        _ => None,
+    }
+}
+
+/// Microdata URL attributes are resolved against the document base per the
+/// HTML spec, so `href="/books"` is an absolute URL to every consumer and must
+/// not be reported as a relative one. A value that will not resolve is kept as
+/// written so the invalid-URL check still sees it.
+fn resolve_microdata_url(raw: &str, base: Option<&url::Url>) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    match base.and_then(|base| base.join(trimmed).ok()) {
+        Some(resolved) => Some(resolved.to_string()),
+        None => Some(trimmed.to_string()),
+    }
+}
+
+fn microdata_text_value(el: scraper::ElementRef<'_>, base: Option<&url::Url>) -> String {
+    let value = el.value();
+    let attr = match value.name() {
+        "meta" => Some("content"),
         "data" | "meter" => Some("value"),
         "time" => Some("datetime"),
-        _ => None,
+        other => microdata_url_attribute(other),
     };
-    if let Some(text) = attr.and_then(|a| value.attr(a)) {
+    if let Some(attr) = attr
+        && let Some(text) = value.attr(attr)
+    {
+        if microdata_url_attribute(value.name()) == Some(attr)
+            && let Some(resolved) = resolve_microdata_url(text, base)
+        {
+            return resolved;
+        }
         return text.trim().to_string();
     }
     if let Some(content) = value.attr("content") {
@@ -1237,6 +1291,120 @@ mod tests {
         };
         analyze_html(&mut record, html, "");
         record
+    }
+
+    #[test]
+    fn breadcrumb_with_invalid_id_is_reported_as_a_structured_data_error() {
+        let r = analyze_at(
+            "https://shop.test/catalogue/widget",
+            r#"<html><head><script type="application/ld+json">
+            {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+              {"@type":"ListItem","position":1,"name":"Home",
+               "item":{"@id":"{{ site.url }}","name":"Home"}},
+              {"@type":"ListItem","position":2,"name":"Widget"}
+            ]}
+            </script></head><body></body></html>"#,
+        );
+        assert!(r.sd_errors > 0);
+        assert!(
+            r.sd_issues
+                .iter()
+                .any(|issue| issue.code == "invalid-url:item.@id"),
+            "{:?}",
+            r.sd_issues
+        );
+    }
+
+    #[test]
+    fn breadcrumb_relative_item_resolves_against_the_page_and_only_warns() {
+        let r = analyze_at(
+            "https://shop.test/catalogue/widget",
+            r#"<html><head><script type="application/ld+json">
+            {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+              {"@type":"ListItem","position":1,"name":"Home","item":"/"},
+              {"@type":"ListItem","position":2,"name":"Widget"}
+            ]}
+            </script></head><body></body></html>"#,
+        );
+        assert_eq!(r.sd_errors, 0, "{:?}", r.sd_issues);
+        assert!(
+            r.sd_issues
+                .iter()
+                .any(|issue| issue.code == "relative-url:item"),
+            "{:?}",
+            r.sd_issues
+        );
+    }
+
+    #[test]
+    fn microdata_breadcrumb_with_a_relative_href_resolves_against_the_page() {
+        let r = analyze_at(
+            "https://shop.test/catalogue/widget",
+            r#"<html><body>
+            <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+              <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                <a itemprop="item" href="/books"><span itemprop="name">Books</span></a>
+                <meta itemprop="position" content="1" />
+              </li>
+              <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                <span itemprop="name">Widget</span>
+                <meta itemprop="position" content="2" />
+              </li>
+            </ol>
+            </body></html>"#,
+        );
+        assert!(
+            !r.sd_issues
+                .iter()
+                .any(|issue| issue.code.starts_with("relative-url")
+                    || issue.code.starts_with("invalid-url")),
+            "{:?}",
+            r.sd_issues
+        );
+    }
+
+    #[test]
+    fn microdata_breadcrumb_itemid_becomes_the_item_identifier() {
+        let r = analyze_at(
+            "https://example.com/widget",
+            r#"<html><body>
+            <ol itemscope itemtype="https://schema.org/BreadcrumbList">
+              <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                <a itemscope itemtype="https://schema.org/WebPage" itemprop="item"
+                   itemid="https://example.com/books" href="https://example.com/books">
+                  <span itemprop="name">Books</span></a>
+                <meta itemprop="position" content="1" />
+              </li>
+              <li itemprop="itemListElement" itemscope itemtype="https://schema.org/ListItem">
+                <span itemprop="name">Widget</span>
+                <meta itemprop="position" content="2" />
+              </li>
+            </ol>
+            </body></html>"#,
+        );
+        assert_eq!(r.sd_errors, 0, "{:?}", r.sd_issues);
+    }
+
+    #[test]
+    fn breadcrumb_typed_item_with_an_invalid_id_is_reported_once() {
+        let r = analyze_at(
+            "https://shop.test/catalogue/widget",
+            r#"<html><head><script type="application/ld+json">
+            {"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[
+              {"@type":"ListItem","position":1,"name":"Home",
+               "item":{"@type":"WebPage","@id":"{{ site.url }}"}},
+              {"@type":"ListItem","position":2,"name":"Widget"}
+            ]}
+            </script></head><body></body></html>"#,
+        );
+        assert_eq!(r.sd_errors, 1, "{:?}", r.sd_issues);
+        let errors: Vec<&SdIssue> = r
+            .sd_issues
+            .iter()
+            .filter(|issue| issue.severity == SdSeverity::Error)
+            .collect();
+        assert_eq!(errors.len(), 1, "{errors:?}");
+        assert_eq!(errors[0].code, "invalid-url:@id", "{errors:?}");
     }
 
     #[test]
