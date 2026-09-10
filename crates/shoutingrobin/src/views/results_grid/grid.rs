@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use gpui::{
-    AnyElement, App, AppContext, Context, Entity, EventEmitter, IntoElement, ParentElement, Render,
-    Styled, Subscription, Window, div,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Sizable as _, Size,
     spinner::Spinner,
     table::{DataTable, TableEvent, TableState},
+};
+use gpui_kit::{
+    AnyElement, App, AppContext, Context, Entity, EventEmitter, IntoElement, ParentElement, Render,
+    Styled, Subscription, Window, div,
 };
 
 use crate::crawl::event::PageRecord;

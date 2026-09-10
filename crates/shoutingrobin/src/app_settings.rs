@@ -1,5 +1,5 @@
 use crate::settings::Settings;
-use gpui::{App, Global};
+use gpui_kit::{App, Global};
 
 pub struct AppSettings {
     pub settings: Settings,

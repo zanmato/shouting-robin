@@ -1,8 +1,8 @@
 pub mod view;
 
 use crate::app_settings::AppSettings;
-use gpui::{App, SharedString};
-use gpui_component::{Theme, ThemeConfig, ThemeRegistry};
+use gpui_kit::component::{Theme, ThemeConfig, ThemeRegistry};
+use gpui_kit::{App, SharedString};
 use serde::{Deserialize, Serialize};
 use std::rc::Rc;
 

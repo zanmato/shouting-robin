@@ -18,7 +18,7 @@
 
 use std::ops::Range;
 
-use gpui::{
+use gpui_kit::{
     Along, App, Axis, Bounds, Context, ElementId, EventEmitter, IsZero, Pixels, Window, px,
 };
 

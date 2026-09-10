@@ -1,6 +1,6 @@
 use crate::app_settings::AppSettings;
 use anyhow::Context as _;
-use gpui::{App, AppContext, Entity, Global};
+use gpui_kit::{App, AppContext, Entity, Global};
 use semver::Version;
 use std::path::PathBuf;
 use std::time::Duration;

@@ -1,4 +1,4 @@
-use gpui::{App, Global};
+use gpui_kit::{App, Global};
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
 use sqlx::{ConnectOptions, Row};
 use std::path::PathBuf;

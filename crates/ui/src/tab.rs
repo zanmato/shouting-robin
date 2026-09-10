@@ -1,14 +1,14 @@
 // Vendored from gpui-component
 use std::rc::Rc;
 
-use gpui::prelude::FluentBuilder as _;
-use gpui::{
+use gpui_kit::component::{
+    ActiveTheme, ElementExt, Icon, IconName, Selectable, Sizable, Size, StyledExt, h_flex,
+};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
     AnyElement, App, ClickEvent, Div, Edges, Hsla, InteractiveElement, IntoElement, MouseButton,
     ParentElement, Pixels, RenderOnce, SharedString, StatefulInteractiveElement, Styled, Window,
     div, px, relative,
-};
-use gpui_component::{
-    ActiveTheme, ElementExt, Icon, IconName, Selectable, Sizable, Size, StyledExt, h_flex,
 };
 
 #[derive(Debug, Clone, Default, Copy, PartialEq, Eq, Hash)]
@@ -380,11 +380,11 @@ impl Default for TabStyle {
     fn default() -> Self {
         TabStyle {
             borders: Edges::all(px(0.)),
-            border_color: gpui::transparent_white(),
-            bg: gpui::transparent_white(),
-            fg: gpui::transparent_white(),
+            border_color: gpui_kit::transparent_white(),
+            bg: gpui_kit::transparent_white(),
+            fg: gpui_kit::transparent_white(),
             shadow: false,
-            inner_bg: gpui::transparent_white(),
+            inner_bg: gpui_kit::transparent_white(),
         }
     }
 }
@@ -551,7 +551,7 @@ impl Selectable for Tab {
 }
 
 impl InteractiveElement for Tab {
-    fn interactivity(&mut self) -> &mut gpui::Interactivity {
+    fn interactivity(&mut self) -> &mut gpui_kit::Interactivity {
         self.base.interactivity()
     }
 }
@@ -559,7 +559,7 @@ impl InteractiveElement for Tab {
 impl StatefulInteractiveElement for Tab {}
 
 impl Styled for Tab {
-    fn style(&mut self) -> &mut gpui::StyleRefinement {
+    fn style(&mut self) -> &mut gpui_kit::StyleRefinement {
         self.base.style()
     }
 }
@@ -684,13 +684,13 @@ impl RenderOnce for Tab {
 use std::cell::RefCell;
 use std::time::Duration;
 
-use gpui::{
+use gpui_kit::component::animation::{Lerp, ease_in_out_cubic};
+use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
+use gpui_kit::{
     Anchor, Animation, AnimationExt as _, Bounds, ElementId, ScrollHandle, Stateful,
     StyleRefinement,
 };
-use gpui_component::animation::{Lerp, ease_in_out_cubic};
-use gpui_component::button::{Button, ButtonVariants as _};
-use gpui_component::menu::{DropdownMenu as _, PopupMenuItem};
 use smallvec::SmallVec;
 
 struct TabIndicatorBounds {
@@ -909,8 +909,8 @@ impl TabBar {
         &self,
         selected_ix: usize,
         bounds_rc: &Option<Rc<RefCell<TabIndicatorBounds>>>,
-        prev_selected: &gpui::Entity<usize>,
-        anim_params: &gpui::Entity<(Pixels, Pixels, Pixels, Pixels, u64)>,
+        prev_selected: &gpui_kit::Entity<usize>,
+        anim_params: &gpui_kit::Entity<(Pixels, Pixels, Pixels, Pixels, u64)>,
         cx: &mut App,
     ) {
         let rc = match bounds_rc {

@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use gpui::{
-    AppContext, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    ParentElement, Render, Styled, Task, Window, div, prelude::FluentBuilder, px,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Sizable as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState, NumberInput, Textarea, TextareaState},
     switch::Switch,
+};
+use gpui_kit::{
+    AppContext, Context, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    ParentElement, Render, Styled, Task, Window, div, prelude::FluentBuilder, px,
 };
 
 use crate::app_database::AppDatabase;
@@ -32,25 +32,25 @@ pub enum CrawlBarEvent {
 }
 
 pub struct CrawlBar {
-    focus_handle: gpui::FocusHandle,
-    pub url_input: gpui::Entity<InputState>,
+    focus_handle: gpui_kit::FocusHandle,
+    pub url_input: gpui_kit::Entity<InputState>,
     pub running: bool,
     pub has_results: bool,
     default_mode: RenderMode,
     advanced_open: bool,
-    headers_input: gpui::Entity<TextareaState>,
-    include_input: gpui::Entity<TextareaState>,
-    exclude_input: gpui::Entity<TextareaState>,
+    headers_input: gpui_kit::Entity<TextareaState>,
+    include_input: gpui_kit::Entity<TextareaState>,
+    exclude_input: gpui_kit::Entity<TextareaState>,
     crawl_subdomains: bool,
     list_mode: bool,
-    list_urls_input: gpui::Entity<TextareaState>,
-    concurrency_input: gpui::Entity<InputState>,
+    list_urls_input: gpui_kit::Entity<TextareaState>,
+    concurrency_input: gpui_kit::Entity<InputState>,
     block_images: bool,
     /// One in-flight save per setting key, so a save for one setting cannot
     /// cancel another's. Dropping a task cancels it, which is what debounces a
     /// key being edited repeatedly.
     save_tasks: HashMap<&'static str, Task<()>>,
-    _subscriptions: Vec<gpui::Subscription>,
+    _subscriptions: Vec<gpui_kit::Subscription>,
 }
 
 impl CrawlBar {
@@ -191,7 +191,7 @@ impl CrawlBar {
             if val.is_empty() { None } else { Some(val) }
         };
 
-        let parse_lines = |entity: &gpui::Entity<TextareaState>| -> Vec<String> {
+        let parse_lines = |entity: &gpui_kit::Entity<TextareaState>| -> Vec<String> {
             entity
                 .read(cx)
                 .value()
@@ -309,7 +309,7 @@ impl CrawlBar {
         cx.notify();
     }
 
-    fn on_stop(&mut self, _: &gpui::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_stop(&mut self, _: &gpui_kit::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.running = false;
         cx.emit(CrawlBarEvent::Stop);
         cx.notify();
@@ -319,7 +319,7 @@ impl CrawlBar {
 impl EventEmitter<CrawlBarEvent> for CrawlBar {}
 
 impl Focusable for CrawlBar {
-    fn focus_handle(&self, _: &gpui::App) -> FocusHandle {
+    fn focus_handle(&self, _: &gpui_kit::App) -> FocusHandle {
         self.focus_handle.clone()
     }
 }

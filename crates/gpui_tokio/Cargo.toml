@@ -14,5 +14,5 @@ doctest = false
 
 [dependencies]
 anyhow.workspace = true
-gpui.workspace = true
+gpui-kit = { workspace = true }
 tokio = { workspace = true, features = ["rt", "rt-multi-thread"] }

@@ -10,14 +10,14 @@ use std::{
     rc::Rc,
 };
 
-use gpui::{
+use gpui_kit::{
     Along, AnyElement, App, AppContext, Axis, Bounds, Context, Element, ElementId, Empty, Entity,
     EventEmitter, InteractiveElement as _, IntoElement, IsZero as _, MouseMoveEvent, MouseUpEvent,
     ParentElement, Pixels, Render, RenderOnce, Style, StyleRefinement, Styled, Window, div,
     prelude::FluentBuilder,
 };
 
-use gpui_component::{AxisExt, ElementExt, StyledExt as _, h_flex, v_flex};
+use gpui_kit::component::{AxisExt, ElementExt, StyledExt as _, h_flex, v_flex};
 
 use super::{PANEL_MIN_SIZE, ResizableState, resizable_panel, resize_handle};
 
@@ -386,7 +386,7 @@ impl Element for ResizePanelGroupElement {
     type RequestLayoutState = ();
     type PrepaintState = ();
 
-    fn id(&self) -> Option<gpui::ElementId> {
+    fn id(&self) -> Option<gpui_kit::ElementId> {
         None
     }
 
@@ -396,18 +396,18 @@ impl Element for ResizePanelGroupElement {
 
     fn request_layout(
         &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
+        _: Option<&gpui_kit::GlobalElementId>,
+        _: Option<&gpui_kit::InspectorElementId>,
         window: &mut Window,
         cx: &mut App,
-    ) -> (gpui::LayoutId, Self::RequestLayoutState) {
+    ) -> (gpui_kit::LayoutId, Self::RequestLayoutState) {
         (window.request_layout(Style::default(), None, cx), ())
     }
 
     fn prepaint(
         &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
+        _: Option<&gpui_kit::GlobalElementId>,
+        _: Option<&gpui_kit::InspectorElementId>,
         _: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
         _window: &mut Window,
@@ -418,8 +418,8 @@ impl Element for ResizePanelGroupElement {
 
     fn paint(
         &mut self,
-        _: Option<&gpui::GlobalElementId>,
-        _: Option<&gpui::InspectorElementId>,
+        _: Option<&gpui_kit::GlobalElementId>,
+        _: Option<&gpui_kit::InspectorElementId>,
         _: Bounds<Pixels>,
         _: &mut Self::RequestLayoutState,
         _: &mut Self::PrepaintState,

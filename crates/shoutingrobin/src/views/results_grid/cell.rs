@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use gpui::{App, ParentElement, SharedString};
+use gpui_kit::{App, ParentElement, SharedString};
 
 use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdItem};
@@ -663,7 +663,7 @@ pub(super) fn render_cell_tag(
     col_key: &str,
     text: &SharedString,
     cx: &App,
-) -> Option<gpui_component::tag::Tag> {
+) -> Option<gpui_kit::component::tag::Tag> {
     let tone = match col_key {
         "status_code" => {
             if record.redirect_url.is_some() {

@@ -1,13 +1,7 @@
 use std::sync::{Arc, atomic::AtomicBool};
 
 use flume::Receiver;
-use gpui::prelude::FluentBuilder as _;
-use gpui::{
-    App, AppContext, AsyncApp, Context, Entity, FocusHandle, Focusable, InteractiveElement,
-    IntoElement, Menu, MenuItem, ParentElement, Render, ScrollHandle, SharedString,
-    StatefulInteractiveElement, Styled, Subscription, WeakEntity, Window, actions, div, px, svg,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, Icon as UiIcon, Root, Sizable as _, TitleBar, WindowExt,
     button::{Button, ButtonVariants as _},
     global_state::GlobalState,
@@ -15,6 +9,12 @@ use gpui_component::{
     menu::AppMenuBar,
     notification::{Notification, NotificationType},
     v_flex,
+};
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::{
+    App, AppContext, AsyncApp, Context, Entity, FocusHandle, Focusable, InteractiveElement,
+    IntoElement, Menu, MenuItem, ParentElement, Render, ScrollHandle, SharedString,
+    StatefulInteractiveElement, Styled, Subscription, WeakEntity, Window, actions, div, px, svg,
 };
 use shoutingrobin_ui::{Tab, TabBar};
 
@@ -34,19 +34,19 @@ actions!(shoutingrobin_app, [Quit, OpenSettings]);
 
 /// Corner radius of the sidebar and main cards. Deliberately separate from
 /// `theme.radius`, which stays smaller for the controls inside the cards.
-pub(crate) const PANEL_RADIUS: gpui::Pixels = px(8.);
+pub(crate) const PANEL_RADIUS: gpui_kit::Pixels = px(8.);
 
 /// Gutter between the cards and the window edges. Half of it sits on each side
 /// of the split, so the gap between the two cards is the same as the outer one.
-const PANEL_GAP: gpui::Pixels = px(6.);
+const PANEL_GAP: gpui_kit::Pixels = px(6.);
 
 /// Padding inside a segmented trough, around its segments.
-const SEGMENT_TROUGH_PADDING: gpui::Pixels = px(3.);
+const SEGMENT_TROUGH_PADDING: gpui_kit::Pixels = px(3.);
 
 /// Vertical padding inside a single segment of a segmented trough. Content that
 /// replaces a trough in the same row carries this plus `SEGMENT_TROUGH_PADDING`,
 /// so the row keeps its height and the layout below it doesn't shift.
-const SEGMENT_PADDING_Y: gpui::Pixels = px(2.);
+const SEGMENT_PADDING_Y: gpui_kit::Pixels = px(2.);
 
 pub struct ShoutingRobinApp {
     focus_handle: FocusHandle,
@@ -599,7 +599,7 @@ impl ShoutingRobinApp {
     fn export_all_csv(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let snapshot = self.results_grid.read(cx).snapshot(cx);
         let stem = self.export_file_stem(cx);
-        let picked = cx.prompt_for_paths(gpui::PathPromptOptions {
+        let picked = cx.prompt_for_paths(gpui_kit::PathPromptOptions {
             files: false,
             directories: true,
             multiple: false,
@@ -899,10 +899,10 @@ impl ShoutingRobinApp {
     fn on_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
         let settings_view = cx.new(SettingsView::new);
         window.open_dialog(cx, move |dialog, _window, _cx| {
-            dialog.title("Settings").w(gpui::px(960.)).child(
+            dialog.title("Settings").w(gpui_kit::px(960.)).child(
                 div()
                     .id("settings-body")
-                    .h(gpui::px(600.))
+                    .h(gpui_kit::px(600.))
                     .overflow_y_scroll()
                     .child(settings_view.clone()),
             )
@@ -1147,7 +1147,7 @@ impl Render for ShoutingRobinApp {
                     // form is the affordance and the tooltip is the text.
                     .child(div().min_w_0().truncate().child(note.clone()))
                     .tooltip(move |window, cx| {
-                        gpui_component::tooltip::Tooltip::new(note.clone()).build(window, cx)
+                        gpui_kit::component::tooltip::Tooltip::new(note.clone()).build(window, cx)
                     }),
             );
         }
@@ -1356,14 +1356,14 @@ fn build_menu() -> Vec<Menu> {
         Menu {
             name: "Edit".into(),
             items: vec![
-                MenuItem::action("Undo", gpui_component::input::Undo),
-                MenuItem::action("Redo", gpui_component::input::Redo),
+                MenuItem::action("Undo", gpui_kit::component::input::Undo),
+                MenuItem::action("Redo", gpui_kit::component::input::Redo),
                 MenuItem::separator(),
-                MenuItem::action("Cut", gpui_component::input::Cut),
-                MenuItem::action("Copy", gpui_component::input::Copy),
-                MenuItem::action("Paste", gpui_component::input::Paste),
+                MenuItem::action("Cut", gpui_kit::component::input::Cut),
+                MenuItem::action("Copy", gpui_kit::component::input::Copy),
+                MenuItem::action("Paste", gpui_kit::component::input::Paste),
                 MenuItem::separator(),
-                MenuItem::action("Select All", gpui_component::input::SelectAll),
+                MenuItem::action("Select All", gpui_kit::component::input::SelectAll),
             ],
             disabled: false,
         },
@@ -1379,12 +1379,12 @@ fn init_menus(cx: &mut App) {
 fn init_keys(cx: &mut App) {
     cx.bind_keys([
         #[cfg(target_os = "macos")]
-        gpui::KeyBinding::new("cmd-q", Quit, None),
+        gpui_kit::KeyBinding::new("cmd-q", Quit, None),
         #[cfg(not(target_os = "macos"))]
-        gpui::KeyBinding::new("ctrl-q", Quit, None),
+        gpui_kit::KeyBinding::new("ctrl-q", Quit, None),
         #[cfg(target_os = "macos")]
-        gpui::KeyBinding::new("cmd-,", OpenSettings, None),
+        gpui_kit::KeyBinding::new("cmd-,", OpenSettings, None),
         #[cfg(not(target_os = "macos"))]
-        gpui::KeyBinding::new("ctrl-,", OpenSettings, None),
+        gpui_kit::KeyBinding::new("ctrl-,", OpenSettings, None),
     ]);
 }

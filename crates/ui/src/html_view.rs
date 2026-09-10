@@ -1,11 +1,13 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use gpui::{
+use gpui_kit::component::{
+    ActiveTheme, highlighter::SyntaxHighlighter, scroll::ScrollableElement as _,
+};
+use gpui_kit::{
     App, HighlightStyle, IntoElement, ParentElement, RenderOnce, SharedString, Styled, StyledText,
     Window, div, px,
 };
-use gpui_component::{ActiveTheme, highlighter::SyntaxHighlighter, scroll::ScrollableElement as _};
 
 struct CachedHtml {
     text: SharedString,

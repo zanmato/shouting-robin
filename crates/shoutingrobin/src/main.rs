@@ -25,9 +25,9 @@ mod filter_coverage;
 mod parity_export;
 
 use assets::Assets;
-use gpui::{AppContext, SharedString, WindowBounds, WindowOptions, px, size};
-use gpui_component::ThemeRegistry;
-use gpui_platform::application;
+use gpui_kit::application;
+use gpui_kit::component::ThemeRegistry;
+use gpui_kit::{AppContext, SharedString, WindowBounds, WindowOptions, px, size};
 
 use app::ShoutingRobinApp;
 use app_settings::AppSettings;
@@ -39,11 +39,11 @@ fn main() {
     tracing_subscriber::fmt::init();
 
     let app = application()
-        .with_quit_mode(gpui::QuitMode::LastWindowClosed)
+        .with_quit_mode(gpui_kit::QuitMode::LastWindowClosed)
         .with_assets(Assets);
 
     app.run(move |cx| {
-        gpui_component::init(cx);
+        gpui_kit::init(cx);
         gpui_tokio::init(cx);
         ui::fonts::register(cx);
 
@@ -95,29 +95,30 @@ fn main() {
         cx.set_global(update_manager);
         update_manager::UpdateManager::start_polling(cx);
 
-        let bounds = gpui::Bounds::centered(None, size(px(1280.), px(900.)), cx);
+        let bounds = gpui_kit::Bounds::centered(None, size(px(1280.), px(900.)), cx);
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
-            titlebar: Some(gpui::TitlebarOptions {
+            titlebar: Some(gpui_kit::TitlebarOptions {
                 title: Some("shouting robin".into()),
                 appears_transparent: true,
-                traffic_light_position: Some(gpui::Point {
+                traffic_light_position: Some(gpui_kit::Point {
                     x: px(8.0),
                     y: px(6.0),
                 }),
             }),
             app_owns_titlebar_drag: true,
-            window_decorations: Some(gpui::WindowDecorations::Client),
+            inactive_frame_interval: Some(std::time::Duration::from_micros(33_333)),
+            window_decorations: Some(gpui_kit::WindowDecorations::Client),
             window_min_size: Some(size(px(900.), px(600.))),
             focus: true,
             show: true,
-            kind: gpui::WindowKind::Normal,
+            kind: gpui_kit::WindowKind::Normal,
             is_movable: true,
             is_minimizable: true,
             is_resizable: true,
             tabbing_identifier: None,
             display_id: None,
-            window_background: gpui::WindowBackgroundAppearance::Opaque,
+            window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
             app_id: Some("se.zanmato.shoutingrobin".into()),
             icon: None,
         };
@@ -125,7 +126,7 @@ fn main() {
         cx.spawn(async move |cx| {
             cx.open_window(window_options, |window, cx| {
                 let app_entity = cx.new(|cx| ShoutingRobinApp::new(window, cx));
-                cx.new(|cx| gpui_component::Root::new(app_entity, window, cx))
+                cx.new(|cx| gpui_kit::component::Root::new(app_entity, window, cx))
             })?;
 
             Ok::<_, anyhow::Error>(())

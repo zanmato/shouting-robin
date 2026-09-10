@@ -5,7 +5,7 @@ use std::sync::{
 use std::time::Duration;
 
 use flume::{Receiver, Sender};
-use gpui::{App, Global};
+use gpui_kit::{App, Global};
 use spider::features::chrome_common::{
     RequestInterceptConfiguration, WaitForIdleNetwork, WaitForSelector, WebAutomation,
 };

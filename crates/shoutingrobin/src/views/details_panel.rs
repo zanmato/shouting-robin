@@ -1,13 +1,13 @@
 use std::rc::Rc;
 
-use gpui::{
+use gpui_kit::component::{
+    ActiveTheme, Icon as UiIcon, Sizable as _, VirtualListScrollHandle,
+    scroll::ScrollableElement as _, tooltip::Tooltip, v_virtual_list,
+};
+use gpui_kit::{
     AnyElement, App, Context, Entity, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels,
     Render, SharedString, Size, StatefulInteractiveElement, Styled, Window, div,
     prelude::FluentBuilder, px,
-};
-use gpui_component::{
-    ActiveTheme, Icon as UiIcon, Sizable as _, VirtualListScrollHandle,
-    scroll::ScrollableElement as _, tooltip::Tooltip, v_virtual_list,
 };
 
 use crate::a11y_rules::rule_description;
@@ -158,7 +158,7 @@ impl DetailsPanel {
             &self.duplicates_scroll,
             &self.image_references_scroll,
         ] {
-            handle.set_offset(gpui::point(px(0.), px(0.)));
+            handle.set_offset(gpui_kit::point(px(0.), px(0.)));
         }
         self.selected = selection;
         // A new URL is a new set of tabs, and the one that was open may not
@@ -412,14 +412,14 @@ fn vital_tile(
     panel2: Hsla,
 ) -> AnyElement {
     let value_color = match tone {
-        Some(Tone::Ok) => Some(gpui::hsla(142. / 360., 0.71, 0.45, 1.0)),
-        Some(Tone::Warn) => Some(gpui::hsla(38. / 360., 0.92, 0.50, 1.0)),
-        Some(Tone::Err) => Some(gpui::hsla(0. / 360., 0.84, 0.60, 1.0)),
+        Some(Tone::Ok) => Some(gpui_kit::hsla(142. / 360., 0.71, 0.45, 1.0)),
+        Some(Tone::Warn) => Some(gpui_kit::hsla(38. / 360., 0.92, 0.50, 1.0)),
+        Some(Tone::Err) => Some(gpui_kit::hsla(0. / 360., 0.84, 0.60, 1.0)),
         _ => None,
     };
     let mut value_div = div()
         .text_sm()
-        .font_weight(gpui::FontWeight::SEMIBOLD)
+        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
         .child(value);
     if let Some(c) = value_color {
         value_div = value_div.text_color(c);
@@ -466,7 +466,7 @@ fn header_block(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                 .child("URL Details"),
                         ),
                 )
@@ -1355,7 +1355,7 @@ fn headers_section(
                 .child(
                     div()
                         .text_xs()
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
+                        .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(muted)
                         .child(SharedString::from(key.clone())),
                 )
@@ -1406,7 +1406,7 @@ fn image_header_block(image: &ImageDetails, muted: Hsla, border: Hsla) -> AnyEle
                         .child(
                             div()
                                 .text_sm()
-                                .font_weight(gpui::FontWeight::SEMIBOLD)
+                                .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                                 .child("Image Details"),
                         ),
                 )

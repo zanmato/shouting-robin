@@ -1,5 +1,5 @@
-use gpui::{App, Hsla, hsla};
-use gpui_component::{ActiveTheme as _, Sizable as _, tag::Tag};
+use gpui_kit::component::{ActiveTheme as _, Sizable as _, tag::Tag};
+use gpui_kit::{App, Hsla, hsla};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[allow(dead_code)]

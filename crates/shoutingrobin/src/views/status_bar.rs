@@ -1,5 +1,5 @@
-use gpui::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
-use gpui_component::ActiveTheme;
+use gpui_kit::component::ActiveTheme;
+use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
 
 /// Live counts for the footer. Each figure is the number of rows of one kind
 /// the crawl has produced so far, so it only ever goes up.
@@ -44,7 +44,7 @@ impl Render for StatusBar {
             .items_center()
             .gap_4()
             .px_3()
-            .h(gpui::px(28.))
+            .h(gpui_kit::px(28.))
             .bg(theme.background)
             .text_xs()
             .text_color(theme.muted_foreground)

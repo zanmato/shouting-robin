@@ -1,11 +1,11 @@
-use gpui::prelude::FluentBuilder;
-use gpui::{
+use gpui_kit::component::hover_card::HoverCard;
+use gpui_kit::component::menu::{ContextMenuExt, PopupMenuItem};
+use gpui_kit::component::{ActiveTheme, IconName, StyledExt as _, v_flex};
+use gpui_kit::prelude::FluentBuilder;
+use gpui_kit::{
     App, Context, Entity, EventEmitter, FocusHandle, Focusable, InteractiveElement, IntoElement,
     ParentElement, Render, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
-use gpui_component::hover_card::HoverCard;
-use gpui_component::menu::{ContextMenuExt, PopupMenuItem};
-use gpui_component::{ActiveTheme, IconName, StyledExt as _, v_flex};
 
 use crate::crawl::RenderMode;
 use crate::storage::CrawlRow;
@@ -174,7 +174,7 @@ impl Render for CrawlsSidebar {
                             // Inset and round the rows so a selected or hovered
                             // first/last row can't square the sidebar card's
                             // corners - GPUI's content mask is rectangular.
-                            .mx(gpui::px(4.))
+                            .mx(gpui_kit::px(4.))
                             .rounded(theme.radius)
                             .px_2()
                             .py_2()

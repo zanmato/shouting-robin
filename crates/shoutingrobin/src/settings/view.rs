@@ -1,18 +1,18 @@
 use crate::app_database::AppDatabase;
 use crate::app_settings::AppSettings;
 use crate::settings::Settings;
-use gpui::{
-    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
-    ParentElement, Render, SharedString, Styled, Window, px, rems,
-};
-use gpui_component::ThemeRegistry;
-use gpui_component::{
+use gpui_kit::component::ThemeRegistry;
+use gpui_kit::component::{
     ActiveTheme, Sizable,
     select::{SearchableVec, Select, SelectEvent, SelectItem, SelectState},
     setting::{
         NumberFieldOptions, SettingField, SettingGroup, SettingItem, SettingPage,
         Settings as GpuiSettings,
     },
+};
+use gpui_kit::{
+    App, AppContext, Context, Entity, FocusHandle, Focusable, InteractiveElement, IntoElement,
+    ParentElement, Render, SharedString, Styled, Window, px, rems,
 };
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -44,7 +44,7 @@ pub struct SettingsView {
     save_generations: Arc<Mutex<std::collections::HashMap<String, u64>>>,
     ui_font_select: Option<Entity<SelectState<SearchableVec<FontOption>>>>,
     mono_font_select: Option<Entity<SelectState<SearchableVec<FontOption>>>>,
-    _subscriptions: Vec<gpui::Subscription>,
+    _subscriptions: Vec<gpui_kit::Subscription>,
 }
 
 impl SettingsView {
@@ -90,7 +90,7 @@ impl SettingsView {
         let ui_font_select = cx.new(|cx| {
             SelectState::new(
                 ui_items,
-                ui_index.map(|i| gpui_component::IndexPath::default().row(i)),
+                ui_index.map(|i| gpui_kit::component::IndexPath::default().row(i)),
                 window,
                 cx,
             )
@@ -100,7 +100,7 @@ impl SettingsView {
         let mono_font_select = cx.new(|cx| {
             SelectState::new(
                 mono_items,
-                mono_index.map(|i| gpui_component::IndexPath::default().row(i)),
+                mono_index.map(|i| gpui_kit::component::IndexPath::default().row(i)),
                 window,
                 cx,
             )
@@ -570,7 +570,7 @@ impl SettingsView {
                                         .w(px(240.))
                                         .into_any_element()
                                 } else {
-                                    gpui::div().into_any_element()
+                                    gpui_kit::div().into_any_element()
                                 }
                             }
                         }),
@@ -592,7 +592,7 @@ impl SettingsView {
                                         .w(px(240.))
                                         .into_any_element()
                                 } else {
-                                    gpui::div().into_any_element()
+                                    gpui_kit::div().into_any_element()
                                 }
                             }
                         }),
@@ -614,7 +614,7 @@ impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.ensure_font_selects(window, cx);
 
-        gpui::div()
+        gpui_kit::div()
             .track_focus(&self.focus_handle)
             .size_full()
             .child(GpuiSettings::new("shoutingrobin-settings").pages(self.setting_pages(cx)))

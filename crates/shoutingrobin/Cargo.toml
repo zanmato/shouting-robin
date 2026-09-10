@@ -15,9 +15,7 @@ name = "shoutingrobin"
 path = "src/main.rs"
 
 [dependencies]
-gpui = { workspace = true }
-gpui-component = { workspace = true }
-gpui_platform = { workspace = true }
+gpui-kit = { workspace = true }
 gpui_tokio = { path = "../gpui_tokio" }
 shoutingrobin-ui = { path = "../ui" }
 

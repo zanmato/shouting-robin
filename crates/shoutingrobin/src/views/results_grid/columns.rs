@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use gpui::{SharedString, px};
-use gpui_component::table::{Column, ColumnFixed};
+use gpui_kit::component::table::{Column, ColumnFixed};
+use gpui_kit::{SharedString, px};
 
 use crate::crawl::event::PageRecord;
 use crate::views::ResultTab;

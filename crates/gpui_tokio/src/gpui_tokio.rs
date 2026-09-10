@@ -1,6 +1,6 @@
 use std::future::Future;
 
-use gpui::{App, AppContext, Global, ReadGlobal, Task};
+use gpui_kit::{App, AppContext, Global, ReadGlobal, Task};
 
 /// Simple defer implementation - executes a closure when dropped
 struct Defer<F: FnOnce()>(Option<F>);

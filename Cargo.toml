@@ -14,16 +14,9 @@ publish = false
 
 [workspace.dependencies]
 # Core GPUI dependencies
-gpui = { git = "https://github.com/zed-industries/zed" }
-gpui-component = { git = "https://github.com/longbridge/gpui-component/", features = [
-    "tree-sitter-html",
-] }
-gpui_platform = { git = "https://github.com/zed-industries/zed", features = [
-    "font-kit",
-    "x11",
-    "wayland",
-    "runtime_shaders",
-] }
+# The GPUI facade: one dependency for GPUI itself, the platform layer and the
+# component library, all reachable under `gpui_kit::`.
+gpui-kit = { version = "0.6", features = ["tree-sitter-html"] }
 
 # Database
 sqlx = { version = "0.8", features = [

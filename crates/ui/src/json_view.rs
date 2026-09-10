@@ -1,11 +1,11 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use gpui::{
+use gpui_kit::component::{ActiveTheme, highlighter::SyntaxHighlighter};
+use gpui_kit::{
     App, HighlightStyle, IntoElement, ParentElement, RenderOnce, SharedString, Styled, StyledText,
     Window, div, px,
 };
-use gpui_component::{ActiveTheme, highlighter::SyntaxHighlighter};
 
 struct CachedJson {
     formatted: SharedString,

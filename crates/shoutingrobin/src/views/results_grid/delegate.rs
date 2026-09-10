@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
-use gpui::{
-    App, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, div,
-};
-use gpui_component::{
+use gpui_kit::component::{
     ActiveTheme, StyledExt as _,
     table::{ColumnSort, TableDelegate, TableState},
     tooltip::Tooltip,
+};
+use gpui_kit::{
+    App, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
+    StatefulInteractiveElement, Styled, Window, div,
 };
 
 use crate::a11y_rules::rule_description;
@@ -96,7 +96,7 @@ pub struct ResultsDelegate {
     filtered_indices: Vec<usize>,
     flat_rows: Vec<FlatRow>,
     occurrence_counts: HashMap<String, usize>,
-    columns: Vec<gpui_component::table::Column>,
+    columns: Vec<gpui_kit::component::table::Column>,
     pub(super) active_tab: ResultTab,
     issue_filter: IssueFilter,
     pub(super) root_origin: Option<String>,
@@ -790,7 +790,7 @@ impl TableDelegate for ResultsDelegate {
         }
     }
 
-    fn column(&self, col_ix: usize, _: &App) -> gpui_component::table::Column {
+    fn column(&self, col_ix: usize, _: &App) -> gpui_kit::component::table::Column {
         self.columns.get(col_ix).cloned().unwrap_or_default()
     }
 

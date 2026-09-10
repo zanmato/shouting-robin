@@ -14,7 +14,7 @@
 //!   box answers "sans-serif" with, come out with gaps inside words. Google
 //!   Sans has GPOS only and 1000 units to the em, and renders correctly.
 
-use gpui::App;
+use gpui_kit::App;
 
 /// The family name the faces register under, in the PDF markup and in the app.
 pub const FAMILY: &str = "Google Sans";
