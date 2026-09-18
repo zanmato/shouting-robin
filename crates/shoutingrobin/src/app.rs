@@ -51,7 +51,7 @@ const SEGMENT_PADDING_Y: gpui_kit::Pixels = px(2.);
 pub struct ShoutingRobinApp {
     focus_handle: FocusHandle,
     crawl_bar: Entity<CrawlBar>,
-    app_menu_bar: Entity<AppMenuBar>,
+    app_menu_bar: Option<Entity<AppMenuBar>>,
     sidebar: Entity<CrawlsSidebar>,
     sidebar_state: Entity<ResizableState>,
     results_grid: Entity<ResultsGrid>,
@@ -74,7 +74,7 @@ impl ShoutingRobinApp {
         init_menus(cx);
 
         let crawl_bar = cx.new(|cx| CrawlBar::new(window, cx));
-        let app_menu_bar = AppMenuBar::new(cx);
+        let app_menu_bar = (!cfg!(target_os = "macos")).then(|| AppMenuBar::new(cx));
         let results_grid = cx.new(|cx| ResultsGrid::new(window, cx));
         let details_panel = cx.new(|_| DetailsPanel::new());
         let status_bar = cx.new(|_| StatusBar::new());
@@ -952,6 +952,12 @@ impl Render for ShoutingRobinApp {
         let bg = cx.theme().background;
         let fg = cx.theme().foreground;
 
+        let logo_height = if cfg!(target_os = "macos") {
+            px(18.)
+        } else {
+            px(30.)
+        };
+
         let has_baseline = self.results_grid.read(cx).has_baseline(cx);
 
         // The Changes tab only exists while a comparison baseline is active. If
@@ -1223,6 +1229,7 @@ impl Render for ShoutingRobinApp {
                         .items_center()
                         .justify_between()
                         .w_full()
+                        .when(cfg!(target_os = "macos"), |this| this.pr(PANEL_GAP))
                         .child(
                             div()
                                 .flex()
@@ -1231,12 +1238,12 @@ impl Render for ShoutingRobinApp {
                                 .pr_3()
                                 .child(
                                     svg()
-                                        .h(px(30.))
-                                        .w(px(30. * 7.95))
+                                        .h(logo_height)
+                                        .w(logo_height * LOGO_ASPECT_RATIO)
                                         .text_color(window.text_style().color)
                                         .path("img/shouting-robin.svg"),
                                 )
-                                .child(self.app_menu_bar.clone()),
+                                .children(self.app_menu_bar.clone()),
                         )
                         .child(self.render_update_button(cx)),
                 ),
@@ -1342,17 +1349,36 @@ impl Render for ShoutingRobinApp {
     }
 }
 
+/// Width over height of `img/shouting-robin.svg`
+const LOGO_ASPECT_RATIO: f32 = 7.95;
+
 fn build_menu() -> Vec<Menu> {
-    vec![
+    // macOS always shows the first menu as the application menu, titled with
+    // the app's name, and that is where Settings and Quit belong there. They
+    // are all the File menu holds, so it is dropped rather than left empty.
+    let application_menu = if cfg!(target_os = "macos") {
+        Menu {
+            name: "Shouting Robin".into(),
+            items: vec![
+                MenuItem::action("Settings…", OpenSettings),
+                MenuItem::separator(),
+                MenuItem::action("Quit Shouting Robin", Quit),
+            ],
+            disabled: false,
+        }
+    } else {
         Menu {
             name: "File".into(),
             items: vec![
                 MenuItem::action("Settings", OpenSettings),
-                MenuItem::Separator,
+                MenuItem::separator(),
                 MenuItem::action("Quit", Quit),
             ],
             disabled: false,
-        },
+        }
+    };
+    vec![
+        application_menu,
         Menu {
             name: "Edit".into(),
             items: vec![
@@ -1372,8 +1398,10 @@ fn build_menu() -> Vec<Menu> {
 
 fn init_menus(cx: &mut App) {
     cx.set_menus(build_menu());
-    let menu = build_menu().into_iter().map(|menu| menu.owned()).collect();
-    GlobalState::global_mut(cx).set_app_menus(menu);
+    if !cfg!(target_os = "macos") {
+        let menu = build_menu().into_iter().map(|menu| menu.owned()).collect();
+        GlobalState::global_mut(cx).set_app_menus(menu);
+    }
 }
 
 fn init_keys(cx: &mut App) {
