@@ -1120,7 +1120,16 @@ impl Render for ShoutingRobinApp {
                 trough = trough.child(segment);
             }
 
-            filter_left = filter_left.child(trough);
+            // The Ecommerce and Structured Data tabs have more filters than
+            // fit beside the export buttons, so the row scrolls rather than
+            // running under them.
+            filter_left = filter_left.child(
+                div()
+                    .id("issue-filters")
+                    .min_w_0()
+                    .overflow_x_scroll()
+                    .child(trough),
+            );
         } else {
             // No trough on this tab, so carry the trough's and a segment's
             // vertical padding here instead, or the row shrinks and everything
