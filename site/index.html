@@ -1,0 +1,833 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shouting Robin</title>
+<meta name="description" content="A desktop SEO crawler for Linux, macOS and Windows, built for ecommerce. Crawls from your machine and sorts the findings by priority.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Shouting Robin">
+<meta property="og:description" content="A desktop SEO crawler for Linux, macOS and Windows, built for ecommerce. Crawls from your machine and sorts the findings by priority.">
+<meta property="og:image" content="https://zanmato.github.io/shouting-robin/images/overview-latte.webp">
+<meta name="theme-color" content="#edf3f4">
+<link rel="icon" type="image/png" href="images/icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Atkinson+Hyperlegible+Next:ital,wght@0,200..800;1,200..800&family=Atkinson+Hyperlegible+Mono:wght@400;500;700&display=swap">
+<style>
+:root {
+  /* Robin egg blue ground, robin breast orange accent. */
+  --ground: #edf3f4;
+  --surface: #fbfdfd;
+  --sunken: #e0e9eb;
+  --ink: #13202a;
+  --muted: #536877;
+  --line: #cddbe0;
+  --accent: #cf4318;
+  --on-accent: #ffffff;
+  --egg: #9ad6d8;
+  --egg-ink: #1d6a6e;
+  --serp-link: #1a0dab;
+  --issue: #c1272d;
+  --opp: #9a6400;
+  --warn: #2c5fc4;
+  --shadow: 0 32px 64px -34px rgb(19 32 42 / 0.45);
+  --mono: "Atkinson Hyperlegible Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --sans: "Atkinson Hyperlegible Next", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  /* The search preview uses the fonts Google renders results in. */
+  --serp: Arial, "Liberation Sans", Helvetica, sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0f151d;
+    --surface: #161f29;
+    --sunken: #0b1017;
+    --ink: #e5edf2;
+    --muted: #93a5b3;
+    --line: #243241;
+    --accent: #ff7a48;
+    --on-accent: #1c0c04;
+    --egg: #3f8f93;
+    --egg-ink: #9fe3e5;
+  --serp-link: #8ab4f8;
+    --issue: #f87171;
+    --opp: #f0b429;
+    --warn: #7ea8ff;
+    --shadow: 0 32px 80px -32px rgb(0 0 0 / 0.85);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --ground: #0f151d;
+  --surface: #161f29;
+  --sunken: #0b1017;
+  --ink: #e5edf2;
+  --muted: #93a5b3;
+  --line: #243241;
+  --accent: #ff7a48;
+  --on-accent: #1c0c04;
+  --egg: #3f8f93;
+  --egg-ink: #9fe3e5;
+  --serp-link: #8ab4f8;
+  --issue: #f87171;
+  --opp: #f0b429;
+  --warn: #7ea8ff;
+  --shadow: 0 32px 80px -32px rgb(0 0 0 / 0.85);
+  color-scheme: dark;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font: 400 1.0625rem/1.6 var(--sans);
+}
+img { max-width: 100%; height: auto; display: block; }
+a { color: inherit; }
+p { margin: 0; }
+code { font-family: var(--mono); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+
+.wrap { max-width: 76rem; margin-inline: auto; padding-inline: clamp(16px, 4vw, 40px); }
+
+.eyebrow {
+  font: 500 0.8125rem/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.display {
+  font-family: var(--display);
+  font-weight: 800;
+  font-stretch: 78%;
+  font-variation-settings: "opsz" 96;
+  letter-spacing: -0.02em;
+  line-height: 0.96;
+  text-wrap: balance;
+  margin: 0;
+}
+
+/* Header */
+.top { display: flex; align-items: center; gap: 1.25rem 1.75rem; flex-wrap: wrap; padding-block: 1.25rem; }
+.logo img { height: 24px; width: auto; }
+.top nav { display: flex; align-items: center; gap: 1.25rem; margin-left: auto; font-size: 0.9375rem; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--ink); }
+.chip {
+  font: 500 0.75rem/1 var(--mono);
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  text-decoration: none;
+}
+
+/* Hero */
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+  gap: clamp(2rem, 5vw, 4.5rem);
+  align-items: center;
+  padding-block: clamp(2.5rem, 7vw, 5.5rem) clamp(2.5rem, 5vw, 4rem);
+}
+.hero-copy { display: grid; gap: 1.5rem; }
+.hero h1 { font-size: clamp(2.75rem, 5.6vw, 4.75rem); }
+.hero h1 em {
+  font-style: normal;
+  font-stretch: 100%;
+  color: var(--accent);
+}
+.lede { font-size: 1.1875rem; color: var(--muted); max-width: 36rem; }
+.cta { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+.btn {
+  display: inline-flex; align-items: center; gap: 0.55rem;
+  padding: 0.8rem 1.2rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+.btn:hover { transform: translateY(-1px); border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.btn svg { width: 18px; height: 18px; flex: none; }
+
+/* Search result preview, measured live */
+.serp {
+  margin: 0;
+  padding: clamp(1.1rem, 3vw, 1.6rem);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  display: grid;
+  gap: 1.25rem;
+}
+.serp-result { font-family: var(--serp); display: grid; gap: 0.3rem; }
+.serp-site { display: flex; align-items: center; gap: 0.7rem; }
+.serp-site img { width: 28px; height: 28px; border-radius: 50%; background: #fff; border: 1px solid var(--line); padding: 3px; }
+.serp-site span { display: grid; line-height: 1.3; }
+.serp-site b { font-size: 14px; font-weight: 400; color: var(--ink); }
+.serp-site cite { font-size: 12px; font-style: normal; color: var(--muted); }
+.serp-title { margin: 0.15rem 0 0; font: 400 22px/1.3 var(--serp); color: var(--serp-link); }
+.serp-desc { font: 400 14px/1.58 var(--serp); color: var(--muted); }
+.measure { margin: 0; display: grid; gap: 0.9rem; padding-top: 1.1rem; border-top: 1px dashed var(--line); }
+.measure > div { display: grid; grid-template-columns: 6.5rem minmax(0, 1fr) auto; align-items: center; gap: 0.35rem 0.9rem; }
+.measure dt { font: 500 0.75rem/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.measure dd { margin: 0; }
+.measure output { font: 500 0.8125rem/1.2 var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.measure .rule { grid-column: 2 / -1; font-size: 0.8125rem; color: var(--muted); }
+.bar { position: relative; display: block; height: 10px; border-radius: 99px; background: var(--sunken); overflow: hidden; }
+.bar .zone {
+  position: absolute; inset-block: 0;
+  left: calc(var(--lo) / var(--max) * 100%);
+  width: calc((var(--hi) - var(--lo)) / var(--max) * 100%);
+  background: var(--egg);
+  opacity: 0.55;
+}
+.bar .fill {
+  position: absolute; left: 0; inset-block: 3px;
+  width: calc(var(--n) / var(--max) * 100%);
+  max-width: 100%;
+  border-radius: 99px;
+  background: var(--ink);
+  transition: width 0.6s cubic-bezier(.2, .8, .2, 1);
+}
+
+.shot { margin: 0 auto clamp(4rem, 9vw, 7rem); }
+.shot img { width: 100%; border-radius: 14px; box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+.shot figcaption { margin-top: 0.9rem; font-size: 0.875rem; color: var(--muted); }
+
+/* Sections */
+section.block { padding-block: clamp(3rem, 7vw, 5.5rem); border-top: 1px solid var(--line); }
+.head { display: grid; gap: 0.9rem; margin-bottom: clamp(2rem, 4vw, 3rem); max-width: 46rem; }
+.head h2 { font-size: clamp(2.2rem, 5vw, 3.8rem); }
+.head p:not(.eyebrow) { color: var(--muted); font-size: 1.125rem; }
+
+/* Tab groups */
+.groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 clamp(2rem, 5vw, 4rem); }
+.group { display: grid; gap: 0.8rem; align-content: start; padding-block: 1.5rem; border-top: 2px solid var(--ink); }
+.group h3 { margin: 0; font: 800 1.5rem/1.1 var(--display); font-stretch: 85%; }
+.group p { color: var(--muted); }
+.tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+.tabs li {
+  font: 500 0.8125rem/1 var(--mono);
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+/* Tour: one tab per scene */
+.tour-tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1.75rem; }
+.tour-tabs button {
+  font: 600 0.9375rem/1 var(--sans);
+  padding: 0.65rem 1rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tour-tabs button:hover { color: var(--ink); border-color: var(--muted); }
+.tour-tabs button[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.panel { display: grid; gap: clamp(1.5rem, 3vw, 2.25rem); }
+.panel[hidden] { display: none; }
+.panel-copy { max-width: 46rem; }
+.panel + .panel { margin-top: 3rem; }
+.js .panel + .panel { margin-top: 0; }
+.js .panel h3 { display: none; }
+.panel h3 { margin: 0 0 0.75rem; font: 800 1.5rem/1.15 var(--display); font-stretch: 85%; }
+.panel p { color: var(--muted); }
+.panel p + p { margin-top: 0.75rem; }
+.panel img, .ecommerce-shot img { width: 100%; border-radius: 14px; box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+.ecommerce-shot { margin: clamp(2.5rem, 5vw, 3.5rem) 0 0; }
+.ecommerce-shot figcaption { margin-top: 0.9rem; font-size: 0.875rem; color: var(--muted); }
+
+/* Ecommerce */
+.split { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: clamp(2rem, 5vw, 4.5rem); align-items: start; }
+.split .head { margin-bottom: 1.25rem; }
+.checklist { list-style: none; margin: 1.5rem 0 0; padding: 0; display: grid; gap: 0.6rem; }
+.checklist li { position: relative; padding-left: 1.4rem; }
+.checklist code { font-size: 0.8125rem; color: var(--egg-ink); }
+.checklist li::before { content: ""; position: absolute; left: 0; top: 0.6em; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--accent); }
+.prose { color: var(--muted); font-size: 1.0625rem; max-width: 36rem; }
+.prose code { font-size: 0.875em; color: var(--egg-ink); }
+
+.gtin {
+  display: grid; gap: 1.1rem;
+  padding: clamp(1.1rem, 3vw, 1.6rem);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--surface);
+}
+.gtin label { font: 500 0.75rem/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.gtin input {
+  width: 100%;
+  font: 500 1.375rem/1.2 var(--mono);
+  letter-spacing: 0.08em;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--sunken);
+  color: var(--ink);
+}
+.gtin input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.digits { display: grid; grid-template-columns: repeat(var(--count, 13), minmax(0, 1fr)); gap: 3px; font-variant-numeric: tabular-nums; }
+.digit { display: grid; gap: 2px; text-align: center; }
+.digit b { font: 700 1rem/1.9 var(--mono); background: var(--sunken); border-radius: 5px; }
+.digit small { font: 500 0.6875rem/1 var(--mono); color: var(--muted); }
+.digit.check b { background: var(--egg); color: var(--ink); }
+.digit.check.bad b { background: color-mix(in srgb, var(--issue) 25%, transparent); }
+.gtin .sum { font: 500 0.875rem/1.5 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
+.verdict { display: flex; align-items: center; gap: 0.6rem; font-weight: 700; }
+.verdict::before { content: ""; width: 0.7rem; height: 0.7rem; border-radius: 50%; background: var(--egg-ink); flex: none; }
+.verdict.bad { color: var(--issue); }
+.verdict.bad::before { background: var(--issue); }
+.gtin .note { font-size: 0.8125rem; color: var(--muted); }
+
+/* Local facts */
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 clamp(1.5rem, 3vw, 2.5rem); }
+.fact { display: grid; gap: 0.6rem; align-content: start; padding-top: 1.25rem; border-top: 2px solid var(--ink); }
+.fact h3 { margin: 0; font: 800 1.375rem/1.1 var(--display); font-stretch: 85%; }
+.fact p { color: var(--muted); font-size: 0.9875rem; }
+
+/* Download */
+.platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.platform {
+  display: grid; align-content: start; gap: 0.9rem;
+  padding: 1.35rem;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+}
+.platform.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.platform h3 { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin: 0; font: 800 1.5rem/1.1 var(--display); font-stretch: 85%; }
+.platform h3 small { font: 500 0.75rem/1 var(--mono); color: var(--muted); }
+.platform .yours { display: none; font: 500 0.75rem/1 var(--mono); color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; }
+.platform.current .yours { display: block; }
+.platform .links { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.platform .links .btn { padding: 0.6rem 0.95rem; font-size: 0.9375rem; }
+.platform.current .links .btn:first-child { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.platform p { color: var(--muted); font-size: 0.9375rem; }
+.cmd { display: flex; align-items: stretch; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken); overflow: hidden; }
+.cmd code { flex: 1; min-width: 0; padding: 0.55rem 0.7rem; font-size: 0.8125rem; line-height: 1.5; overflow-x: auto; white-space: nowrap; }
+.cmd button {
+  flex: none; border: 0; border-left: 1px solid var(--line);
+  background: transparent; color: var(--muted);
+  font: 500 0.75rem/1 var(--mono); padding-inline: 0.7rem; cursor: pointer;
+}
+.cmd button:hover { color: var(--ink); }
+
+.notes { margin-top: clamp(2.5rem, 5vw, 3.5rem); display: grid; grid-template-columns: minmax(0, 4fr) minmax(0, 8fr); gap: clamp(1.5rem, 4vw, 3rem); }
+.notes h3 { margin: 0 0 0.4rem; font: 800 1.5rem/1.15 var(--display); font-stretch: 85%; }
+.notes .meta { color: var(--muted); font-size: 0.9375rem; display: grid; gap: 0.5rem; }
+.notes details { border-top: 1px solid var(--line); padding-block: 0.8rem; }
+.notes details:last-child { border-bottom: 1px solid var(--line); }
+.notes summary { cursor: pointer; font: 500 0.875rem/1.4 var(--mono); text-transform: uppercase; letter-spacing: 0.08em; }
+.notes ul { margin: 0.75rem 0 0.25rem; padding-left: 1.2rem; display: grid; gap: 0.35rem; color: var(--muted); }
+.notes li::marker { color: var(--accent); }
+
+footer { border-top: 1px solid var(--line); padding-block: 2.5rem 3rem; color: var(--muted); font-size: 0.9375rem; }
+footer .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 2rem; }
+footer nav { display: flex; flex-wrap: wrap; gap: 0.5rem 1.25rem; }
+footer img { height: 18px; width: auto; }
+footer .credit { margin-left: auto; }
+
+@media (max-width: 960px) {
+  .hero, .split, .notes { grid-template-columns: minmax(0, 1fr); }
+  .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2rem clamp(1.5rem, 3vw, 2.5rem); }
+  .platforms { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .top nav .optional { display: none; }
+  .groups, .facts { grid-template-columns: minmax(0, 1fr); }
+  .measure > div { grid-template-columns: minmax(0, 1fr) auto; }
+  .measure dt { grid-column: 1 / -1; }
+  .measure .rule { grid-column: 1 / -1; }
+  footer .credit { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
+/* Screenshots open full size in a dialog. */
+img[width="1600"] { cursor: zoom-in; }
+.zoom {
+  border: 0; padding: 0; margin: auto;
+  max-width: none; max-height: none;
+  background: transparent; overflow: visible;
+}
+.zoom::backdrop { background: rgb(0 0 0 / 0.8); }
+.zoom img {
+  display: block; width: auto; height: auto;
+  max-width: calc(100vw - 32px); max-height: calc(100vh - 32px);
+  border-radius: 12px; box-shadow: var(--shadow), 0 0 0 1px var(--line);
+  cursor: zoom-out;
+}
+.zoom-close {
+  position: fixed; top: 16px; right: 16px;
+  display: grid; place-items: center; width: 40px; height: 40px; padding: 0;
+  border: 1px solid var(--line); border-radius: 50%;
+  background: var(--surface); color: var(--ink); cursor: pointer;
+}
+.zoom-close svg { width: 20px; height: 20px; }
+.zoom[open], .zoom[open]::backdrop { animation: zoom-fade 0.18s ease-out; }
+@keyframes zoom-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .zoom[open], .zoom[open]::backdrop { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<header class="wrap top">
+  <a class="logo" href="./" aria-label="Shouting Robin home">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/logo-dark.png">
+      <img src="images/logo-light.png" alt="Shouting Robin" width="190" height="24">
+    </picture>
+  </a>
+  <nav aria-label="Main">
+    <a class="optional" href="#checks">Checks</a>
+    <a class="optional" href="#tour">Tour</a>
+    <a class="optional" href="#ecommerce">Ecommerce</a>
+    <a href="#download">Download</a>
+    <a href="https://github.com/zanmato/shouting-robin">GitHub</a>
+    <a class="chip" href="https://github.com/zanmato/shouting-robin/releases/tag/v__VERSION__">v__VERSION__</a>
+  </nav>
+</header>
+
+<main>
+  <section class="wrap hero">
+    <div class="hero-copy">
+      <p class="eyebrow">Rust and GPUI · Apache 2.0</p>
+      <h1 class="display">A lightweight cross platform desktop <em>SEO crawler</em></h1>
+      <p class="lede">Shouting Robin runs on Linux, macOS and Windows. It crawls a site from your machine, can render pages in Chrome, and sorts the findings by priority. Product pages get their own checks, including GTIN check digits.</p>
+      <div class="cta">
+        <a class="btn primary" id="hero-download" href="#download">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"/><path d="m7 10 5 5 5-5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+          <span id="hero-download-label">Download v__VERSION__</span>
+        </a>
+        <a class="btn" href="https://github.com/zanmato/shouting-robin">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+          Source on GitHub
+        </a>
+      </div>
+    </div>
+
+    <figure class="serp" aria-label="This page as a search result, measured the way Shouting Robin measures every page">
+      <div class="serp-result">
+        <div class="serp-site">
+          <img src="images/icon.png" alt="">
+          <span><b>Shouting Robin</b><cite>https://zanmato.github.io › shouting-robin</cite></span>
+        </div>
+        <h2 class="serp-title"><span id="serp-title">Shouting Robin, a desktop SEO crawler for ecommerce</span></h2>
+        <p class="serp-desc" id="serp-desc">A desktop SEO crawler for Linux, macOS and Windows, built for ecommerce. Crawls from your machine and sorts the findings by priority.</p>
+      </div>
+      <dl class="measure">
+        <div>
+          <dt>Title</dt>
+          <dd><span class="bar" id="title-bar" style="--n: 51; --max: 75; --lo: 30; --hi: 60"><span class="zone"></span><span class="fill"></span></span></dd>
+          <dd><output id="title-out">51 chars</output></dd>
+          <dd class="rule">Flagged below 30 or over 60 characters</dd>
+        </div>
+        <div>
+          <dt>Description</dt>
+          <dd><span class="bar" id="desc-bar" style="--n: 133; --max: 190; --lo: 70; --hi: 160"><span class="zone"></span><span class="fill"></span></span></dd>
+          <dd><output id="desc-out">133 chars</output></dd>
+          <dd class="rule">Flagged below 70 or over 160 characters</dd>
+        </div>
+      </dl>
+    </figure>
+  </section>
+
+  <figure class="wrap shot">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/overview-mocha.webp">
+      <img src="images/overview-latte.webp" width="1600" height="1000" alt="Shouting Robin showing the Overview tab of a Chrome crawl of its test site, with each finding's type, priority, URL count and the count from the previous crawl">
+    </picture>
+    <figcaption>The Overview tab after a crawl of the test site in the repository. Findings are grouped into issues, opportunities and warnings and sorted by priority. When the site has been crawled before, the previous count is shown next to each one.</figcaption>
+  </figure>
+
+  <section class="block" id="checks">
+    <div class="wrap">
+      <div class="head">
+        <h2 class="display">Checks</h2>
+        <p>The results of a crawl are split into tabs. Most tabs have filters for the problems they check, and any tab can be exported as CSV.</p>
+      </div>
+      <div class="groups">
+        <div class="group">
+          <h3>Crawl and response</h3>
+          <p>Every URL with its status code, content type, indexability, crawl depth and link score. Broken links, redirect chains and loops, and URLs with parameters are flagged.</p>
+          <ul class="tabs"><li>Internal</li><li>External</li><li>Response Codes</li><li>Links</li><li>URL</li><li>Site Structure</li></ul>
+        </div>
+        <div class="group">
+          <h3>On the page</h3>
+          <p>Titles and descriptions measured in characters and in pixels, H1 and H2 checks, exact and near duplicate content, and images that are broken, over 100 KB, or missing alt text or size attributes.</p>
+          <ul class="tabs"><li>Page Titles</li><li>Meta Desc</li><li>H1</li><li>H2</li><li>Content</li><li>Images</li></ul>
+        </div>
+        <div class="group">
+          <h3>Indexing</h3>
+          <p>Canonicals, robots directives, hreflang return tags, language codes and x-default, and sitemap URLs that are not indexable, do not return 200 or were not found by following links.</p>
+          <ul class="tabs"><li>Canonicals</li><li>Directives</li><li>Hreflang</li><li>Sitemaps</li></ul>
+        </div>
+        <div class="group">
+          <h3>Quality</h3>
+          <p>Structured data checked against the required and recommended properties for types such as Product, Article, Recipe and JobPosting, and missing security headers. Chrome crawls add LCP, CLS, FCP and TTFB, and axe-core accessibility audits.</p>
+          <ul class="tabs"><li>Structured Data</li><li>Performance</li><li>Accessibility</li><li>Security</li></ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="tour">
+    <div class="wrap">
+      <div class="head">
+        <h2 class="display">Tour</h2>
+        <p>Select a row to show the page in the details panel next to the grid.</p>
+      </div>
+
+      <div class="tour-tabs" role="tablist" aria-label="Tour" hidden>
+        <button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="true">Page details</button>
+        <button type="button" role="tab" id="tab-a11y" aria-controls="panel-a11y" aria-selected="false" tabindex="-1">Accessibility</button>
+        <button type="button" role="tab" id="tab-changes" aria-controls="panel-changes" aria-selected="false" tabindex="-1">Changes</button>
+      </div>
+
+      <div class="panel" id="panel-details" role="tabpanel" aria-labelledby="tab-details">
+        <div class="panel-copy">
+          <h3>Page details</h3>
+          <p>The details panel shows the status and indexability of the page, its title, description and headings with their lengths, and a preview of the search result. Structured data, link metrics and response headers follow below.</p>
+          <p>Inlinks and Outlinks list the links to and from the page.</p>
+        </div>
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="images/details-mocha.webp">
+          <img src="images/details-latte.webp" width="1600" height="1000" loading="lazy" alt="The Page Titles tab with one page selected, and its details, title pixel width and search result preview in the panel beside the grid">
+        </picture>
+      </div>
+
+      <div class="panel" id="panel-a11y" role="tabpanel" aria-labelledby="tab-a11y">
+        <div class="panel-copy">
+          <h3>Accessibility</h3>
+          <p>Chrome crawls run axe-core on every page. Each violation is a row with its rule, impact, the element it found and its HTML.</p>
+          <p>The Performance tab in the same crawl has LCP, CLS, FCP and TTFB for each page.</p>
+        </div>
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="images/accessibility-mocha.webp">
+          <img src="images/accessibility-latte.webp" width="1600" height="1000" loading="lazy" alt="The Accessibility tab listing axe-core violations by page, rule and impact, with one page selected">
+        </picture>
+      </div>
+
+      <div class="panel" id="panel-changes" role="tabpanel" aria-labelledby="tab-changes">
+        <div class="panel-copy">
+          <h3>Changes</h3>
+          <p>A crawl is compared with the previous crawl of the same URL. The Changes tab lists pages that were added or removed, and pages whose status, indexability, title, H1, meta description or word count changed.</p>
+          <p>Earlier crawls are listed in the sidebar. Open one to see its results, or recrawl it with the settings it ran with.</p>
+        </div>
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="images/changes-mocha.webp">
+          <img src="images/changes-latte.webp" width="1600" height="1000" loading="lazy" alt="The Changes tab comparing a Chrome crawl with an HTTP crawl of the same site from three days earlier, with two crawls in the sidebar">
+        </picture>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="ecommerce">
+    <div class="wrap">
+      <div class="split">
+        <div>
+          <div class="head">
+            <h2 class="display">Ecommerce</h2>
+          </div>
+          <p class="prose">A page counts as a product page when it has Product structured data or an <code>og:type</code> of product. The Ecommerce tab reads the product's data and flags:</p>
+          <ul class="checklist">
+            <li>Products without a price, <code>availability</code>, SKU, GTIN, brand or image</li>
+            <li>Products without <code>review</code> or <code>aggregateRating</code></li>
+            <li>GTINs with the wrong length or check digit</li>
+            <li>Indexable product pages that are out of stock</li>
+            <li>Product pages without <code>BreadcrumbList</code> data</li>
+          </ul>
+        </div>
+
+        <form class="gtin" id="gtin-form" autocomplete="off">
+          <label for="gtin">Try a GTIN</label>
+          <input id="gtin" name="gtin" inputmode="numeric" value="4006381333931" spellcheck="false" aria-describedby="gtin-verdict">
+          <div class="digits" id="gtin-digits" aria-hidden="true"></div>
+          <p class="sum" id="gtin-sum"></p>
+          <p class="verdict" id="gtin-verdict" aria-live="polite">Valid GTIN-13</p>
+          <p class="note">Weights alternate 3 and 1 from the right. The check digit brings the sum up to the next multiple of ten. The crawler runs the same check on every product.</p>
+        </form>
+      </div>
+
+      <figure class="ecommerce-shot">
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="images/ecommerce-mocha.webp">
+          <img src="images/ecommerce-latte.webp" width="1600" height="1000" loading="lazy" alt="The Ecommerce tab with filters for missing price, availability, SKU, GTIN and brand, and the product page of the test site selected">
+        </picture>
+        <figcaption>The Ecommerce tab. The test site has one product page, reached by two URLs.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="wrap">
+      <div class="head">
+        <h2 class="display">Features</h2>
+      </div>
+      <div class="facts">
+        <div class="fact"><h3>History</h3><p>Every crawl is saved in a local SQLite database. Open, recrawl or delete earlier crawls from the sidebar.</p></div>
+        <div class="fact"><h3>Chrome rendering</h3><p>Turn on Chrome to crawl pages after JavaScript has run. The server HTML is fetched as well, so content that only exists after rendering is flagged.</p></div>
+        <div class="fact"><h3>Reports</h3><p>Export the Overview as a PDF report with sample URLs for each finding, the current tab as CSV, or every tab as CSV files at once.</p></div>
+        <div class="fact"><h3>Over 90 checks</h3><p>From title pixel widths and hreflang return tags to GTIN check digits and security headers. Each check is a filter on its tab, so the URLs it flags are one click away.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block" id="download">
+    <div class="wrap">
+      <div class="head">
+        <h2 class="display">Download Shouting Robin __VERSION__</h2>
+        <p>Checksums for every file are in <a href="https://github.com/zanmato/shouting-robin/releases/download/v__VERSION__/SHA256SUMS">SHA256SUMS</a>.</p>
+      </div>
+
+      <div class="platforms">
+        <article class="platform" data-os="mac">
+          <span class="yours">Your system</span>
+          <h3>macOS <small>Apple silicon</small></h3>
+          <div class="links">
+            <a class="btn" href="https://github.com/zanmato/shouting-robin/releases/download/v__VERSION__/shoutingrobin-macos-arm64.tar.gz">Shouting Robin.app</a>
+          </div>
+          <div class="cmd"><code>brew install --cask zanmato/tap/shouting-robin</code><button type="button">Copy</button></div>
+          <p>The app isn't notarized yet. If you download it yourself, clear the quarantine flag after unpacking:</p>
+          <div class="cmd"><code>xattr -r -d com.apple.quarantine "Shouting Robin.app"</code><button type="button">Copy</button></div>
+        </article>
+
+        <article class="platform" data-os="windows">
+          <span class="yours">Your system</span>
+          <h3>Windows <small>x86_64</small></h3>
+          <div class="links">
+            <a class="btn" href="https://github.com/zanmato/shouting-robin/releases/download/v__VERSION__/shoutingrobin-windows-x86_64.exe">shoutingrobin.exe</a>
+          </div>
+          <p>A single executable, no installer.</p>
+        </article>
+
+        <article class="platform" data-os="linux">
+          <span class="yours">Your system</span>
+          <h3>Linux <small>x86_64</small></h3>
+          <div class="links">
+            <a class="btn" href="https://github.com/zanmato/shouting-robin/releases/download/v__VERSION__/shoutingrobin___VERSION___amd64.deb">.deb package</a>
+            <a class="btn" href="https://github.com/zanmato/shouting-robin/releases/download/v__VERSION__/shoutingrobin-linux-x86_64">Binary</a>
+          </div>
+          <div class="cmd"><code>sudo apt install ./shoutingrobin___VERSION___amd64.deb</code><button type="button">Copy</button></div>
+          <p>Chrome or Chromium is only needed for Chrome crawls.</p>
+        </article>
+      </div>
+
+      <div class="notes">
+        <div>
+          <h3>What's new in __VERSION__</h3>
+          <div class="meta">
+            <p>Released __RELEASE_DATE__</p>
+            <p><a href="https://github.com/zanmato/shouting-robin/blob/main/CHANGELOG.md">Full changelog</a> · <a href="https://github.com/zanmato/shouting-robin/releases">All releases</a></p>
+          </div>
+        </div>
+        <div>
+<!-- __CHANGELOG__ -->
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="images/logo-dark.png">
+      <img src="images/logo-light.png" alt="Shouting Robin" width="142" height="18">
+    </picture>
+    <nav aria-label="Project">
+      <a href="https://github.com/zanmato/shouting-robin">Repository</a>
+      <a href="https://github.com/zanmato/shouting-robin/issues">Issues</a>
+      <a href="https://github.com/zanmato/shouting-robin/releases">Releases</a>
+      <a href="https://github.com/zanmato/shouting-robin/blob/main/LICENSE">Apache 2.0</a>
+    </nav>
+    <p class="credit">Built with <a href="https://www.gpui.rs">GPUI</a>, <a href="https://github.com/longbridge/gpui-kit">gpui-kit</a> and <a href="https://github.com/spider-rs/spider">Spider</a>. Themes from <a href="https://catppuccin.com">Catppuccin</a>. Icons from <a href="https://lucide.dev">Lucide</a>.</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  var ua = navigator.userAgent;
+  var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "";
+  var os = null;
+  if (/mac/i.test(platform) || /Macintosh/.test(ua)) os = "mac";
+  else if (/win/i.test(platform) || /Windows/.test(ua)) os = "windows";
+  else if (/linux|x11/i.test(platform + ua) && !/Android/.test(ua)) os = "linux";
+
+  var names = { mac: "macOS", windows: "Windows", linux: "Linux" };
+  var card = os && document.querySelector('.platform[data-os="' + os + '"]');
+  if (card) {
+    card.classList.add("current");
+    card.parentNode.prepend(card);
+    document.getElementById("hero-download").href = card.querySelector(".links .btn").href;
+    document.getElementById("hero-download-label").textContent = "Download for " + names[os];
+  }
+
+  document.querySelectorAll(".cmd button").forEach(function (button) {
+    button.addEventListener("click", function () {
+      var text = button.previousElementSibling.textContent;
+      navigator.clipboard.writeText(text).then(function () {
+        button.textContent = "Copied";
+        setTimeout(function () { button.textContent = "Copy"; }, 1500);
+      });
+    });
+  });
+
+  // Tour: without JavaScript every panel shows in turn, with it one at a time.
+  var tablist = document.querySelector(".tour-tabs");
+  var tabs = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
+  function select(tab, focus) {
+    tabs.forEach(function (other) {
+      var selected = other === tab;
+      other.setAttribute("aria-selected", selected ? "true" : "false");
+      other.tabIndex = selected ? 0 : -1;
+      document.getElementById(other.getAttribute("aria-controls")).hidden = !selected;
+    });
+    if (focus) tab.focus();
+  }
+  document.documentElement.classList.add("js");
+  tablist.hidden = false;
+  select(tabs[0], false);
+  tabs.forEach(function (tab, index) {
+    tab.addEventListener("click", function () { select(tab, false); });
+    tab.addEventListener("keydown", function (event) {
+      var next = null;
+      if (event.key === "ArrowRight") next = tabs[(index + 1) % tabs.length];
+      else if (event.key === "ArrowLeft") next = tabs[(index - 1 + tabs.length) % tabs.length];
+      else if (event.key === "Home") next = tabs[0];
+      else if (event.key === "End") next = tabs[tabs.length - 1];
+      if (next) {
+        event.preventDefault();
+        select(next, true);
+      }
+    });
+  });
+
+  // Search preview: characters and rendered pixel width, as the crawler reports them.
+  function measure(textId, barId, outId) {
+    var el = document.getElementById(textId);
+    var chars = Array.from(el.textContent.trim()).length;
+    var range = document.createRange();
+    range.selectNodeContents(el);
+    var rects = range.getClientRects();
+    var px = 0;
+    for (var i = 0; i < rects.length; i++) px += rects[i].width;
+    document.getElementById(barId).style.setProperty("--n", chars);
+    document.getElementById(outId).textContent = chars + " chars · " + Math.round(px) + " px";
+  }
+  function measureAll() {
+    measure("serp-title", "title-bar", "title-out");
+    measure("serp-desc", "desc-bar", "desc-out");
+  }
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(measureAll);
+
+  // GTIN check digit, weights 3 and 1 alternating from the rightmost data digit.
+  var input = document.getElementById("gtin");
+  var digitsEl = document.getElementById("gtin-digits");
+  var sumEl = document.getElementById("gtin-sum");
+  var verdict = document.getElementById("gtin-verdict");
+
+  function renderGtin() {
+    var value = input.value.replace(/\s+/g, "");
+    digitsEl.textContent = "";
+    sumEl.textContent = "";
+    verdict.classList.remove("bad");
+
+    if (!/^\d+$/.test(value)) {
+      verdict.classList.add("bad");
+      verdict.textContent = value ? "Only digits belong in a GTIN" : "Enter a GTIN to check it";
+      return;
+    }
+    if ([8, 12, 13, 14].indexOf(value.length) === -1) {
+      verdict.classList.add("bad");
+      verdict.textContent = "Invalid length, " + value.length + " digits. GTINs have 8, 12, 13 or 14.";
+      return;
+    }
+
+    var data = value.slice(0, -1);
+    var given = Number(value.slice(-1));
+    var sum = 0;
+    var cells = [];
+    for (var i = 0; i < data.length; i++) {
+      var weight = (data.length - i) % 2 === 1 ? 3 : 1;
+      sum += Number(data[i]) * weight;
+      cells.push([data[i], "×" + weight, false]);
+    }
+    var expected = (10 - (sum % 10)) % 10;
+    cells.push([String(given), "check", true]);
+
+    digitsEl.style.setProperty("--count", cells.length);
+    cells.forEach(function (cell) {
+      var d = document.createElement("span");
+      d.className = "digit" + (cell[2] ? " check" + (given === expected ? "" : " bad") : "");
+      var b = document.createElement("b");
+      b.textContent = cell[0];
+      var s = document.createElement("small");
+      s.textContent = cell[1];
+      d.append(b, s);
+      digitsEl.append(d);
+    });
+
+    sumEl.textContent = "Weighted sum " + sum + ", so the check digit is " + expected + ".";
+    if (given === expected) {
+      verdict.textContent = "Valid GTIN-" + value.length;
+    } else {
+      verdict.classList.add("bad");
+      verdict.textContent = "Invalid GTIN-" + value.length + ", ends in " + given + " but should end in " + expected;
+    }
+  }
+
+  input.addEventListener("input", renderGtin);
+  document.getElementById("gtin-form").addEventListener("submit", function (e) { e.preventDefault(); });
+  renderGtin();
+
+  var zoom = document.createElement("dialog");
+  zoom.className = "zoom";
+  zoom.innerHTML = '<button type="button" class="zoom-close" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><img alt="">';
+  document.body.append(zoom);
+  var zoomImage = zoom.querySelector("img");
+  zoom.addEventListener("click", function () {
+    zoom.close();
+  });
+  document.querySelectorAll('img[width="1600"]').forEach(function (image) {
+    function open() {
+      // currentSrc is the source the page shows, so the dark theme gets the dark screenshot.
+      zoomImage.src = image.currentSrc || image.src;
+      zoomImage.alt = image.alt;
+      zoom.showModal();
+    }
+    image.tabIndex = 0;
+    image.setAttribute("role", "button");
+    image.setAttribute("aria-haspopup", "dialog");
+    image.addEventListener("click", open);
+    image.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        open();
+      }
+    });
+  });
+})();
+</script>
+</body>
+</html>

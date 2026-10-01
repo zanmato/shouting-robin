@@ -188,3 +188,14 @@ jobs:
             release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Releases created with GITHUB_TOKEN do not trigger other workflows, so the
+  # site is published from here rather than on a release event.
+  pages:
+    name: Publish site
+    needs: [release]
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/pages.yml

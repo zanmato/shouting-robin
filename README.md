@@ -24,6 +24,17 @@ A modern, desktop SEO crawler built with [GPUI](https://www.gpui.rs) and [gpui-c
 
 **IMPORTANT:** After downloading you have to run `xattr -r -d com.apple.quarantine ShoutingRobin.app` in the folder of the app since the app isn't notarized.
 
+## Website
+
+The site at <https://zanmato.github.io/shouting-robin> is built from `site/`
+with `scripts/build-site` and published by the release workflow.
+
+Its screenshots in `docs/images/screenshots` come from
+`scripts/screenshots/capture`. The script builds Shouting Robin with the
+`screenshots` feature and runs it on a virtual X display against a throwaway
+data directory, showing two crawls of `test-site/` recorded in
+`scripts/screenshots/crawls.sql`.
+
 ## License
 
 Apache-2.0
