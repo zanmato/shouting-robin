@@ -395,6 +395,16 @@ impl ShoutingRobinApp {
         cx.notify();
     }
 
+    /// Shows `tab` with its filter reset to all rows.
+    pub(crate) fn select_tab(&mut self, tab: ResultTab, cx: &mut Context<Self>) {
+        self.active_tab = tab;
+        self.issue_filter = IssueFilter::All;
+        self.results_grid.update(cx, |grid, cx| {
+            grid.switch_tab(tab, cx);
+        });
+        cx.notify();
+    }
+
     /// True for the tabs whose every column is measured in a browser. Without
     /// JavaScript rendering they can only ever be empty, so they are hidden
     /// rather than left to look broken.
@@ -992,11 +1002,7 @@ impl Render for ShoutingRobinApp {
                 let visible_tabs = visible_tabs.clone();
                 move |this, ix: &usize, _w, cx| {
                     if let Some(tab) = visible_tabs.get(*ix).copied() {
-                        this.active_tab = tab;
-                        this.issue_filter = IssueFilter::All;
-                        this.results_grid.update(cx, |grid, cx| {
-                            grid.switch_tab(tab, cx);
-                        });
+                        this.select_tab(tab, cx);
                     }
                 }
             }))
