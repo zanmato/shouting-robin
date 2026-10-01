@@ -22,7 +22,13 @@ A modern, desktop SEO crawler built with [GPUI](https://www.gpui.rs) and [gpui-c
 
 ## macOS
 
-**IMPORTANT:** After downloading you have to run `xattr -r -d com.apple.quarantine ShoutingRobin.app` in the folder of the app since the app isn't notarized.
+Install with [Homebrew](https://brew.sh):
+
+```bash
+brew install --cask zanmato/tap/shouting-robin
+```
+
+**IMPORTANT:** If you download the release manually you have to run `xattr -r -d com.apple.quarantine "Shouting Robin.app"` in the folder of the app since the app isn't notarized.
 
 ## Website
 
