@@ -681,6 +681,7 @@ impl CrawlEngine {
                     // crawl. No body is fetched or parsed here.
                     for resource in resource_timings {
                         if !resource.url.starts_with("http")
+                            || resource.is_interception_stub()
                             || !seen_resources.insert(resource.url.clone())
                         {
                             continue;
@@ -2187,6 +2188,21 @@ struct ResourceTiming {
     content_type: Option<String>,
 }
 
+impl ResourceTiming {
+    /// Whether the request interception blocked this (an analytics script, an
+    /// ad) so it never reached the server. Chromey answers a blocked request
+    /// with an empty 200 of its own, and the entry reports that as the status:
+    /// `cdn.invalid/analytics.js`, a host that cannot resolve, came back as
+    /// 200. The stub is told apart by having no `Content-Type`, which a real
+    /// response almost always carries. Dropping the entry leaves the URL to the
+    /// resource pass, which requests it and records what the server says.
+    fn is_interception_stub(&self) -> bool {
+        self.status == 200
+            && self.size == 0
+            && self.content_type.as_deref().is_none_or(str::is_empty)
+    }
+}
+
 /// Reads `performance.getEntriesByType('resource')` from the rendered page.
 /// This is a single lightweight evaluate plus a small JSON parse; it never
 /// touches the network or parses any resource body.
@@ -3052,6 +3068,37 @@ mod out_of_band_fetch_tests {
         assert_eq!(
             plan_canonical_fetches(&declared, &recorded(&[]), "https://example.com").len(),
             1
+        );
+    }
+}
+
+#[cfg(test)]
+mod resource_timing_tests {
+    use super::ResourceTiming;
+
+    fn timing(json: &str) -> ResourceTiming {
+        serde_json::from_str(json).unwrap()
+    }
+
+    /// The entries Chrome reported for one page with the crawl's interception
+    /// on: a blocked analytics script, a same-site script, and an image whose
+    /// host could not resolve.
+    #[test]
+    fn only_the_blocked_request_is_a_stub() {
+        let blocked = timing(
+            r#"{"url":"https://cdn.invalid/analytics.js","type":"script","size":0,"status":200,"content_type":null}"#,
+        );
+        let served = timing(
+            r#"{"url":"http://127.0.0.1:8000/app.js","type":"script","size":0,"status":200,"content_type":"text/javascript"}"#,
+        );
+        let failed = timing(
+            r#"{"url":"https://example.invalid/x.png","type":"img","size":0,"status":0,"content_type":null}"#,
+        );
+        assert!(blocked.is_interception_stub());
+        assert!(!served.is_interception_stub());
+        assert!(
+            !failed.is_interception_stub(),
+            "a request that failed has no status, and keeps its row"
         );
     }
 }
