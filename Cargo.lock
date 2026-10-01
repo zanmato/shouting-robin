@@ -3892,7 +3892,7 @@ dependencies = [
  "tokio",
  "tower-service",
  "tracing",
- "windows-registry 0.6.1",
+ "windows-registry 0.4.0",
 ]
 
 [[package]]
@@ -3907,7 +3907,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -7792,7 +7792,7 @@ dependencies = [
 [[package]]
 name = "spider"
 version = "2.53.4"
-source = "git+https://github.com/zanmato/spider?branch=shouting-robin#92a7c7c9c0eacc7f402ce1546393c5d9854a97d1"
+source = "git+https://github.com/zanmato/spider?branch=shouting-robin#0490c772e01ca9173f70b46b1c86a0594eb541f9"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -7844,7 +7844,7 @@ dependencies = [
 [[package]]
 name = "spider_agent_types"
 version = "2.53.4"
-source = "git+https://github.com/zanmato/spider?branch=shouting-robin#92a7c7c9c0eacc7f402ce1546393c5d9854a97d1"
+source = "git+https://github.com/zanmato/spider?branch=shouting-robin#0490c772e01ca9173f70b46b1c86a0594eb541f9"
 dependencies = [
  "aho-corasick",
  "llm_models_spider",
@@ -10123,7 +10123,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
