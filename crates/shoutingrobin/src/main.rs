@@ -12,6 +12,8 @@ mod assets;
 mod crawl;
 mod report;
 mod result_ext;
+#[cfg(feature = "screenshots")]
+mod screenshots;
 mod settings;
 mod storage;
 mod themes_manager;
@@ -59,6 +61,11 @@ fn main() {
             }
         };
 
+        #[cfg(feature = "screenshots")]
+        if screenshots::Scene::from_env().is_some() {
+            screenshots::seed(&db);
+        }
+
         let kv = smol::block_on(async { db.load_all_settings().await }).unwrap_or_default();
         let user_settings = smol::block_on(async { db.get_user_settings().await })
             .ok()
@@ -96,6 +103,8 @@ fn main() {
         update_manager::UpdateManager::start_polling(cx);
 
         let bounds = gpui_kit::Bounds::centered(None, size(px(1280.), px(900.)), cx);
+        #[cfg(feature = "screenshots")]
+        let bounds = screenshots::window_bounds().unwrap_or(bounds);
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(bounds)),
             titlebar: Some(gpui_kit::TitlebarOptions {
@@ -126,6 +135,10 @@ fn main() {
         cx.spawn(async move |cx| {
             cx.open_window(window_options, |window, cx| {
                 let app_entity = cx.new(|cx| ShoutingRobinApp::new(window, cx));
+                #[cfg(feature = "screenshots")]
+                if let Some(scene) = screenshots::Scene::from_env() {
+                    screenshots::stage(scene, app_entity.clone(), window, cx);
+                }
                 cx.new(|cx| gpui_kit::component::Root::new(app_entity, window, cx))
             })?;
 

@@ -247,6 +247,38 @@ impl ResultsGrid {
     pub fn has_results(&self, cx: &App) -> bool {
         self.state.read(cx).delegate().filtered_count() > 0
     }
+
+    #[cfg(feature = "screenshots")]
+    pub(crate) fn is_loading(&self) -> bool {
+        self.loading
+    }
+
+    /// The loaded crawl's documents and resources, for the status bar.
+    #[cfg(feature = "screenshots")]
+    pub(crate) fn page_and_resource_counts(&self, cx: &App) -> (u64, u64) {
+        let pages = &self.state.read(cx).delegate().all_pages;
+        let documents = pages.iter().filter(|page| page.is_page).count() as u64;
+        (documents, pages.len() as u64 - documents)
+    }
+
+    /// Selects the first row of the active tab whose page URL `matches`, as
+    /// clicking it does, which shows it in the details panel.
+    #[cfg(feature = "screenshots")]
+    pub(crate) fn select_row_where(
+        &mut self,
+        matches: impl Fn(&PageRecord) -> bool,
+        cx: &mut Context<Self>,
+    ) -> bool {
+        let delegate = self.state.read(cx).delegate();
+        let Some(row_ix) =
+            (0..delegate.filtered_count()).find(|&ix| delegate.record_at(ix).is_some_and(&matches))
+        else {
+            return false;
+        };
+        self.state
+            .update(cx, |state, cx| state.set_selected_row(row_ix, cx));
+        true
+    }
 }
 
 impl EventEmitter<ResultsGridEvent> for ResultsGrid {}

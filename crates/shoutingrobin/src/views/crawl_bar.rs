@@ -244,7 +244,7 @@ impl CrawlBar {
         }
     }
 
-    fn start_crawl(&mut self, mode: RenderMode, cx: &mut Context<Self>) {
+    pub(crate) fn start_crawl(&mut self, mode: RenderMode, cx: &mut Context<Self>) {
         let url = if self.list_mode {
             let urls = self.list_urls_input.read(cx).value().to_string();
             urls.lines()

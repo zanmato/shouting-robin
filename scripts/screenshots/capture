@@ -1,0 +1,307 @@
+#!/usr/bin/env bash
+# Takes the website screenshots: runs Shouting Robin on a virtual X display
+# against a throwaway data directory and the recorded test site crawls, once
+# per scene and theme.
+#
+# Usage: scripts/screenshots/capture [scene...]
+#        scripts/screenshots/capture --record
+#
+# Scenes: overview details ecommerce accessibility changes (default: all).
+# Writes docs/images/screenshots/<scene>-<theme>.webp.
+#
+# --record crawls test-site/, served on 127.0.0.1:8000, once over HTTP and
+# once in Chrome, and writes the two crawls to scripts/screenshots/crawls.sql,
+# which the scenes show. Capturing needs no network. Recording needs Chrome
+# (google-chrome or chromium on PATH). Its crawls request nothing but the
+# local server and the test site's .invalid hosts, which cannot resolve.
+#
+# Needs Xvfb, ImageMagick, python3, dbus-run-session and Mesa's lavapipe
+# Vulkan driver. Set SR_BIN to capture with an existing build of
+# `cargo build --release -p shoutingrobin --features screenshots`.
+set -euo pipefail
+
+cd "$(dirname "$0")/../.."
+root="$(pwd)"
+
+width=1600
+height=1000
+port=8000
+out="$root/docs/images/screenshots"
+fixture="$root/scripts/screenshots/crawls.sql"
+
+record=false
+scenes=()
+for arg in "$@"; do
+  if [[ "$arg" == --record ]]; then
+    record=true
+  else
+    scenes+=("$arg")
+  fi
+done
+if [[ ${#scenes[@]} -eq 0 ]]; then
+  scenes=(overview details ecommerce accessibility changes)
+fi
+
+# The light and dark pair every scene gets.
+themes=("latte:Catppuccin Latte" "mocha:Catppuccin Mocha")
+
+if [[ -z "${SR_BIN:-}" ]]; then
+  cargo build --release -p shoutingrobin --features screenshots
+  SR_BIN="$root/target/release/shoutingrobin"
+fi
+
+work="$(mktemp -d)"
+xvfb_pid=""
+app_pid=""
+server_pid=""
+# A Chrome crawl starts Chrome, which leaves its own process group, so
+# stopping the app's group leaves Chrome and its helpers behind. Everything a
+# run starts inherits its throwaway HOME, which finds them.
+# run_pids <home>
+run_pids() {
+  local pid
+  for pid in $(pgrep -u "$(id -u)"); do
+    # A process can exit between the listing and the read.
+    if { tr '\0' '\n' < "/proc/$pid/environ"; } 2>/dev/null | grep -qxF "HOME=$1"; then
+      echo "$pid"
+    fi
+  done
+}
+
+# Chrome takes a moment to exit, and its home must not be deleted under it,
+# so this waits for every process to go and kills what is left after five
+# seconds.
+# stop_run <home>
+stop_run() {
+  local pids
+  pids=$(run_pids "$1")
+  [[ -z "$pids" ]] && return
+  kill $pids 2>/dev/null || true
+  for _ in $(seq 50); do
+    pids=$(run_pids "$1")
+    [[ -z "$pids" ]] && return
+    sleep 0.1
+  done
+  kill -9 $pids 2>/dev/null || true
+}
+
+cleanup() {
+  [[ -n "$app_pid" ]] && kill -- "-$app_pid" 2>/dev/null || true
+  [[ -n "${run_home:-}" ]] && stop_run "$run_home"
+  [[ -n "$server_pid" ]] && kill "$server_pid" 2>/dev/null || true
+  [[ -n "$xvfb_pid" ]] && kill "$xvfb_pid" 2>/dev/null || true
+  rm -rf "$work"
+}
+trap cleanup EXIT
+
+display=":$((90 + RANDOM % 100))"
+Xvfb "$display" -screen 0 "${width}x${height}x24" -nolisten tcp >/dev/null 2>&1 &
+xvfb_pid=$!
+for _ in $(seq 50); do
+  DISPLAY="$display" xdpyinfo >/dev/null 2>&1 && break
+  sleep 0.1
+done
+
+# A session bus that cannot activate services: no portals, gvfs or keyring
+# start, so nothing mounts into the runtime directory and neither the app nor
+# Chrome reaches the real keyring.
+cat > "$work/dbus.conf" <<'EOF'
+<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:tmpdir=/tmp</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+</busconfig>
+EOF
+
+lavapipe=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -n1 || true)
+
+# run_app <run dir> <scene> <theme name> [VAR=value...]
+# Starts the app in the background with nothing of the real profile: the data
+# directories live in the throwaway home where they would on a real system,
+# and TMPDIR moves Chrome's profile, which goes to $TMPDIR/chromiumoxide-runner,
+# in there too.
+run_app() {
+  local run="$1" scene="$2" theme="$3"
+  shift 3
+  run_home="$run/home"
+  mkdir -p "$run"/{runtime,tmp,home/.local/share,home/.local/state,home/.config,home/.cache}
+  chmod 700 "$run/runtime"
+  # Its own process group, so stopping it takes down the bus and the app.
+  setsid env -i \
+    PATH="$PATH" \
+    HOME="$run/home" \
+    TMPDIR="$run/tmp" \
+    LANG=en_US.UTF-8 \
+    DISPLAY="$display" \
+    XDG_DATA_HOME="$run/home/.local/share" \
+    XDG_STATE_HOME="$run/home/.local/state" \
+    XDG_CONFIG_HOME="$run/home/.config" \
+    XDG_CACHE_HOME="$run/home/.cache" \
+    XDG_RUNTIME_DIR="$run/runtime" \
+    ${lavapipe:+VK_ICD_FILENAMES="$lavapipe"} \
+    SR_SCENE="$scene" \
+    SR_THEME="$theme" \
+    SR_SCENE_READY="$run/ready" \
+    "$@" \
+    dbus-run-session --config-file="$work/dbus.conf" -- "$SR_BIN" >"$run/app.log" 2>&1 &
+  app_pid=$!
+  DISPLAY="$display" "$root/scripts/screenshots/focus-window" 60
+}
+
+# wait_ready <run dir> <what> <tenths of a second>
+wait_ready() {
+  local run="$1" what="$2" limit="$3" waited=0
+  until [[ -f "$run/ready" ]]; do
+    if ! kill -0 "$app_pid" 2>/dev/null || (( waited > limit )); then
+      echo "Shouting Robin did not stage $what, its log follows:" >&2
+      cat "$run/app.log" >&2
+      exit 1
+    fi
+    sleep 0.1
+    waited=$((waited + 1))
+  done
+}
+
+stop_app() {
+  kill -- "-$app_pid" 2>/dev/null || true
+  wait "$app_pid" 2>/dev/null || true
+  stop_run "$run_home"
+  app_pid=""
+}
+
+record_crawls() {
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
+    echo "Port $port is taken, the test site needs it" >&2
+    exit 1
+  fi
+
+  # A copy, so the sitemap the tests rewrite stays as it is in the repo. The
+  # sitemap is the one the tests write, for this port.
+  local site="$work/test-site"
+  cp -r "$root/test-site" "$site"
+  sed "s|http://127.0.0.1:[0-9]*/|http://127.0.0.1:$port/|" "$root/test-site/sitemap.xml" \
+    > "$site/sitemap.xml"
+
+  # Serves the copy the way the integration tests do (see
+  # crates/shoutingrobin/tests/common/mod.rs): the same headers, a real 301
+  # at /moved and a small fixed latency, so Chrome measures a time to first
+  # byte.
+  python3 - "$site" "$port" >"$work/server.log" 2>&1 <<'PY' &
+import http.server, pathlib, sys, time
+site, port = pathlib.Path(sys.argv[1]).resolve(), int(sys.argv[2])
+types = {
+    ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "application/javascript",
+    ".json": "application/json", ".xml": "application/xml", ".txt": "text/plain",
+    ".png": "image/png", ".jpg": "image/jpeg", ".gif": "image/gif", ".svg": "image/svg+xml",
+}
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def do_GET(self):
+        time.sleep(0.01)
+        path = self.path.split("?")[0].split("#")[0]
+        if path == "/moved":
+            return self.reply(301, b"", None, [("Location", "/redirect-target.html")])
+        file = (site / (path.lstrip("/") or "index.html")).resolve()
+        if not file.is_relative_to(site) or not file.is_file():
+            return self.reply(404, b"404 Not Found", "text/plain")
+        self.reply(200, file.read_bytes(), types.get(file.suffix, "application/octet-stream"))
+
+    do_HEAD = do_GET
+
+    def reply(self, status, body, content_type, headers=()):
+        self.send_response_only(status)
+        for name, value in [("Content-Type", content_type), *headers]:
+            if value:
+                self.send_header(name, value)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        self.wfile.write(body)
+        self.close_connection = True
+
+http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+PY
+  server_pid=$!
+  for _ in $(seq 50); do
+    (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && break
+    sleep 0.1
+  done
+
+  local run="$work/record"
+  echo "Recording crawls of http://127.0.0.1:$port/"
+  run_app "$run" record "Catppuccin Latte" SR_RECORD_URL="http://127.0.0.1:$port/"
+  wait_ready "$run" "the recording" 9000
+  stop_app
+  kill "$server_pid" 2>/dev/null || true
+  wait "$server_pid" 2>/dev/null || true
+  server_pid=""
+
+  # Only the crawls and the rows that belong to them, with their column
+  # names, so a column added by a later migration does not break the
+  # fixture. Settings and every other table stay behind.
+  python3 - "$run/home/.local/share/shoutingrobin/shoutingrobin.db" "$fixture" <<'PY'
+import sqlite3, sys
+source, target = sys.argv[1:]
+db = sqlite3.connect(source)
+tables = ["crawls"] + [
+    name
+    for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+    if any(column[1] == "crawl_id" for column in db.execute(f'PRAGMA table_info("{name}")'))
+]
+with open(target, "w") as out:
+    out.write("-- Two crawls of test-site/, written by scripts/screenshots/capture --record.\n")
+    for table in tables:
+        columns = [column[1] for column in db.execute(f'PRAGMA table_info("{table}")')]
+        names = ", ".join(columns)
+        values = " || ', ' || ".join(f'quote("{column}")' for column in columns)
+        query = f"SELECT 'INSERT INTO {table} ({names}) VALUES (' || {values} || ');' FROM \"{table}\" ORDER BY rowid"
+        for (statement,) in db.execute(query):
+            out.write(statement + "\n")
+PY
+  echo "Wrote $fixture"
+}
+
+# capture <scene> <slug> <theme name>
+capture() {
+  local scene="$1" slug="$2" theme="$3"
+  local run="$work/$scene-$slug"
+
+  echo "Capturing $scene in $theme"
+  run_app "$run" "$scene" "$theme" SR_CRAWL_FIXTURE="$fixture"
+  wait_ready "$run" "$scene" 600
+  # One more frame for anything the last update scheduled.
+  sleep 0.5
+
+  DISPLAY="$display" import -window root "$run/shot.png"
+  stop_app
+
+  magick "$run/shot.png" \
+    \( +clone -alpha extract -draw "fill black polygon 0,0 0,10 10,0 fill white circle 10,10 10,0" \
+       \( +clone -flip \) -compose Multiply -composite \
+       \( +clone -flop \) -compose Multiply -composite \) \
+    -alpha off -compose CopyOpacity -composite \
+    -define webp:lossless=false -quality 90 "$out/$scene-$slug.webp"
+}
+
+if [[ "$record" == true ]]; then
+  record_crawls
+  exit 0
+fi
+
+mkdir -p "$out"
+for scene in "${scenes[@]}"; do
+  for theme in "${themes[@]}"; do
+    capture "$scene" "${theme%%:*}" "${theme#*:}"
+  done
+done
+
+echo "Wrote $out"

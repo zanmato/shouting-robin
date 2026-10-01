@@ -72,6 +72,23 @@ impl CrawlsSidebar {
         self.selected_id = Some(id);
         cx.notify();
     }
+
+    /// Opens a crawl from the list, as clicking it does.
+    #[cfg(feature = "screenshots")]
+    pub(crate) fn open(&mut self, crawl_id: i64, cx: &mut Context<Self>) -> bool {
+        let Some(crawl) = self.crawls.iter().find(|crawl| crawl.id == crawl_id) else {
+            return false;
+        };
+        let event = CrawlsSidebarEvent::Selected {
+            crawl_id,
+            root_url: crawl.root_url.clone(),
+            render_mode: RenderMode::from_stored(&crawl.render_mode),
+        };
+        self.selected_id = Some(crawl_id);
+        cx.emit(event);
+        cx.notify();
+        true
+    }
 }
 
 impl EventEmitter<CrawlsSidebarEvent> for CrawlsSidebar {}

@@ -948,6 +948,26 @@ impl ShoutingRobinApp {
     }
 }
 
+/// What `crate::screenshots` drives to stage a scene.
+#[cfg(feature = "screenshots")]
+impl ShoutingRobinApp {
+    pub(crate) fn crawl_bar(&self) -> &Entity<CrawlBar> {
+        &self.crawl_bar
+    }
+
+    pub(crate) fn sidebar(&self) -> &Entity<CrawlsSidebar> {
+        &self.sidebar
+    }
+
+    pub(crate) fn results_grid(&self) -> &Entity<ResultsGrid> {
+        &self.results_grid
+    }
+
+    pub(crate) fn status_bar(&self) -> &Entity<StatusBar> {
+        &self.status_bar
+    }
+}
+
 impl Focusable for ShoutingRobinApp {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus_handle.clone()

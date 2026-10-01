@@ -61,6 +61,10 @@ minisign-verify = "0.2.5"
 sha2 = "0.10"
 hex = "0.4.3"
 
+[features]
+# Stages scenes for the website screenshots, see scripts/screenshots/capture.
+screenshots = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-util", "net"] }
 sqlx = { workspace = true }
