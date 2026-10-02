@@ -19,9 +19,11 @@ use crate::crawl::RenderMode;
 use crate::crawl::event::PageRecord;
 use crate::views::ResultTab;
 
-/// The size of the virtual display the script starts.
-const WINDOW_WIDTH: f32 = 1600.;
-const WINDOW_HEIGHT: f32 = 1000.;
+/// The size of the virtual display the script starts. The visible frame is
+/// 1600x1000. On Linux the client-side frame adds a 20px shadow inset on every
+/// side, which the capture script crops away.
+const WINDOW_WIDTH: f32 = 1640.;
+const WINDOW_HEIGHT: f32 = 1040.;
 
 /// How long before the capture each recorded crawl started, oldest first, so
 /// the history reads like crawls run over a few days rather than seconds
