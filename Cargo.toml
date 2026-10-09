@@ -16,7 +16,7 @@ publish = false
 # Core GPUI dependencies
 # The GPUI facade: one dependency for GPUI itself, the platform layer and the
 # component library, all reachable under `gpui_kit::`.
-gpui-kit = { version = "0.6", features = ["tree-sitter-html"] }
+gpui-kit = { version = "0.7.1", features = ["tree-sitter-html"] }
 
 # Database
 sqlx = { version = "0.8", features = [
@@ -76,6 +76,17 @@ flate2 = "1"
 reqwest = { version = "0.12", default-features = false, features = [
     "rustls-tls",
 ] }
+
+# GPUI Kit reaches GPUI through the gpui-pre snapshots on crates.io. These
+# stand-ins carry the same names and the version GPUI Kit pins, and re-export
+# gpui-fast, so the revision has to move together with the gpui-kit version
+# above.
+[patch.crates-io]
+gpui-pre = { git = "https://github.com/longbridge/gpui-fast", rev = "b8f0c026553711c1e049fee501932d3801f23567" }
+gpui-pre-platform = { git = "https://github.com/longbridge/gpui-fast", rev = "b8f0c026553711c1e049fee501932d3801f23567" }
+gpui-pre-macros = { git = "https://github.com/longbridge/gpui-fast", rev = "b8f0c026553711c1e049fee501932d3801f23567" }
+gpui-pre-sum-tree = { git = "https://github.com/longbridge/gpui-fast", rev = "b8f0c026553711c1e049fee501932d3801f23567" }
+gpui-pre-web = { git = "https://github.com/longbridge/gpui-fast", rev = "b8f0c026553711c1e049fee501932d3801f23567" }
 
 [workspace.lints.clippy]
 dbg_macro = "deny"

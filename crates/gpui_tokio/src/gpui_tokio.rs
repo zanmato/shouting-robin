@@ -1,3 +1,7 @@
+// gpui-fast's macros emit `gpui::` paths, and GPUI Kit is the only GPUI
+// dependency here, so it has to answer to that name.
+extern crate gpui_kit as gpui;
+
 use std::future::Future;
 
 use gpui_kit::{App, AppContext, Global, ReadGlobal, Task};

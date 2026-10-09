@@ -4,6 +4,10 @@
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
+// gpui-fast's macros emit `gpui::` paths, and GPUI Kit is the only GPUI
+// dependency here, so it has to answer to that name.
+extern crate gpui_kit as gpui;
+
 mod a11y_rules;
 mod app;
 mod app_database;

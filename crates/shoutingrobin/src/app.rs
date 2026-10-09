@@ -2,7 +2,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use flume::Receiver;
 use gpui_kit::component::{
-    ActiveTheme, Icon as UiIcon, Root, Sizable as _, TitleBar, WindowExt,
+    ActiveTheme, Icon as UiIcon, Sizable as _, TitleBar, WindowExt,
     button::Button,
     global_state::GlobalState,
     h_flex,
@@ -1010,9 +1010,6 @@ impl Focusable for ShoutingRobinApp {
 
 impl Render for ShoutingRobinApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let sheet_layer = Root::render_sheet_layer(window, cx);
-        let dialog_layer = Root::render_dialog_layer(window, cx);
-        let notification_layer = Root::render_notification_layer(window, cx);
         let bg = cx.theme().background;
         let fg = cx.theme().foreground;
 
@@ -1412,9 +1409,6 @@ impl Render for ShoutingRobinApp {
                     ),
             )
             .child(self.status_bar.clone())
-            .children(sheet_layer)
-            .children(dialog_layer)
-            .children(notification_layer)
     }
 }
 
