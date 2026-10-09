@@ -469,3 +469,37 @@ impl UpdateManager {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A throwaway key pair made for this test, not the release key.
+    const TEST_PUBLIC_KEY: &str = "RWSuP7TLTlfXLIwvb3Ojg/ZI+g2/fXCh+k87Xwq6gKZ5En2r4pCpPrCZ";
+    const TEST_CHECKSUMS: &str = "abc  file\n";
+    const TEST_SIGNATURE: &str = "untrusted comment: signature from minisign secret key
+RUSuP7TLTlfXLMbHaCt8CBuWVm88JdB+bbtplOR4t7l6bmUjC2sSMb5o0XkolEKyWloUJiVzo61giuxhBDLpEk1kxENxgV8ADQg=
+trusted comment: timestamp:1791535679\tfile:SHA256SUMS\thashed
+Pdfw32iU8mDa1Y1lt1/n44v5SxpwEAVjKpuw1FmMPw9GT0oti5Qc/7fZgkKkU5VuX78mPJF1tv5x7q53zFMmDw==
+";
+
+    #[test]
+    fn minisign_accepts_only_the_signed_checksums() {
+        verify_minisign(TEST_PUBLIC_KEY, TEST_CHECKSUMS.as_bytes(), TEST_SIGNATURE)
+            .expect("signature made by minisign -S should verify");
+        assert!(verify_minisign(TEST_PUBLIC_KEY, b"abd  file\n", TEST_SIGNATURE).is_err());
+    }
+
+    #[test]
+    fn sha256_must_match_the_entry_for_the_asset() {
+        let path =
+            std::env::temp_dir().join(format!("shoutingrobin-update-test-{}", std::process::id()));
+        std::fs::write(&path, b"hello").expect("write asset");
+        let digest = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
+
+        verify_sha256(&path, "asset", &format!("{digest}  asset\n")).expect("matching digest");
+        assert!(verify_sha256(&path, "asset", &format!("{digest}  other\n")).is_err());
+        assert!(verify_sha256(&path, "asset", &format!("{}  asset\n", "0".repeat(64))).is_err());
+        std::fs::remove_file(&path).expect("remove asset");
+    }
+}
