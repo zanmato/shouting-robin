@@ -1,11 +1,12 @@
 use crate::app_settings::AppSettings;
 use anyhow::Context as _;
-use gpui_kit::{App, AppContext, Entity, Global};
+use gpui_kit::{App, AppContext, Entity, Global, Task};
 use semver::Version;
 use std::path::PathBuf;
 use std::time::Duration;
 
-const CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60); // 1 hour
+const CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
+const UPDATED_FROM_MARKER: &str = ".updated_from";
 const GITHUB_OWNER: &str = "zanmato";
 const GITHUB_REPO: &str = "shouting-robin";
 
@@ -24,16 +25,25 @@ const CHECKSUMS_SIGNATURE_ASSET: &str = "SHA256SUMS.minisig";
 /// published by whoever holds the GitHub account.
 const UPDATE_PUBLIC_KEY: Option<&str> = None;
 
-#[derive(Clone, Debug)]
-pub struct ReleaseInfo {
-    pub version: String,
-    #[allow(dead_code)]
-    pub html_url: String,
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum UpdateState {
+    UpToDate,
+    /// A newer release exists and has not been downloaded.
+    Available(String),
+    /// A newer release exists, but this install cannot replace its own
+    /// executable (a system package owns it), so the user is sent to the
+    /// release page instead.
+    Manual(String),
+    Downloading(String),
+    /// The release is downloaded, verified and applied by restarting.
+    Ready(String),
 }
 
 pub struct UpdateManager {
-    pub pending_update: Entity<Option<ReleaseInfo>>,
-    pub just_updated_from: Entity<Option<String>>,
+    pub state: Entity<UpdateState>,
+    /// The version this install ran before the update applied on the previous
+    /// run, present only on the first launch after updating.
+    pub updated_from: Option<String>,
 }
 
 impl Global for UpdateManager {}
@@ -80,135 +90,177 @@ impl UpdateManager {
         // Reading the just-updated marker is best-effort: if the local data
         // directory can't be resolved we simply skip the post-update notice
         // rather than panicking at startup.
-        let marker_path = Self::updates_dir().ok().map(|d| d.join(".updated_from"));
-        let just_updated_from = if let Some(marker_path) = marker_path {
-            if marker_path.exists() {
-                let version = std::fs::read_to_string(&marker_path).ok();
-                if let Err(e) = std::fs::remove_file(&marker_path) {
-                    tracing::warn!("Failed to remove update marker file: {}", e);
+        let updated_from = match Self::updates_dir() {
+            Ok(updates_dir) => {
+                let marker_path = updates_dir.join(UPDATED_FROM_MARKER);
+                match std::fs::read_to_string(&marker_path) {
+                    Ok(version) => {
+                        if let Err(e) = std::fs::remove_file(&marker_path) {
+                            tracing::warn!("Failed to remove update marker file: {}", e);
+                        }
+                        Some(version)
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+                    Err(e) => {
+                        tracing::warn!("Failed to read update marker file: {}", e);
+                        None
+                    }
                 }
-                cx.new(|_cx| version)
-            } else {
-                cx.new(|_cx| None)
             }
-        } else {
-            cx.new(|_cx| None)
+            Err(e) => {
+                tracing::warn!("Failed to resolve updates directory: {e:#}");
+                None
+            }
         };
 
         Self {
-            pending_update: cx.new(|_cx| None),
-            just_updated_from,
+            state: cx.new(|_cx| UpdateState::UpToDate),
+            updated_from,
         }
     }
 
-    pub fn global(cx: &App) -> &Self {
-        cx.global::<Self>()
+    /// `None` when no manager is installed, as in tests that build the app
+    /// without running `main`.
+    pub fn try_global(cx: &App) -> Option<&Self> {
+        cx.try_global::<Self>()
     }
 
     pub fn start_polling(cx: &mut App) {
+        if let Err(e) = Self::release_asset_name() {
+            tracing::info!("update checks are disabled: {e:#}");
+            return;
+        }
+
         cx.spawn(async move |cx| {
             loop {
-                cx.update(|cx| {
-                    if AppSettings::global(cx).settings.general.check_for_updates {
-                        Self::poll_for_updates(cx);
-                    }
+                let check = cx.update(|cx| {
+                    AppSettings::global(cx)
+                        .settings
+                        .general
+                        .check_for_updates
+                        .then(|| Self::try_global(cx).map(|this| this.state.clone()))
+                        .flatten()
                 });
+                if let Some(state) = check {
+                    match smol::unblock(Self::check_latest_release).await {
+                        Ok(Some(found)) => {
+                            cx.update(|cx| {
+                                state.update(cx, |state, cx| {
+                                    // A running download reports its own result.
+                                    if !matches!(state, UpdateState::Downloading(_)) {
+                                        *state = found;
+                                        cx.notify();
+                                    }
+                                });
+                            });
+                        }
+                        Ok(None) => {}
+                        Err(e) => tracing::warn!("update check failed: {e:#}"),
+                    }
+                }
                 cx.background_executor().timer(CHECK_INTERVAL).await;
             }
         })
         .detach();
     }
 
-    fn poll_for_updates(cx: &mut App) {
-        let pending_update = Self::global(cx).pending_update.clone();
+    /// The latest release when it is newer than this build and carries an
+    /// asset for it. A release with no asset for this build is not an update
+    /// the user can take, so it is not announced as one.
+    fn newer_release() -> anyhow::Result<Option<self_update::update::Release>> {
+        let asset_name = Self::release_asset_name()?;
+        let release = self_update::backends::github::Update::configure()
+            .repo_owner(GITHUB_OWNER)
+            .repo_name(GITHUB_REPO)
+            .bin_name("shoutingrobin")
+            .current_version(env!("CARGO_PKG_VERSION"))
+            .show_output(false)
+            .build()?
+            .get_latest_release()?;
+        if !release.assets.iter().any(|asset| asset.name == asset_name) {
+            return Ok(None);
+        }
 
-        cx.spawn(async move |cx| {
-            // Check for staged update first
-            let staged_exists = Self::staged_binary_path()
-                .map(|p| p.exists())
-                .unwrap_or(false);
-
-            let latest = match Self::fetch_latest_release().await {
-                Ok(latest) => latest,
-                Err(e) => {
-                    tracing::warn!("update check failed: {e:#}");
-                    return Ok::<_, anyhow::Error>(());
-                }
-            };
-
-            if staged_exists {
-                // Already have staged update, just update UI
-                if let Some(info) = latest {
-                    cx.update(|cx| {
-                        pending_update.update(cx, |state, cx| {
-                            *state = Some(info);
-                            cx.notify();
-                        });
-                    });
-                }
-                return Ok(());
-            }
-
-            if let Some(release) = latest {
-                tracing::info!("Update found: {}, downloading...", release.version);
-
-                // Download in blocking context
-                let result = smol::unblock(Self::download_update_to_staging).await;
-
-                match result {
-                    Ok(()) => {
-                        tracing::info!("Update staged successfully");
-                        cx.update(|cx| {
-                            pending_update.update(cx, |state, cx| {
-                                *state = Some(release);
-                                cx.notify();
-                            });
-                        });
-                    }
-                    Err(e) => tracing::error!("Failed to stage update: {e:#}"),
-                }
-            }
-            Ok(())
-        })
-        .detach();
-    }
-
-    async fn fetch_latest_release() -> anyhow::Result<Option<ReleaseInfo>> {
-        smol::unblock(move || {
-            let mut builder = self_update::backends::github::Update::configure();
-            builder
-                .repo_owner(GITHUB_OWNER)
-                .repo_name(GITHUB_REPO)
-                .bin_name("shoutingrobin")
-                .current_version(env!("CARGO_PKG_VERSION"))
-                .show_output(false);
-
-            // A release with no asset for this build is not an update the
-            // user can take, so it is not announced as one.
-            let asset_name = Self::release_asset_name()?;
-            let updater = builder.build()?;
-            let release = updater.get_latest_release()?;
-            if !release.assets.iter().any(|asset| asset.name == asset_name) {
-                return Ok(None);
-            }
-
-            let remote_version_str = release
+        let remote_version = Version::parse(
+            release
                 .version
                 .strip_prefix('v')
-                .unwrap_or(&release.version);
-            let remote_version = Version::parse(remote_version_str)?;
-            let current_version = Version::parse(env!("CARGO_PKG_VERSION"))?;
+                .unwrap_or(&release.version),
+        )?;
+        Ok((remote_version > Version::parse(env!("CARGO_PKG_VERSION"))?).then_some(release))
+    }
 
-            if remote_version > current_version {
-                Ok(Some(ReleaseInfo {
-                    version: release.version.clone(),
-                    html_url: Self::changelog_url(&release.version),
-                }))
-            } else {
-                Ok(None)
+    fn check_latest_release() -> anyhow::Result<Option<UpdateState>> {
+        let Some(release) = Self::newer_release()? else {
+            return Ok(None);
+        };
+        Ok(Some(if !Self::executable_is_replaceable() {
+            UpdateState::Manual(release.version)
+        } else if Self::staged_binary_path(&release.version)?.exists() {
+            UpdateState::Ready(release.version)
+        } else {
+            UpdateState::Available(release.version)
+        }))
+    }
+
+    /// Whether the running executable can be swapped in place, which takes
+    /// creating a file next to it. False for a `.deb` install in `/usr/bin`.
+    fn executable_is_replaceable() -> bool {
+        let Some(directory) = std::env::current_exe()
+            .ok()
+            .and_then(|executable| Some(executable.parent()?.to_path_buf()))
+        else {
+            return false;
+        };
+        let probe = directory.join(format!(
+            ".shoutingrobin-update-probe-{}",
+            std::process::id()
+        ));
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&probe)
+        {
+            Ok(_) => {
+                if let Err(e) = std::fs::remove_file(&probe) {
+                    tracing::warn!("Failed to remove update probe file: {}", e);
+                }
+                true
             }
+            Err(_) => false,
+        }
+    }
+
+    /// Download the available release. The state moves to `Downloading` right
+    /// away and to `Ready` once the executable is verified and staged; on
+    /// failure it falls back to `Available` and the error is returned for the
+    /// caller to show.
+    pub fn download_update(cx: &mut App) -> Task<anyhow::Result<()>> {
+        let Some(state) = Self::try_global(cx).map(|this| this.state.clone()) else {
+            return Task::ready(Err(anyhow::anyhow!("Updates are not available")));
+        };
+        let UpdateState::Available(version) = state.read(cx).clone() else {
+            return Task::ready(Ok(()));
+        };
+        state.update(cx, |state, cx| {
+            *state = UpdateState::Downloading(version.clone());
+            cx.notify();
+        });
+
+        cx.spawn(async move |cx| {
+            let result = smol::unblock(Self::stage_latest_release).await;
+            cx.update(|cx| {
+                state.update(cx, |state, cx| {
+                    *state = match &result {
+                        Ok(Some(staged_version)) => UpdateState::Ready(staged_version.clone()),
+                        Ok(None) => UpdateState::UpToDate,
+                        Err(_) => UpdateState::Available(version),
+                    };
+                    cx.notify();
+                });
+            });
+            result.map(|_| ())
         })
-        .await
     }
 
     fn updates_dir() -> anyhow::Result<PathBuf> {
@@ -218,13 +270,21 @@ impl UpdateManager {
             .join("updates"))
     }
 
-    fn staged_binary_path() -> anyhow::Result<PathBuf> {
+    /// Staged executables are kept per version, so one downloaded for a
+    /// release that has since been superseded is never applied.
+    fn staged_binary_path(version: &str) -> anyhow::Result<PathBuf> {
         let name = if cfg!(target_os = "windows") {
             "shoutingrobin.exe"
         } else {
             "shoutingrobin"
         };
-        Ok(Self::updates_dir()?.join(name))
+        Ok(Self::updates_dir()?.join(version).join(name))
+    }
+
+    fn staged_digest_path(version: &str) -> anyhow::Result<PathBuf> {
+        Ok(Self::updates_dir()?
+            .join(version)
+            .join("shoutingrobin.sha256"))
     }
 
     /// The exact release asset name for this build, as the release workflow
@@ -240,21 +300,18 @@ impl UpdateManager {
         }
     }
 
-    fn download_update_to_staging() -> anyhow::Result<()> {
-        std::fs::create_dir_all(Self::updates_dir()?)?;
+    /// Download the latest release, when it is newer than this build, verify
+    /// it and stage its executable. Returns the staged version.
+    fn stage_latest_release() -> anyhow::Result<Option<String>> {
+        let Some(release) = Self::newer_release()? else {
+            return Ok(None);
+        };
+        let staged = Self::staged_binary_path(&release.version)?;
+        if staged.exists() {
+            return Ok(Some(release.version));
+        }
 
-        let mut builder = self_update::backends::github::Update::configure();
-        builder
-            .repo_owner(GITHUB_OWNER)
-            .repo_name(GITHUB_REPO)
-            .bin_name("shoutingrobin")
-            .current_version(env!("CARGO_PKG_VERSION"))
-            .no_confirm(true)
-            .show_output(false)
-            .show_download_progress(false);
-        let updater = builder.build()?;
-        let release = updater.get_latest_release()?;
-
+        tracing::info!("Downloading update {}", release.version);
         let asset_name = Self::release_asset_name()?;
         let find_asset = |name: &str| {
             release
@@ -267,10 +324,20 @@ impl UpdateManager {
         let asset = find_asset(asset_name)?;
         let checksums = find_asset(CHECKSUMS_ASSET)?;
 
+        // Starting from an empty directory drops releases staged earlier and
+        // never applied. Everything is downloaded and unpacked in a scratch
+        // directory and only the verified executable is renamed into place,
+        // so an interrupted download never leaves a file at the staged path.
         let updates = Self::updates_dir()?;
-        let tmp_archive_path = updates.join(&asset.name);
-        Self::download_asset(&asset.download_url, &tmp_archive_path)?;
-        let checksums_path = updates.join(CHECKSUMS_ASSET);
+        if updates.exists() {
+            std::fs::remove_dir_all(&updates)?;
+        }
+        let download_dir = updates.join("download");
+        std::fs::create_dir_all(&download_dir)?;
+
+        let archive_path = download_dir.join(&asset.name);
+        Self::download_asset(&asset.download_url, &archive_path)?;
+        let checksums_path = download_dir.join(CHECKSUMS_ASSET);
         Self::download_asset(&checksums.download_url, &checksums_path)?;
 
         // Verify before anything is extracted or executed. The checksum file
@@ -280,60 +347,51 @@ impl UpdateManager {
             let checksums_text = std::fs::read_to_string(&checksums_path)?;
             if let Some(public_key) = UPDATE_PUBLIC_KEY {
                 let signature_asset = find_asset(CHECKSUMS_SIGNATURE_ASSET)?;
-                let signature_path = updates.join(CHECKSUMS_SIGNATURE_ASSET);
+                let signature_path = download_dir.join(CHECKSUMS_SIGNATURE_ASSET);
                 Self::download_asset(&signature_asset.download_url, &signature_path)?;
                 let signature = std::fs::read_to_string(&signature_path)?;
                 verify_minisign(public_key, checksums_text.as_bytes(), &signature)?;
-                if let Err(e) = std::fs::remove_file(&signature_path) {
-                    tracing::warn!("Failed to remove downloaded signature: {}", e);
-                }
             } else {
                 tracing::warn!(
                     "update signing key not configured; relying on checksums and TLS only"
                 );
             }
-            verify_sha256(&tmp_archive_path, &asset.name, &checksums_text)
+            verify_sha256(&archive_path, &asset.name, &checksums_text)
         })();
-        if let Err(e) = std::fs::remove_file(&checksums_path) {
-            tracing::warn!("Failed to remove downloaded checksums: {}", e);
-        }
         if let Err(e) = verification {
-            if let Err(remove_error) = std::fs::remove_file(&tmp_archive_path) {
+            if let Err(remove_error) = std::fs::remove_dir_all(&download_dir) {
                 tracing::warn!("Failed to remove rejected download: {}", remove_error);
             }
             return Err(e.context("downloaded update failed verification"));
         }
 
-        let staged = Self::staged_binary_path()?;
-        if cfg!(target_os = "macos") {
-            self_update::Extract::from_source(&tmp_archive_path)
-                .extract_file(&updates, MACOS_BIN_IN_ARCHIVE)?;
+        let verified = if cfg!(target_os = "macos") {
             // For tar archives self_update preserves the full archive path, so
-            // the binary lands nested inside the extracted .app bundle. Move it
-            // to the flat staged location we relaunch from, then discard the
-            // leftover bundle dir.
-            std::fs::rename(updates.join(MACOS_BIN_IN_ARCHIVE), &staged)?;
-            let bundle = updates.join("Shouting Robin.app");
-            if bundle.exists()
-                && let Err(e) = std::fs::remove_dir_all(&bundle)
-            {
-                tracing::warn!("Failed to remove extracted bundle dir: {}", e);
-            }
-            if let Err(e) = std::fs::remove_file(&tmp_archive_path) {
-                tracing::warn!("Failed to remove temporary archive: {}", e);
-            }
+            // the binary lands nested inside the extracted .app bundle.
+            self_update::Extract::from_source(&archive_path)
+                .extract_file(&download_dir, MACOS_BIN_IN_ARCHIVE)?;
+            download_dir.join(MACOS_BIN_IN_ARCHIVE)
         } else {
             // The Linux and Windows assets are the bare executable.
-            std::fs::rename(&tmp_archive_path, &staged)?;
+            archive_path
+        };
+
+        if let Some(staged_dir) = staged.parent() {
+            std::fs::create_dir_all(staged_dir)?;
+        }
+        std::fs::rename(&verified, &staged)?;
+        if let Err(e) = std::fs::remove_dir_all(&download_dir) {
+            tracing::warn!("Failed to remove update download directory: {}", e);
         }
 
         // Pin what was verified, so that a file swapped into the (user
         // writable) staging directory between now and the user's click is
         // caught at apply time.
         let digest = sha256_of_file(&staged)?;
-        std::fs::write(Self::staged_digest_path()?, digest)?;
+        std::fs::write(Self::staged_digest_path(&release.version)?, digest)?;
 
-        Ok(())
+        tracing::info!("Update {} staged", release.version);
+        Ok(Some(release.version))
     }
 
     fn download_asset(url: &str, destination: &std::path::Path) -> anyhow::Result<()> {
@@ -345,67 +403,63 @@ impl UpdateManager {
         Ok(())
     }
 
-    fn staged_digest_path() -> anyhow::Result<PathBuf> {
-        Ok(Self::updates_dir()?.join("shoutingrobin.sha256"))
-    }
-
-    pub fn apply_pending_update() -> anyhow::Result<()> {
-        let staged = Self::staged_binary_path()?;
+    /// Replace the running executable with the staged one and restart. On
+    /// success the app is quitting when this returns.
+    pub fn apply_pending_update(cx: &mut App) -> anyhow::Result<()> {
+        let state = Self::try_global(cx)
+            .context("Updates are not available")?
+            .state
+            .clone();
+        let UpdateState::Ready(version) = state.read(cx).clone() else {
+            anyhow::bail!("No update has been downloaded");
+        };
+        let staged = Self::staged_binary_path(&version)?;
         if !staged.exists() {
             anyhow::bail!("No staged update found at {staged:?}");
         }
-        let expected = std::fs::read_to_string(Self::staged_digest_path()?)
+        let expected = std::fs::read_to_string(Self::staged_digest_path(&version)?)
             .context("staged update has no recorded digest; download it again")?;
         let actual = sha256_of_file(&staged)?;
         if actual != expected.trim() {
             if let Err(e) = std::fs::remove_file(&staged) {
                 tracing::warn!("Failed to remove tampered staged update: {}", e);
             }
+            // Back to offering the download, which fetches a clean copy.
+            state.update(cx, |state, cx| {
+                *state = UpdateState::Available(version);
+                cx.notify();
+            });
             anyhow::bail!("staged update does not match the verified download; discarded it");
         }
 
-        if let Err(e) = self_update::self_replace::self_replace(&staged) {
-            anyhow::bail!("Failed to apply update: {e}");
-        }
+        // Resolved before the swap: on Linux the path of a replaced executable
+        // reads back with a " (deleted)" suffix.
+        let executable = std::env::current_exe().context("Failed to get current exe path")?;
+
+        self_update::self_replace::self_replace(&staged)
+            .with_context(|| format!("Failed to replace {}", executable.display()))?;
+
         // Written only once the binary is in place, so a failed replace does
         // not announce an update that never happened.
-        let current = env!("CARGO_PKG_VERSION").to_string();
-        if let Err(e) = std::fs::write(Self::updates_dir()?.join(".updated_from"), &current) {
+        if let Err(e) = std::fs::write(
+            Self::updates_dir()?.join(UPDATED_FROM_MARKER),
+            env!("CARGO_PKG_VERSION"),
+        ) {
             tracing::warn!("Failed to write update marker file: {}", e);
         }
-
-        for leftover in [staged, Self::staged_digest_path()?] {
-            if let Err(e) = std::fs::remove_file(&leftover) {
-                tracing::warn!("Failed to remove staged update file {leftover:?}: {}", e);
-            }
-        }
-        tracing::info!("Update applied, restarting...");
-        Self::restart_app()
-    }
-
-    fn restart_app() -> anyhow::Result<()> {
-        let exe = std::env::current_exe().context("Failed to get current exe path")?;
-
-        #[cfg(target_os = "macos")]
+        if let Some(staged_dir) = staged.parent()
+            && let Err(e) = std::fs::remove_dir_all(staged_dir)
         {
-            // On macOS, restart the .app bundle if we're inside one
-            if let Some(app_bundle) = exe
-                .parent()
-                .and_then(|p| p.parent())
-                .and_then(|p| p.parent())
-                && app_bundle.extension().is_some_and(|ext| ext == "app")
-            {
-                if let Err(e) = std::process::Command::new("open").arg(app_bundle).spawn() {
-                    tracing::error!("Failed to restart app bundle: {}", e);
-                }
-                std::process::exit(0);
-            }
+            tracing::warn!("Failed to remove staged update {staged_dir:?}: {}", e);
         }
 
-        if let Err(e) = std::process::Command::new(exe).spawn() {
-            tracing::error!("Failed to restart application: {}", e);
+        tracing::info!("Update applied, restarting...");
+        // macOS relaunches the enclosing .app bundle, which GPUI finds itself.
+        if !cfg!(target_os = "macos") {
+            cx.set_restart_path(executable);
         }
-        std::process::exit(0);
+        cx.restart();
+        Ok(())
     }
 
     pub fn changelog_url(version: &str) -> String {

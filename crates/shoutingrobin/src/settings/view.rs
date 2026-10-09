@@ -198,7 +198,7 @@ impl SettingsView {
             SettingPage::new("General").resettable(true).groups(vec![
                 SettingGroup::new().title("Updates").items(vec![
                     SettingItem::new(
-                        "Update Automatically",
+                        "Check for Updates",
                         SettingField::switch(
                             move |cx: &App| {
                                 AppSettings::global(cx).settings.general.check_for_updates
@@ -223,7 +223,9 @@ impl SettingsView {
                         )
                         .default_value(default_settings.general.check_for_updates),
                     )
-                    .description("Automatically check for application updates."),
+                    .description(
+                        "Check for new releases hourly. An Update button appears in the title bar when one is available.",
+                    ),
                 ]),
             ]),
             SettingPage::new("Crawl").resettable(true).groups(vec![

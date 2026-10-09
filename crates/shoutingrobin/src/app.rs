@@ -3,7 +3,7 @@ use std::sync::{Arc, atomic::AtomicBool};
 use flume::Receiver;
 use gpui_kit::component::{
     ActiveTheme, Icon as UiIcon, Root, Sizable as _, TitleBar, WindowExt,
-    button::{Button, ButtonVariants as _},
+    button::Button,
     global_state::GlobalState,
     h_flex,
     menu::AppMenuBar,
@@ -22,7 +22,7 @@ use crate::ui::resizable::{ResizableState, h_resizable, resizable_panel};
 
 use crate::crawl::{CrawlEngine, CrawlEvent, RenderMode};
 use crate::settings::view::SettingsView;
-use crate::update_manager::UpdateManager;
+use crate::update_manager::{UpdateManager, UpdateState};
 use crate::views::{
     CrawlBar, CrawlsSidebar, DetailsPanel, ResultTab, ResultsGrid, StatusBar,
     crawl_bar::CrawlBarEvent,
@@ -248,29 +248,28 @@ impl ShoutingRobinApp {
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
 
-        // Show a success notification if we relaunched into a freshly applied update.
-        if UpdateManager::global(cx)
-            .just_updated_from
-            .read(cx)
-            .is_some()
-        {
-            let current = env!("CARGO_PKG_VERSION");
-            let app_entity = cx.entity().downgrade();
-            window.defer(cx, move |window, cx| {
-                if let Some(app_entity) = app_entity.upgrade() {
+        if let Some(update_manager) = UpdateManager::try_global(cx) {
+            let update_state = update_manager.state.clone();
+            let just_updated = update_manager.updated_from.is_some();
+            subscriptions.push(cx.observe(&update_state, |_, _, cx| cx.notify()));
+            // Show a success notification if we relaunched into a freshly applied update.
+            if just_updated {
+                let current = env!("CARGO_PKG_VERSION");
+                window.defer(cx, move |window, cx| {
                     window.push_notification(
                         Notification::new()
                             .message(format!("Updated to v{}, click to view changelog", current))
                             .with_type(NotificationType::Success)
-                            .on_click(window.listener_for(&app_entity, move |_, _, _, cx| {
-                                let changelog_url =
-                                    UpdateManager::changelog_url(&format!("v{}", current));
-                                cx.open_url(&changelog_url);
-                            })),
+                            .on_click(move |_, _, cx| {
+                                cx.open_url(&UpdateManager::changelog_url(&format!(
+                                    "v{}",
+                                    current
+                                )));
+                            }),
                         cx,
                     );
-                }
-            });
+                });
+            }
         }
 
         let mut app = Self {
@@ -921,29 +920,64 @@ impl ShoutingRobinApp {
 }
 
 impl ShoutingRobinApp {
-    fn render_update_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let has_update = UpdateManager::global(cx).pending_update.read(cx).is_some();
-
-        if has_update {
-            div().child(
-                Button::new("update-available")
-                    .ghost()
-                    .compact()
-                    .small()
-                    .label("Update available, click to restart")
+    /// Offers a newer release: "Update" downloads it, then "Restart" swaps the
+    /// executable and relaunches.
+    fn render_update_button(&self, cx: &Context<Self>) -> Option<impl IntoElement + use<>> {
+        let state = UpdateManager::try_global(cx)?.state.read(cx).clone();
+        let button = Button::new("update").outline().small();
+        match state {
+            UpdateState::UpToDate => None,
+            UpdateState::Available(version) => Some(
+                button
+                    .label("Update")
+                    .tooltip(format!("Download Shouting Robin {version}"))
                     .on_click(|_, window, cx| {
-                        if let Err(e) = UpdateManager::apply_pending_update() {
+                        let download = UpdateManager::download_update(cx);
+                        window
+                            .spawn(cx, async move |cx| {
+                                let Err(e) = download.await else {
+                                    return;
+                                };
+                                tracing::error!("Failed to download update: {e:#}");
+                                if let Err(e) = cx.update(|window, cx| {
+                                    window.push_notification(
+                                        Notification::new()
+                                            .message(format!("Failed to download update: {e:#}"))
+                                            .with_type(NotificationType::Error),
+                                        cx,
+                                    );
+                                }) {
+                                    tracing::warn!("Failed to report update error: {e:#}");
+                                }
+                            })
+                            .detach();
+                    }),
+            ),
+            UpdateState::Manual(version) => Some(
+                button
+                    .label("Update")
+                    .tooltip(format!("Open the Shouting Robin {version} release page"))
+                    .on_click(move |_, _, cx| {
+                        cx.open_url(&UpdateManager::changelog_url(&format!("v{version}")));
+                    }),
+            ),
+            UpdateState::Downloading(_) => Some(button.label("Downloading").loading(true)),
+            UpdateState::Ready(version) => Some(
+                button
+                    .label("Restart")
+                    .tooltip(format!("Restart to update to Shouting Robin {version}"))
+                    .on_click(|_, window, cx| {
+                        if let Err(e) = UpdateManager::apply_pending_update(cx) {
+                            tracing::error!("Failed to apply update: {e:#}");
                             window.push_notification(
                                 Notification::new()
-                                    .message(format!("Failed to apply update: {e}"))
+                                    .message(format!("Failed to apply update: {e:#}"))
                                     .with_type(NotificationType::Error),
                                 cx,
                             );
                         }
                     }),
-            )
-        } else {
-            div()
+            ),
         }
     }
 }
@@ -1280,7 +1314,7 @@ impl Render for ShoutingRobinApp {
                                 )
                                 .children(self.app_menu_bar.clone()),
                         )
-                        .child(self.render_update_button(cx)),
+                        .children(self.render_update_button(cx)),
                 ),
             )
             .child(self.crawl_bar.clone())
