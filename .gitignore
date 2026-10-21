@@ -6,3 +6,6 @@ sitemap.xml
 scripts/local/
 update-signing/
 /_site
+
+# nix build output links
+/result*
