@@ -134,6 +134,7 @@ fn main() {
             window_background: gpui_kit::WindowBackgroundAppearance::Opaque,
             app_id: Some("se.zanmato.shoutingrobin".into()),
             icon: None,
+            use_display_p3: false,
         };
 
         cx.spawn(async move |cx| {
