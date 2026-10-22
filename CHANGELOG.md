@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- Settings, Appearance has a VS Code Themes group that searches Open VSX for
+  VS Code color themes, previews them, lets you try one across the app
+  before installing, and installs them converted to Shouting Robin's theme
+  format
+
 ## [0.2.1] - 2026-10-09
 
 ### Performance

@@ -17,6 +17,7 @@ A modern, desktop SEO crawler built with [GPUI](https://www.gpui.rs) and [gpui-k
 
 - **Native Performance** - Built with Rust and GPUI for fast native performance
 - **Modern UI** - Clean, responsive interface with theme support
+- **VS Code themes** under Settings, Appearance: search [Open VSX](https://open-vsx.org) for color themes, try one across the app, and install it
 - **Local-first** - All your data stays on your machine with no cloud dependencies
 - **Cross-platform** - Available for Linux, macOS and Windows
 

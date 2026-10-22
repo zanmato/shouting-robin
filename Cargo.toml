@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/shoutingrobin", "crates/gpui_tokio", "crates/ui"]
+members = ["crates/shoutingrobin", "crates/gpui_tokio", "crates/ui", "crates/vsx-themes"]
 resolver = "2"
 
 [workspace.package]
@@ -17,6 +17,16 @@ publish = false
 # The GPUI facade: one dependency for GPUI itself, the platform layer and the
 # component library, all reachable under `gpui_kit::`.
 gpui-kit = { version = "0.8.0", features = ["tree-sitter-html"] }
+# For crates written against GPUI and gpui-component by name (vsx-themes,
+# shared with Blanco and Broquest). The same packages and versions GPUI Kit
+# uses, so they are the ones it builds, gpui-pre included through the patch
+# below.
+gpui = { package = "gpui-pre", version = "=0.3.9" }
+# The features GPUI Kit's `tree-sitter-html` turns on, so a crate built on its
+# own (`cargo test -p vsx-themes`) gets the same gpui-component as the app.
+# Without `tree-sitter` gpui-component compiles a stub highlighter whose
+# theme keys differ.
+gpui-component = { version = "0.8.0", features = ["tree-sitter-html"] }
 
 # Database
 sqlx = { version = "0.8", features = [
@@ -71,6 +81,8 @@ md5 = "0.7"
 # XML parsing
 quick-xml = "0.37"
 flate2 = "1"
+
+tempfile = "3"
 
 # HTTP client (reuse from spider's dep tree)
 reqwest = { version = "0.12", default-features = false, features = [

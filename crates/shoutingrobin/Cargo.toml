@@ -18,6 +18,7 @@ path = "src/main.rs"
 gpui-kit = { workspace = true }
 gpui_tokio = { path = "../gpui_tokio" }
 shoutingrobin-ui = { path = "../ui" }
+vsx-themes = { path = "../vsx-themes" }
 
 anyhow = { workspace = true }
 serde = { workspace = true }

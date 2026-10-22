@@ -44,6 +44,7 @@ pub struct SettingsView {
     save_generations: Arc<Mutex<std::collections::HashMap<String, u64>>>,
     ui_font_select: Option<Entity<SelectState<SearchableVec<FontOption>>>>,
     mono_font_select: Option<Entity<SelectState<SearchableVec<FontOption>>>>,
+    theme_browser: Option<Entity<vsx_themes::ThemeBrowser>>,
     _subscriptions: Vec<gpui_kit::Subscription>,
 }
 
@@ -54,6 +55,7 @@ impl SettingsView {
             save_generations: Arc::new(Mutex::new(std::collections::HashMap::new())),
             ui_font_select: None,
             mono_font_select: None,
+            theme_browser: None,
             _subscriptions: Vec::new(),
         }
     }
@@ -601,6 +603,9 @@ impl SettingsView {
                     )
                     .description("Monospace font used for URLs and data."),
                 ]),
+                vsx_themes::browser::setting_group(
+                    self.theme_browser.clone().expect("created before the pages"),
+                ),
             ]),
         ]
     }
@@ -615,6 +620,21 @@ impl Focusable for SettingsView {
 impl Render for SettingsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.ensure_font_selects(window, cx);
+        if self.theme_browser.is_none() {
+            let options = vsx_themes::ThemeBrowserOptions {
+                // The folder `ThemeRegistry::watch_dir` loads in main.rs.
+                themes_dir: crate::themes_manager::ThemesManager::themes_directory(),
+                convert: vsx_themes::ConvertOptions::default(),
+                use_theme: Some(std::rc::Rc::new(
+                    |name: &str, _: &mut Window, cx: &mut App| {
+                        crate::settings::use_theme(name, cx);
+                    },
+                )),
+                watches_themes_dir: true,
+            };
+            self.theme_browser =
+                Some(cx.new(|cx| vsx_themes::ThemeBrowser::new(options, window, cx)));
+        }
 
         gpui_kit::div()
             .track_focus(&self.focus_handle)

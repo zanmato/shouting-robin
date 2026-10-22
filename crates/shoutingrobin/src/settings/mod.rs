@@ -27,6 +27,30 @@ pub fn apply_theme_config(theme_config: &Rc<ThemeConfig>, cx: &mut App) {
     cx.refresh_windows();
 }
 
+/// Make the theme called `name` the app's theme and save the choice, as
+/// picking it under Appearance does. Used by the VS Code Themes panel.
+pub fn use_theme(name: &str, cx: &mut App) {
+    let Some(theme_config) = ThemeRegistry::global(cx)
+        .themes()
+        .get(&SharedString::from(name.to_string()))
+        .cloned()
+    else {
+        tracing::warn!("Unknown theme: {name}");
+        return;
+    };
+    AppSettings::global_mut(cx).settings.appearance.theme = name.to_string();
+    apply_theme_config(&theme_config, cx);
+
+    let db = crate::app_database::AppDatabase::global(cx).clone();
+    let name = name.to_string();
+    cx.spawn(async move |_| {
+        if let Err(error) = db.save_setting("appearance.theme", &name).await {
+            tracing::error!("Failed to save setting appearance.theme: {error}");
+        }
+    })
+    .detach();
+}
+
 pub fn apply_font_settings(cx: &mut App) {
     let appearance = AppSettings::global(cx).settings.appearance.clone();
     let theme_name = SharedString::from(appearance.theme.clone());
