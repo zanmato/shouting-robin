@@ -108,6 +108,12 @@ impl Settings {
                 "crawl.block_images" => {
                     settings.crawl.block_images = value.parse().unwrap_or(false);
                 }
+                "crawl.capture_layout" => {
+                    settings.crawl.capture_layout = value.parse().unwrap_or(false);
+                }
+                "crawl.scroll_for_layout" => {
+                    settings.crawl.scroll_for_layout = value.parse().unwrap_or(false);
+                }
                 "crawl.near_duplicate_threshold" => {
                     settings.crawl.near_duplicate_threshold =
                         value.parse().unwrap_or(90).clamp(50, 100);
@@ -158,6 +164,13 @@ pub struct CrawlSettings {
     pub follow_sitemaps: bool,
     #[serde(default)]
     pub block_images: bool,
+    /// In Chrome mode, record the boxes each page renders.
+    #[serde(default)]
+    pub capture_layout: bool,
+    /// Scroll through each page before recording its layout. Only read while
+    /// `capture_layout` is on.
+    #[serde(default)]
+    pub scroll_for_layout: bool,
     pub near_duplicate_threshold: u8,
     pub content_selector: String,
     #[serde(default)]
@@ -174,6 +187,8 @@ impl Default for CrawlSettings {
             respect_robots_txt: true,
             follow_sitemaps: true,
             block_images: false,
+            capture_layout: false,
+            scroll_for_layout: false,
             near_duplicate_threshold: 90,
             content_selector: String::new(),
             user_agent: String::new(),
@@ -195,5 +210,24 @@ impl Default for AppearanceSettings {
             font_family: String::new(),
             mono_font_family: String::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Settings;
+
+    #[test]
+    fn layout_switches_default_off_and_load_from_their_keys() {
+        let defaults = Settings::from_key_values(&[]);
+        assert!(!defaults.crawl.capture_layout);
+        assert!(!defaults.crawl.scroll_for_layout);
+
+        let loaded = Settings::from_key_values(&[
+            ("crawl.capture_layout".into(), "true".into()),
+            ("crawl.scroll_for_layout".into(), "true".into()),
+        ]);
+        assert!(loaded.crawl.capture_layout);
+        assert!(loaded.crawl.scroll_for_layout);
     }
 }

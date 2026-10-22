@@ -30,6 +30,38 @@ pub(crate) struct ImageAggregateRow {
     pub pages: Vec<usize>,
 }
 
+/// One layout template of the crawl and how its pages fared, for the Layout
+/// tab. Boxed inside `FlatRow` like the image rows.
+#[derive(Clone, Debug)]
+pub(crate) struct LayoutTemplateRow {
+    pub name: String,
+    /// The structured data type naming the template, `None` for a template
+    /// found by layout alone.
+    pub type_key: Option<String>,
+    /// Indices into `all_pages`, in crawl order.
+    pub pages: Vec<usize>,
+    /// Pages that joined by layout rather than by their structured data.
+    pub joined_by_layout: usize,
+    /// Pages whose layout fits a typed template while they lack its markup.
+    pub missing_markup: Vec<usize>,
+    /// Pages whose layout changed since the baseline crawl.
+    pub changed: Vec<usize>,
+    /// The layout change most of the changed pages share, and how many do.
+    pub common_change: Option<(String, usize)>,
+}
+
+impl LayoutTemplateRow {
+    /// The page the details panel shows for the row: a changed page when
+    /// there is one, since that is what the row is most often opened for.
+    pub fn example_page(&self) -> Option<usize> {
+        self.changed
+            .first()
+            .or_else(|| self.missing_markup.first())
+            .or_else(|| self.pages.first())
+            .copied()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) enum FlatRow {
     ImageAggregate(Box<ImageAggregateRow>),
@@ -47,6 +79,7 @@ pub(crate) enum FlatRow {
     ChangeRow {
         index: usize,
     },
+    LayoutTemplate(Box<LayoutTemplateRow>),
     DirectoryAggregate {
         path: String,
         depth: u32,
@@ -67,6 +100,7 @@ pub(crate) fn tab_is_flattened(tab: ResultTab) -> bool {
             | ResultTab::Overview
             | ResultTab::SiteStructure
             | ResultTab::Changes
+            | ResultTab::Layout
     )
 }
 
@@ -95,6 +129,7 @@ pub(super) fn flat_row_page_index(row: &FlatRow) -> Option<usize> {
         FlatRow::IssuesRow { .. }
         | FlatRow::ChangeRow { .. }
         | FlatRow::ImageAggregate(_)
+        | FlatRow::LayoutTemplate(_)
         | FlatRow::DirectoryAggregate { .. } => None,
     }
 }
@@ -236,6 +271,10 @@ pub enum IssueFilter {
     ChangeAdded,
     ChangeRemoved,
     ChangeChanged,
+    ChangeLayout,
+    LayoutMissingMarkup,
+    LayoutChanged,
+    ProductLayoutWithoutMarkup,
 }
 
 impl IssueFilter {
@@ -369,6 +408,10 @@ impl IssueFilter {
             IssueFilter::ChangeAdded => "Added",
             IssueFilter::ChangeRemoved => "Removed",
             IssueFilter::ChangeChanged => "Changed",
+            IssueFilter::ChangeLayout => "Layout Changed",
+            IssueFilter::LayoutMissingMarkup => "Missing Markup",
+            IssueFilter::LayoutChanged => "Layout Changed",
+            IssueFilter::ProductLayoutWithoutMarkup => "Product Layout, No Markup",
         }
     }
 
@@ -416,7 +459,9 @@ impl IssueFilter {
             Self::PriorityLow => IssuePriority::Low.tone(),
             Self::ChangeAdded => ChangeKind::Added.tone(),
             Self::ChangeRemoved => ChangeKind::Removed.tone(),
-            Self::ChangeChanged => ChangeKind::Changed.tone(),
+            Self::ChangeChanged | Self::ChangeLayout | Self::LayoutChanged => {
+                ChangeKind::Changed.tone()
+            }
 
             Self::Status4xx
             | Self::Status5xx
@@ -439,6 +484,7 @@ impl IssueFilter {
             | Self::LinkBroken => Tone::Err,
 
             Self::NonIndexable
+            | Self::LayoutMissingMarkup
             | Self::Missing
             | Self::Duplicate
             | Self::OverLength
@@ -476,6 +522,7 @@ impl IssueFilter {
             | Self::MissingGtin
             | Self::OutOfStockIndexable
             | Self::MissingBreadcrumbs
+            | Self::ProductLayoutWithoutMarkup
             | Self::IndexableParameterUrl
             | Self::MissingBrand
             | Self::MissingReviewRating
@@ -606,6 +653,8 @@ pub struct ChangeEntry {
     pub status_before: Option<u16>,
     pub status_after: Option<u16>,
     pub changes: Vec<String>,
+    /// Set when both crawls captured the page and its layout changed.
+    pub layout: Option<crate::crawl::layout::PageLayoutChange>,
 }
 
 impl ChangeEntry {

@@ -10,6 +10,22 @@ All notable changes to this project will be documented in this file.
   VS Code color themes, previews them, lets you try one across the app
   before installing, and installs them converted to Shouting Robin's theme
   format
+- Captured each page's layout in Chrome crawls, with an option to scroll
+  the page first so lazy content renders
+- Compared layouts against the previous crawl in the Changes tab, telling
+  layout changes apart from content changes, with a wireframe view of
+  both versions side by side
+- Grouped pages into templates by structured data and layout, in a new
+  Layout tab, and reported product layouts without product markup in the
+  Overview
+- Showed each site's favicon in the crawls sidebar
+- Added the layout comparison to the screenshots and the website tour
+
+### Fixes
+
+- Waited for every page to be processed before closing Chrome at the end
+  of a crawl, so the last pages keep their web vitals and accessibility
+  results
 
 ## [0.2.1] - 2026-10-09
 

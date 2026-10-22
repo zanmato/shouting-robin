@@ -126,6 +126,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0031_drop_unused_tables",
         include_str!("../../migrations/0031_drop_unused_tables.sql"),
     ),
+    (
+        "0032_site_icons",
+        include_str!("../../migrations/0032_site_icons.sql"),
+    ),
+    (
+        "0033_page_layouts",
+        include_str!("../../migrations/0033_page_layouts.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -215,6 +223,213 @@ pub async fn load_crawl_config(
             Ok(None)
         }
     }
+}
+
+/// A host's stored icon. `icon_png` is `None` when the last fetch found none.
+#[derive(Clone, Debug)]
+pub struct StoredSiteIcon {
+    pub host: String,
+    pub icon_png: Option<Vec<u8>>,
+    pub fetched_at: i64,
+}
+
+/// Records the outcome of an icon fetch for `host`. A fetch that found nothing
+/// keeps an icon stored earlier, since a site that is down for a moment has
+/// not lost its icon.
+pub async fn save_site_icon(
+    pool: &SqlitePool,
+    host: &str,
+    icon_png: Option<&[u8]>,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT INTO site_icons (host, icon_png, fetched_at) VALUES (?, ?, ?) \
+         ON CONFLICT(host) DO UPDATE SET \
+         icon_png = COALESCE(excluded.icon_png, site_icons.icon_png), \
+         fetched_at = excluded.fetched_at",
+    )
+    .bind(host)
+    .bind(icon_png)
+    .bind(chrono::Utc::now().timestamp())
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn load_site_icons(pool: &SqlitePool) -> Result<Vec<StoredSiteIcon>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, Option<Vec<u8>>, i64)>(
+        "SELECT host, icon_png, fetched_at FROM site_icons",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(host, icon_png, fetched_at)| StoredSiteIcon {
+            host,
+            icon_png,
+            fetched_at,
+        })
+        .collect())
+}
+
+/// Stores one page's layout with the key and style table entries it added,
+/// in one transaction so a page never refers to entries that were not saved.
+pub async fn save_page_layout(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    url: &str,
+    encoded_layout: &[u8],
+    added: &crate::crawl::layout::NewTableEntries,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (id, key) in &added.keys {
+        sqlx::query("INSERT OR REPLACE INTO layout_keys (crawl_id, id, key) VALUES (?, ?, ?)")
+            .bind(crawl_id)
+            .bind(i64::from(*id))
+            .bind(key)
+            .execute(&mut *tx)
+            .await?;
+    }
+    for (id, style) in &added.styles {
+        let style_json = serde_json::to_string(style).unwrap_or_else(|_| "[]".to_string());
+        sqlx::query(
+            "INSERT OR REPLACE INTO layout_styles (crawl_id, id, style_json) VALUES (?, ?, ?)",
+        )
+        .bind(crawl_id)
+        .bind(i64::from(*id))
+        .bind(style_json)
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query("INSERT OR REPLACE INTO page_layouts (crawl_id, url, layout) VALUES (?, ?, ?)")
+        .bind(crawl_id)
+        .bind(url)
+        .bind(encoded_layout)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn load_layout_tables(
+    pool: &SqlitePool,
+    crawl_id: i64,
+) -> Result<crate::crawl::layout::LayoutTables, sqlx::Error> {
+    let keys =
+        sqlx::query_as::<_, (i64, String)>("SELECT id, key FROM layout_keys WHERE crawl_id = ?")
+            .bind(crawl_id)
+            .fetch_all(pool)
+            .await?;
+    let styles = sqlx::query_as::<_, (i64, String)>(
+        "SELECT id, style_json FROM layout_styles WHERE crawl_id = ?",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
+    let keys = keys
+        .into_iter()
+        .filter_map(|(id, key)| u32::try_from(id).ok().map(|id| (id, key)))
+        .collect();
+    let styles = styles
+        .into_iter()
+        .filter_map(|(id, json)| {
+            let id = u32::try_from(id).ok()?;
+            match serde_json::from_str::<Vec<String>>(&json) {
+                Ok(style) => Some((id, style)),
+                Err(e) => {
+                    tracing::warn!(error=%e, crawl_id, id, "stored layout style could not be parsed");
+                    None
+                }
+            }
+        })
+        .collect();
+    Ok(crate::crawl::layout::LayoutTables::from_rows(keys, styles))
+}
+
+/// One page's stored layout, still encoded.
+pub async fn load_page_layout(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    url: &str,
+) -> Result<Option<Vec<u8>>, sqlx::Error> {
+    let row = sqlx::query_as::<_, (Vec<u8>,)>(
+        "SELECT layout FROM page_layouts WHERE crawl_id = ? AND url = ?",
+    )
+    .bind(crawl_id)
+    .bind(url)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|(layout,)| layout))
+}
+
+/// A page of stored layouts in URL order, starting after `after_url`. Read
+/// in pages so a pass over a large crawl never holds every layout at once.
+pub async fn load_page_layouts_after(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    after_url: &str,
+    limit: i64,
+) -> Result<Vec<(String, Vec<u8>)>, sqlx::Error> {
+    sqlx::query_as::<_, (String, Vec<u8>)>(
+        "SELECT url, layout FROM page_layouts WHERE crawl_id = ? AND url > ? ORDER BY url LIMIT ?",
+    )
+    .bind(crawl_id)
+    .bind(after_url)
+    .bind(limit)
+    .fetch_all(pool)
+    .await
+}
+
+/// Replaces the crawl's templates and every page's place in them.
+pub async fn save_layout_grouping(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    grouping: &crate::crawl::layout_groups::Grouping,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM layout_templates WHERE crawl_id = ?")
+        .bind(crawl_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "UPDATE page_layouts SET template_id = NULL, assigned_by = NULL WHERE crawl_id = ?",
+    )
+    .bind(crawl_id)
+    .execute(&mut *tx)
+    .await?;
+    for template in &grouping.templates {
+        sqlx::query(
+            "INSERT INTO layout_templates (crawl_id, id, name, type_key, page_count) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(crawl_id)
+        .bind(template.id)
+        .bind(&template.name)
+        .bind(&template.type_key)
+        .bind(template.page_count as i64)
+        .execute(&mut *tx)
+        .await?;
+    }
+    for (url, (template_id, assignment)) in &grouping.pages {
+        sqlx::query(
+            "UPDATE page_layouts SET template_id = ?, assigned_by = ? WHERE crawl_id = ? AND url = ?",
+        )
+        .bind(template_id)
+        .bind(assignment.as_str())
+        .bind(crawl_id)
+        .bind(url)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+pub async fn count_page_layouts(pool: &SqlitePool, crawl_id: i64) -> Result<i64, sqlx::Error> {
+    let (count,) =
+        sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM page_layouts WHERE crawl_id = ?")
+            .bind(crawl_id)
+            .fetch_one(pool)
+            .await?;
+    Ok(count)
 }
 
 pub async fn finish_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
@@ -788,6 +1003,9 @@ pub struct CrawlRow {
     /// past the check cap, or a URL only a sitemap mentioned.
     pub unfetched_count: i64,
     pub render_mode: String,
+    /// How the crawl recorded page layout, from its stored config. Crawls
+    /// recorded before the setting existed read as off.
+    pub layout_capture: crate::crawl::LayoutCapture,
 }
 
 impl CrawlRow {
@@ -810,10 +1028,21 @@ const CRAWL_ROW_COLUMNS: &str = r#"
     (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id AND p.is_page = 1) as document_count,
     (SELECT COUNT(*) FROM pages p
      WHERE p.crawl_id = c.id AND p.status IS NULL AND p.redirect_url IS NULL) as unfetched_count,
-    c.render_mode
+    c.render_mode,
+    json_extract(c.config_json, '$.layout_capture') as layout_capture
 "#;
 
-type CrawlRowColumns = (i64, String, i64, Option<i64>, i64, i64, i64, String);
+type CrawlRowColumns = (
+    i64,
+    String,
+    i64,
+    Option<i64>,
+    i64,
+    i64,
+    i64,
+    String,
+    Option<String>,
+);
 
 fn crawl_row(columns: CrawlRowColumns) -> CrawlRow {
     let (
@@ -825,7 +1054,16 @@ fn crawl_row(columns: CrawlRowColumns) -> CrawlRow {
         document_count,
         unfetched_count,
         render_mode,
+        layout_capture,
     ) = columns;
+    let layout_capture = match layout_capture {
+        Some(value) => serde_json::from_value(serde_json::Value::String(value.clone()))
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, crawl_id = id, value, "unknown stored layout capture");
+                crate::crawl::LayoutCapture::Off
+            }),
+        None => crate::crawl::LayoutCapture::Off,
+    };
     CrawlRow {
         id,
         root_url,
@@ -835,6 +1073,7 @@ fn crawl_row(columns: CrawlRowColumns) -> CrawlRow {
         document_count,
         unfetched_count,
         render_mode,
+        layout_capture,
     }
 }
 
@@ -964,6 +1203,33 @@ pub async fn load_pages_for_crawl(
     .bind(crawl_id)
     .fetch_all(pool)
     .await?;
+
+    let layout_rows =
+        sqlx::query_as::<_, (String, Option<String>, Option<String>, Option<String>)>(
+            r#"
+        SELECT pl.url, t.name, t.type_key, pl.assigned_by
+        FROM page_layouts pl
+        LEFT JOIN layout_templates t ON t.crawl_id = pl.crawl_id AND t.id = pl.template_id
+        WHERE pl.crawl_id = ?
+        "#,
+        )
+        .bind(crawl_id)
+        .fetch_all(pool)
+        .await?;
+    let mut layout_by_url: std::collections::HashMap<String, crate::crawl::event::PageLayoutInfo> =
+        std::collections::HashMap::with_capacity(layout_rows.len());
+    for (url, template, template_type, assigned_by) in layout_rows {
+        layout_by_url.insert(
+            url,
+            crate::crawl::event::PageLayoutInfo {
+                template,
+                template_type,
+                assignment: assigned_by
+                    .as_deref()
+                    .and_then(crate::crawl::layout_groups::Assignment::from_stored),
+            },
+        );
+    }
 
     #[allow(clippy::type_complexity)]
     let mut perf_by_url: std::collections::HashMap<
@@ -1190,6 +1456,7 @@ pub async fn load_pages_for_crawl(
     let mut records = Vec::with_capacity(page_rows.len());
     for row in page_rows {
         let url: String = row.try_get("url")?;
+        let layout = layout_by_url.remove(&url);
         let is_internal = crate::crawl::engine::is_same_domain(root_url, &url);
         let sd_entries = sd_by_url.get(&url);
         let sd_jsonld_count = sd_entries
@@ -1310,6 +1577,7 @@ pub async fn load_pages_for_crawl(
             link_score: row.try_get("link_score")?,
             backlinks: backlinks.remove(&url).unwrap_or_default(),
             url,
+            layout,
             ..Default::default()
         });
     }

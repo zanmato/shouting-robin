@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 
 use gpui_kit::component::{
-    ActiveTheme, Sizable as _,
+    ActiveTheme, Disableable as _, Sizable as _,
     button::{Button, ButtonVariants as _},
     input::{Input, InputEvent, InputState, NumberInput, Textarea, TextareaState},
     switch::Switch,
@@ -14,7 +14,7 @@ use gpui_kit::{
 
 use crate::app_database::AppDatabase;
 use crate::app_settings::AppSettings;
-use crate::crawl::{CrawlConfig, RenderMode};
+use crate::crawl::{CrawlConfig, LayoutCapture, RenderMode};
 use crate::ui::icon::Icon;
 
 const MIN_CONCURRENT: u32 = 1;
@@ -46,6 +46,8 @@ pub struct CrawlBar {
     list_urls_input: gpui_kit::Entity<TextareaState>,
     concurrency_input: gpui_kit::Entity<InputState>,
     block_images: bool,
+    capture_layout: bool,
+    scroll_for_layout: bool,
     /// One in-flight save per setting key, so a save for one setting cannot
     /// cancel another's. Dropping a task cancels it, which is what debounces a
     /// key being edited repeatedly.
@@ -129,6 +131,8 @@ impl CrawlBar {
             list_urls_input,
             concurrency_input,
             block_images: AppSettings::global(cx).settings.crawl.block_images,
+            capture_layout: AppSettings::global(cx).settings.crawl.capture_layout,
+            scroll_for_layout: AppSettings::global(cx).settings.crawl.scroll_for_layout,
             save_tasks: HashMap::new(),
             _subscriptions: vec![input_sub, concurrency_sub],
         }
@@ -164,6 +168,20 @@ impl CrawlBar {
         self.block_images = block_images;
         AppSettings::global_mut(cx).settings.crawl.block_images = block_images;
         self.save_setting("crawl.block_images", block_images.to_string(), cx);
+        cx.notify();
+    }
+
+    pub(crate) fn set_capture_layout(&mut self, capture_layout: bool, cx: &mut Context<Self>) {
+        self.capture_layout = capture_layout;
+        AppSettings::global_mut(cx).settings.crawl.capture_layout = capture_layout;
+        self.save_setting("crawl.capture_layout", capture_layout.to_string(), cx);
+        cx.notify();
+    }
+
+    fn set_scroll_for_layout(&mut self, scroll_for_layout: bool, cx: &mut Context<Self>) {
+        self.scroll_for_layout = scroll_for_layout;
+        AppSettings::global_mut(cx).settings.crawl.scroll_for_layout = scroll_for_layout;
+        self.save_setting("crawl.scroll_for_layout", scroll_for_layout.to_string(), cx);
         cx.notify();
     }
 
@@ -241,6 +259,10 @@ impl CrawlBar {
             list_mode: self.list_mode,
             seed_urls,
             check_resources: true,
+            layout_capture: LayoutCapture::from_switches(
+                self.capture_layout,
+                self.scroll_for_layout,
+            ),
         }
     }
 
@@ -305,6 +327,8 @@ impl CrawlBar {
         self.crawl_subdomains = config.crawl_subdomains;
         self.list_mode = config.list_mode;
         self.block_images = config.block_images;
+        self.capture_layout = config.layout_capture.is_enabled();
+        self.scroll_for_layout = config.layout_capture.scrolls();
         self.running = true;
         cx.notify();
     }
@@ -332,6 +356,8 @@ impl Render for CrawlBar {
         let list_mode = self.list_mode;
         let crawl_subdomains = self.crawl_subdomains;
         let block_images = self.block_images;
+        let capture_layout = self.capture_layout;
+        let scroll_for_layout = self.scroll_for_layout;
 
         let main_row = div()
             .id("crawl-bar-main")
@@ -483,6 +509,35 @@ impl Render for CrawlBar {
                                         .checked(block_images)
                                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                                             this.set_block_images(*checked, cx);
+                                        })),
+                                )
+                                .child(
+                                    Switch::new("capture-layout-toggle")
+                                        .small()
+                                        .label("Capture Layout")
+                                        .tooltip(
+                                            "Chrome crawls only. Record the boxes each \
+                                         page renders, to group pages by template and \
+                                         find layout changes between crawls.",
+                                        )
+                                        .checked(capture_layout)
+                                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                            this.set_capture_layout(*checked, cx);
+                                        })),
+                                )
+                                .child(
+                                    Switch::new("scroll-for-layout-toggle")
+                                        .small()
+                                        .label("Scroll Pages")
+                                        .tooltip(
+                                            "Scroll through each page before recording \
+                                         its layout, so content that loads on scroll \
+                                         is included. Seconds slower a page.",
+                                        )
+                                        .disabled(!capture_layout)
+                                        .checked(capture_layout && scroll_for_layout)
+                                        .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                            this.set_scroll_for_layout(*checked, cx);
                                         })),
                                 )
                                 .child(

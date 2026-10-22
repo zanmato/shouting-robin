@@ -27,7 +27,9 @@ use crate::views::{
     CrawlBar, CrawlsSidebar, DetailsPanel, ResultTab, ResultsGrid, StatusBar,
     crawl_bar::CrawlBarEvent,
     crawls_sidebar::CrawlsSidebarEvent,
-    results_grid::{IssueFilter, PreparedCrawl, ResultsGridEvent, filters_for_tab},
+    details_panel::DetailsPanelEvent,
+    layout_view::LayoutView,
+    results_grid::{IssueFilter, LayoutContext, PreparedCrawl, ResultsGridEvent, filters_for_tab},
 };
 
 actions!(shoutingrobin_app, [Quit, OpenSettings]);
@@ -105,6 +107,16 @@ impl ShoutingRobinApp {
             },
         );
         subscriptions.push(grid_sub);
+
+        subscriptions.push(cx.subscribe_in(
+            &details_panel,
+            window,
+            |this, _panel, event: &DetailsPanelEvent, window, cx| match event {
+                DetailsPanelEvent::ViewLayout { url } => {
+                    this.open_layout_view(url.clone(), window, cx);
+                }
+            },
+        ));
 
         let status_bar_clone = status_bar.clone();
         let sub = cx.subscribe(
@@ -361,6 +373,10 @@ impl ShoutingRobinApp {
             respect_robots_txt: crawl_settings.respect_robots_txt,
             follow_sitemaps: crawl_settings.follow_sitemaps,
             block_images: crawl_settings.block_images,
+            layout_capture: crate::crawl::LayoutCapture::from_switches(
+                crawl_settings.capture_layout,
+                crawl_settings.scroll_for_layout,
+            ),
             near_duplicate_threshold: crawl_settings.near_duplicate_threshold,
             content_selector: crawl_settings.content_selector.clone(),
             user_agent: config.user_agent.clone().or_else(|| {
@@ -493,27 +509,41 @@ impl ShoutingRobinApp {
             };
             tracing::info!(count = pages.len(), crawl_id, "loaded pages for crawl");
 
-            let baseline =
+            let previous =
                 match crate::storage::find_previous_crawl(&pool, &root_url, Some(crawl_id)).await {
-                    Ok(Some(previous)) => match crate::storage::load_pages_for_crawl(
-                        &pool,
-                        previous.id,
-                        &previous.root_url,
-                    )
-                    .await
-                    {
-                        Ok(baseline_pages) => Some((baseline_pages, previous.started_at)),
-                        Err(e) => {
-                            tracing::error!(error=%e, "failed to load baseline pages");
-                            None
-                        }
-                    },
-                    Ok(None) => None,
+                    Ok(previous) => previous,
                     Err(e) => {
                         tracing::error!(error=%e, "failed to find previous crawl");
                         None
                     }
                 };
+            let baseline = match &previous {
+                Some(previous) => match crate::storage::load_pages_for_crawl(
+                    &pool,
+                    previous.id,
+                    &previous.root_url,
+                )
+                .await
+                {
+                    Ok(baseline_pages) => Some((baseline_pages, previous.started_at)),
+                    Err(e) => {
+                        tracing::error!(error=%e, "failed to load baseline pages");
+                        None
+                    }
+                },
+                None => None,
+            };
+            let layout_capture = match crate::storage::load_crawl_config(&pool, crawl_id).await {
+                Ok(config) => config
+                    .map(|config| config.layout_capture)
+                    .unwrap_or_default(),
+                Err(e) => {
+                    tracing::warn!(error=%e, crawl_id, "failed to read the crawl's layout setting");
+                    crate::crawl::LayoutCapture::Off
+                }
+            };
+            let (layout_context, compare_with) =
+                layout_context(crawl_id, layout_capture, previous.as_ref());
 
             // Both crawls move into the task and back out, so nothing is
             // copied to get them there.
@@ -525,12 +555,112 @@ impl ShoutingRobinApp {
                 .await;
 
             cx.update(|cx| {
-                results_grid.update(cx, |g, cx| g.load_prepared(prepared, &root_url, cx));
+                results_grid.update(cx, |g, cx| {
+                    g.load_prepared(prepared, &root_url, cx);
+                    g.set_layout_context(layout_context, cx);
+                });
                 crawl_bar.update(cx, |bar, cx| {
                     bar.has_results = true;
                     cx.notify();
                 });
             });
+
+            // Comparing layouts reads every page's from both crawls, so the
+            // crawl goes on screen first and the result follows.
+            let Some(baseline_crawl_id) = compare_with else {
+                return;
+            };
+            let comparison = cx.update(|cx| {
+                let pool = pool.clone();
+                gpui_tokio::Tokio::spawn_result(cx, async move {
+                    Ok(
+                        crate::crawl::layout::compare_crawls(&pool, baseline_crawl_id, crawl_id)
+                            .await?,
+                    )
+                })
+            });
+            match comparison.await {
+                Ok(layout_changes) => cx.update(|cx| {
+                    results_grid.update(cx, |grid, cx| {
+                        grid.set_layout_changes(crawl_id, layout_changes, cx);
+                    });
+                }),
+                Err(e) => {
+                    tracing::error!(error=%e, crawl_id, "failed to compare layouts");
+                    cx.update(|cx| {
+                        results_grid.update(cx, |grid, cx| {
+                            let mut layout = grid.layout_context().clone();
+                            if layout.crawl_id == Some(crawl_id) {
+                                layout.note = Some("Layout comparison failed".into());
+                                grid.set_layout_context(layout, cx);
+                            }
+                        });
+                    });
+                }
+            }
+        })
+        .detach();
+    }
+
+    /// Opens a page's layout, next to its baseline's when the two crawls
+    /// captured layout the same way.
+    pub(crate) fn open_layout_view(
+        &mut self,
+        url: String,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let layout = self.results_grid.read(cx).layout_context().clone();
+        let Some(crawl_id) = layout.crawl_id else {
+            window.push_notification(
+                Notification::new()
+                    .message("Open the crawl from Historic Crawls to view its layouts.")
+                    .with_type(NotificationType::Warning),
+                cx,
+            );
+            return;
+        };
+        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        let load = gpui_tokio::Tokio::spawn_result(cx, {
+            let url = url.clone();
+            async move {
+                crate::crawl::layout::load_page_comparison(
+                    &pool,
+                    layout.baseline_crawl_id,
+                    crawl_id,
+                    &url,
+                )
+                .await
+            }
+        });
+        cx.spawn_in(window, async move |_, cx| {
+            let result = load.await;
+            let shown = cx.update(|window, cx| match result {
+                Ok(Some(comparison)) => {
+                    let view = cx.new(|_| LayoutView::new(url, comparison));
+                    window.open_dialog(cx, move |dialog, _window, _cx| {
+                        dialog.title("Layout").w(px(1120.)).child(view.clone())
+                    });
+                }
+                Ok(None) => window.push_notification(
+                    Notification::new()
+                        .message("This crawl captured no layout for the page.")
+                        .with_type(NotificationType::Warning),
+                    cx,
+                ),
+                Err(e) => {
+                    tracing::error!(error=%e, "failed to load page layout");
+                    window.push_notification(
+                        Notification::new()
+                            .message(format!("Failed to load the layout: {e:#}"))
+                            .with_type(NotificationType::Error),
+                        cx,
+                    );
+                }
+            });
+            if let Err(e) = shown {
+                tracing::warn!(error=%e, "window closed before the layout loaded");
+            }
         })
         .detach();
     }
@@ -1020,11 +1150,15 @@ impl Render for ShoutingRobinApp {
         };
 
         let has_baseline = self.results_grid.read(cx).has_baseline(cx);
+        let has_layouts = self.results_grid.read(cx).has_layouts(cx);
 
-        // The Changes tab only exists while a comparison baseline is active. If
-        // the baseline went away (e.g. a new crawl started) while it was open,
-        // fall back to the Overview tab so the bar and grid stay in sync.
-        if !has_baseline && self.active_tab == ResultTab::Changes {
+        // The Changes tab only exists while a comparison baseline is active,
+        // and the Layout tab while the crawl has layouts. If either went away
+        // (e.g. a new crawl started) while it was open, fall back to the
+        // Overview tab so the bar and grid stay in sync.
+        if (!has_baseline && self.active_tab == ResultTab::Changes)
+            || (!has_layouts && self.active_tab == ResultTab::Layout)
+        {
             self.active_tab = ResultTab::Overview;
             self.issue_filter = IssueFilter::All;
             self.results_grid.update(cx, |grid, cx| {
@@ -1036,6 +1170,7 @@ impl Render for ShoutingRobinApp {
             .iter()
             .copied()
             .filter(|tab| *tab != ResultTab::Changes || has_baseline)
+            .filter(|tab| *tab != ResultTab::Layout || has_layouts)
             .filter(|tab| {
                 !Self::needs_rendering(*tab) || self.active_render_mode.renders_javascript()
             })
@@ -1237,6 +1372,16 @@ impl Render for ShoutingRobinApp {
                         "Comparing to crawl from {}",
                         crate::views::relative_time(now, started_at)
                     )),
+            );
+        }
+        if let Some(note) = self.results_grid.read(cx).layout_context().note.clone() {
+            filter_left = filter_left.child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_xs()
+                    .text_color(cx.theme().muted_foreground)
+                    .child(note),
             );
         }
 
@@ -1478,4 +1623,100 @@ fn init_keys(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         gpui_kit::KeyBinding::new("ctrl-,", OpenSettings, None),
     ]);
+}
+
+/// The layout context for a crawl and, when its layouts can be compared with
+/// the baseline's, the baseline to compare with. Layouts captured with and
+/// without scrolling differ on every page with lazy content, so they are not
+/// compared.
+fn layout_context(
+    crawl_id: i64,
+    layout_capture: crate::crawl::LayoutCapture,
+    previous: Option<&crate::storage::CrawlRow>,
+) -> (LayoutContext, Option<i64>) {
+    let mut context = LayoutContext {
+        crawl_id: Some(crawl_id),
+        ..LayoutContext::default()
+    };
+    if !layout_capture.is_enabled() {
+        return (context, None);
+    }
+    let Some(previous) = previous else {
+        return (context, None);
+    };
+    if previous.layout_capture == layout_capture {
+        context.baseline_crawl_id = Some(previous.id);
+        context.note = Some("Comparing layouts".into());
+        return (context, Some(previous.id));
+    }
+    context.note = Some(
+        match previous.layout_capture {
+            crate::crawl::LayoutCapture::Off => {
+                "Layout not compared: the baseline crawl did not capture layout"
+            }
+            _ if previous.layout_capture.scrolls() => {
+                "Layout not compared: the baseline crawl scrolled its pages and this one did not"
+            }
+            _ => "Layout not compared: this crawl scrolled its pages and the baseline did not",
+        }
+        .into(),
+    );
+    (context, None)
+}
+
+#[cfg(test)]
+mod layout_context_tests {
+    use super::layout_context;
+    use crate::crawl::LayoutCapture;
+    use crate::storage::CrawlRow;
+
+    fn previous(layout_capture: LayoutCapture) -> CrawlRow {
+        CrawlRow {
+            id: 7,
+            root_url: "https://example.com/".into(),
+            started_at: 0,
+            finished_at: Some(1),
+            page_count: 0,
+            document_count: 0,
+            unfetched_count: 0,
+            render_mode: "chrome".into(),
+            layout_capture,
+        }
+    }
+
+    #[test]
+    fn layouts_captured_the_same_way_are_compared() {
+        let baseline = previous(LayoutCapture::Loaded);
+        let (context, compare_with) = layout_context(9, LayoutCapture::Loaded, Some(&baseline));
+        assert_eq!(compare_with, Some(7));
+        assert_eq!(context.baseline_crawl_id, Some(7));
+        assert_eq!(context.crawl_id, Some(9));
+    }
+
+    #[test]
+    fn layouts_captured_differently_are_not_compared_and_say_why() {
+        let baseline = previous(LayoutCapture::Scrolled);
+        let (context, compare_with) = layout_context(9, LayoutCapture::Loaded, Some(&baseline));
+        assert_eq!(compare_with, None);
+        assert_eq!(context.baseline_crawl_id, None);
+        assert_eq!(
+            context.note.as_deref(),
+            Some("Layout not compared: the baseline crawl scrolled its pages and this one did not")
+        );
+
+        let baseline = previous(LayoutCapture::Off);
+        let (context, _) = layout_context(9, LayoutCapture::Loaded, Some(&baseline));
+        assert_eq!(
+            context.note.as_deref(),
+            Some("Layout not compared: the baseline crawl did not capture layout")
+        );
+    }
+
+    #[test]
+    fn a_crawl_without_layouts_has_nothing_to_compare() {
+        let baseline = previous(LayoutCapture::Loaded);
+        let (context, compare_with) = layout_context(9, LayoutCapture::Off, Some(&baseline));
+        assert_eq!(compare_with, None);
+        assert_eq!(context.note, None);
+    }
 }

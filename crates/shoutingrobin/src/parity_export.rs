@@ -77,6 +77,7 @@ fn crawl_and_load(root_url: &str, timeout: Duration) -> Vec<PageRecord> {
                 list_mode: false,
                 seed_urls: Vec::new(),
                 check_resources: true,
+                layout_capture: crate::crawl::LayoutCapture::Off,
             },
         )
     };

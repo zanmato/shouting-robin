@@ -64,11 +64,16 @@ impl CrawlEngine {
         tx: Sender<CrawlEvent>,
         pool: SqlitePool,
         render_mode: RenderMode,
-        config: CrawlConfig,
+        mut config: CrawlConfig,
     ) -> (
         Arc<AtomicBool>,
         impl std::future::Future<Output = ()> + Send + 'static,
     ) {
+        // Only a rendered page has boxes. Recording "off" for an HTTP crawl
+        // keeps the history from claiming a capture that never happened.
+        if !render_mode.renders_javascript() {
+            config.layout_capture = crate::crawl::LayoutCapture::Off;
+        }
         let cancel = Arc::new(AtomicBool::new(false));
         self.cancel = Some(cancel.clone());
 
@@ -105,6 +110,22 @@ impl CrawlEngine {
             {
                 tracing::warn!(error=%e, "failed to send started event");
             }
+
+            // Fetched beside the crawl with its user agent and headers, so a
+            // site that only answers those still gives up its icon.
+            let site_icon = match build_ssr_client(&config) {
+                Ok(client) => {
+                    let pool = pool.clone();
+                    let page_url = root_url.clone();
+                    Some(tokio::spawn(async move {
+                        crate::crawl::site_icon::refresh_site_icon(&pool, &client, &page_url).await
+                    }))
+                }
+                Err(e) => {
+                    tracing::warn!(error=%e, "failed to build client for the site icon");
+                    None
+                }
+            };
 
             let sitemap_entries = if config.follow_sitemaps {
                 let sitemap_urls = crate::crawl::sitemap::discover_sitemaps(&root_url).await;
@@ -202,10 +223,26 @@ impl CrawlEngine {
                 RenderMode::Chrome => {
                     let mut automation_map =
                         spider::features::chrome_common::AutomationScriptsMap::default();
-                    automation_map.insert(
-                        "/".to_string(),
-                        vec![WebAutomation::Evaluate(METRICS_AUTOMATION_JS.to_string())],
-                    );
+                    let mut automations =
+                        vec![WebAutomation::Evaluate(METRICS_AUTOMATION_JS.to_string())];
+                    // Preparing a page for its layout capture can scroll it
+                    // for seconds. Here it runs in spider's page workers, in
+                    // parallel, rather than in the page pump. The capture
+                    // comes back stashed in the HTML, like the web vitals
+                    // above: spider only waits a moment for the pump before
+                    // it closes Chrome, so the last pages of a crawl can
+                    // reach the pump with no tab left to ask.
+                    if config.layout_capture.is_enabled() {
+                        automations.push(WebAutomation::Evaluate(
+                            crate::crawl::layout::LAYOUT_CAPTURE_JS.to_string(),
+                        ));
+                        automations.push(WebAutomation::Evaluate(format!(
+                            "(async () => {{ const layout = window.__shoutingRobinLayout; \
+                             await layout.prepare({{ scroll: {} }}); layout.stash(); }})()",
+                            config.layout_capture.scrolls()
+                        )));
+                    }
+                    automation_map.insert("/".to_string(), automations);
                     let wait_cap = (config.timeout_seconds as u64)
                         .saturating_sub(5)
                         .clamp(3, 15);
@@ -329,7 +366,14 @@ impl CrawlEngine {
                 None
             };
             let axe_js = chrome_mode.then_some(AXE_JS);
+            let layout_capture = if chrome_mode {
+                config.layout_capture
+            } else {
+                crate::crawl::LayoutCapture::Off
+            };
             let pump = tokio::spawn(async move {
+                // Keys and styles the crawl's pages share, stored once.
+                let mut layout_tables = crate::crawl::layout::LayoutTables::default();
                 let mut subscribe_guard = subscribe_guard;
                 let mut total: u64 = 0;
                 // dst_url -> (total inlinks, csr-only inlinks, distinct source URLs)
@@ -366,7 +410,16 @@ impl CrawlEngine {
                         break;
                     }
                     total += 1;
-                    let html_bytes = page.get_html_bytes_u8();
+                    let page_html = page.get_html_bytes_u8();
+                    let stashed_layout = if layout_capture.is_enabled() {
+                        crate::crawl::layout::take_stashed_capture(page_html)
+                    } else {
+                        None
+                    };
+                    let (html_bytes, stashed_layout) = match &stashed_layout {
+                        Some((cleaned, json)) => (cleaned.as_slice(), Some(json.as_str())),
+                        None => (page_html, None),
+                    };
                     let mut record = PageRecord {
                         url: page.get_url().to_string(),
                         status: Some(page.status_code.as_u16()),
@@ -511,6 +564,22 @@ impl CrawlEngine {
                         );
                     }
 
+                    if layout_capture.is_enabled()
+                        && !skip_analysis
+                        && is_rendered_document(&record)
+                    {
+                        store_page_layout(
+                            &page,
+                            &record.url,
+                            stashed_layout,
+                            layout_capture.scrolls(),
+                            &mut layout_tables,
+                            &pool_pages,
+                            crawl_id,
+                        )
+                        .await;
+                    }
+
                     let mut resource_timings: Vec<ResourceTiming> = Vec::new();
                     // The server's HTML for this page, if Chrome still has it.
                     let mut chrome_raw_html: Option<String> = None;
@@ -520,7 +589,12 @@ impl CrawlEngine {
                             // web vitals, scan a11y, or harvest its subresources.
                             page.close_page().await;
                         } else if page.get_chrome_page().is_some() {
-                            collect_performance_metrics(&page, &mut record).await;
+                            // A layout capture may have scrolled the page,
+                            // which moves LCP and adds layout shifts. Its
+                            // crawl keeps the vitals stashed before that.
+                            if !layout_capture.is_enabled() || record.ttfb_ms.is_none() {
+                                collect_performance_metrics(&page, &mut record).await;
+                            }
                             // `get_duration_elapsed` spans the whole render
                             // including paced auxiliary requests, which read as
                             // five-second "response times" on a 70 ms server.
@@ -801,7 +875,7 @@ impl CrawlEngine {
 
             // A failed pass leaves its columns empty, which reads as "no
             // issues" unless the reader is told otherwise.
-            let passes: [(&str, Result<(), sqlx::Error>); 4] = [
+            let passes: [(&str, Result<(), sqlx::Error>); 5] = [
                 (
                     "near-duplicate analysis",
                     run_near_duplicate_analysis(&pool, crawl_id, config.near_duplicate_threshold)
@@ -818,6 +892,10 @@ impl CrawlEngine {
                 (
                     "hreflang validation",
                     run_hreflang_validation(&pool, crawl_id).await,
+                ),
+                (
+                    "layout template grouping",
+                    crate::crawl::layout_groups::run_template_grouping(&pool, crawl_id).await,
                 ),
             ];
             for (pass, outcome) in passes {
@@ -908,6 +986,15 @@ impl CrawlEngine {
                 }
                 if blocked_count > 0 {
                     tracing::info!(count = blocked_count, "found robots.txt-blocked URLs");
+                }
+            }
+
+            // Waited for so the history, which reloads on Finished, finds it.
+            if let Some(site_icon) = site_icon {
+                match site_icon.await {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => tracing::warn!(error=%e, "failed to store the site icon"),
+                    Err(e) => tracing::warn!(error=%e, "site icon task failed"),
                 }
             }
 
@@ -2260,6 +2347,94 @@ async fn collect_resource_timings(page: &spider::page::Page) -> Vec<ResourceTimi
         .unwrap_or_default()
 }
 
+/// Whether a page is an HTML document that answered with content, which is
+/// what a layout capture describes. Error pages and files are left out.
+fn is_rendered_document(record: &PageRecord) -> bool {
+    record.status.is_some_and(|code| (200..300).contains(&code))
+        && record
+            .content_type
+            .as_deref()
+            .is_none_or(|content_type| content_type.contains("html"))
+}
+
+/// Stores the page's layout: the capture stashed in its HTML, or, when the
+/// stash is missing, one taken from the open tab. A page whose capture fails
+/// is left without a layout and logged, the crawl goes on.
+async fn store_page_layout(
+    page: &spider::page::Page,
+    url: &str,
+    stashed: Option<&str>,
+    scroll: bool,
+    tables: &mut crate::crawl::layout::LayoutTables,
+    pool: &SqlitePool,
+    crawl_id: i64,
+) {
+    let capture = match stashed {
+        Some(json) => serde_json::from_str(json).map_err(anyhow::Error::from),
+        None => capture_page_layout(page, scroll).await,
+    };
+    let capture = match capture {
+        Ok(capture) => capture,
+        Err(e) => {
+            tracing::warn!(%url, error=%e, "layout capture failed");
+            return;
+        }
+    };
+    let (layout, added) = match crate::crawl::layout::PageLayout::from_capture(capture, tables) {
+        Ok(read) => read,
+        Err(e) => {
+            tracing::warn!(%url, error=%e, "layout capture could not be read");
+            return;
+        }
+    };
+    let encoded = match layout.encode() {
+        Ok(encoded) => encoded,
+        Err(e) => {
+            tracing::warn!(%url, error=%e, "layout could not be encoded");
+            return;
+        }
+    };
+    if let Err(e) = storage::save_page_layout(pool, crawl_id, url, &encoded, &added).await {
+        tracing::warn!(%url, error=%e, "failed to store page layout");
+    }
+}
+
+async fn capture_page_layout(
+    page: &spider::page::Page,
+    scroll: bool,
+) -> anyhow::Result<crate::crawl::layout::RawCapture> {
+    use anyhow::Context as _;
+    let chrome_page = page
+        .get_chrome_page()
+        .context("the page has no Chrome tab")?;
+    chrome_page
+        .evaluate(crate::crawl::layout::LAYOUT_CAPTURE_JS)
+        .await
+        .context("capture script failed to load")?;
+    // Prepared already, unless the automation step did not get to run.
+    let expression = format!(
+        "(async () => {{ const layout = window.__shoutingRobinLayout; \
+         if (!layout.prepared) await layout.prepare({{ scroll: {scroll} }}); \
+         return JSON.stringify(layout.capture()); }})()"
+    );
+    let params = spider::chromiumoxide::cdp::js_protocol::runtime::EvaluateParams::builder()
+        .expression(expression)
+        .await_promise(true)
+        .return_by_value(true)
+        .build()
+        .map_err(anyhow::Error::msg)?;
+    let limit = Duration::from_secs(if scroll { 90 } else { 20 });
+    let result = tokio::time::timeout(limit, chrome_page.evaluate(params))
+        .await
+        .context("layout capture timed out")?
+        .context("layout capture failed")?;
+    let json = result
+        .value()
+        .and_then(|value| value.as_str())
+        .context("layout capture returned nothing")?;
+    serde_json::from_str(json).context("layout capture returned unexpected JSON")
+}
+
 /// axe-core 4.10.2 (MPL-2.0), byte-identical to the npm release. Bundled
 /// rather than fetched per crawl: it is injected into every page the crawl
 /// renders, and code run that way must not depend on a CDN being honest and
@@ -2761,6 +2936,7 @@ mod out_of_band_fetch_tests {
             list_mode: false,
             seed_urls: Vec::new(),
             check_resources: false,
+            layout_capture: crate::crawl::LayoutCapture::Off,
         }
     }
 

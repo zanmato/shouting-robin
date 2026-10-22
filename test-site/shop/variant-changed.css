@@ -1,0 +1,17 @@
+/* A theme change between two crawls. Each rule is one kind of layout change
+   the comparison must report. */
+
+/* Resized and restyled: every page's H1. */
+h1 { font-size: 44px; line-height: 1.25; }
+
+/* Restyled: every price, alone on product pages and in lists elsewhere. */
+.price { color: rgb(208, 2, 27); }
+
+/* Removed: the breadcrumb trail on every page that has one. */
+.breadcrumbs { display: none; }
+
+/* Removed from one template only: the buy box trust badges. */
+.trust-badges { display: none; }
+
+/* Restyled and grown: the footer, on every page. */
+.site-footer { padding-top: 64px; background-color: rgb(255, 230, 0); }

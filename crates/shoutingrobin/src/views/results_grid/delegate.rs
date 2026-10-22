@@ -12,6 +12,7 @@ use gpui_kit::{
 
 use crate::a11y_rules::rule_description;
 use crate::crawl::event::PageRecord;
+use crate::crawl::layout::PageLayoutChange;
 use crate::ui::tag::{Tone, tone_tag, tone_text_color};
 use crate::views::ResultTab;
 use crate::views::details_panel::{DetailsSelection, ImageDetails, ImageReference};
@@ -25,7 +26,8 @@ use super::columns::{
 };
 use super::data_build::{
     build_change_entries, build_image_aggregates, build_issues_entries, build_rows_for_tab,
-    change_entry_matches, dir_format_size, issue_entry_matches, overview_issue_target,
+    change_entry_matches, dir_format_size, issue_entry_matches, layout_template_cell_text,
+    layout_template_matches, overview_issue_target,
 };
 use super::filter::{
     compute_tab_filter_counts, filter_for_tab, flat_row_matches_filter,
@@ -118,6 +120,9 @@ pub struct ResultsDelegate {
     /// Invalidated whenever the underlying data changes (pages, baseline, root),
     /// but not on tab/filter switches since the counts span all tabs.
     counts_cache: Option<HashMap<ResultTab, TabFilterCounts>>,
+    /// Pages whose layout changed since the baseline, by URL. Filled in after
+    /// the crawl is on screen, since comparing layouts reads every page's.
+    layout_changes: HashMap<String, PageLayoutChange>,
 }
 
 /// The loaded crawl, detached from the grid.
@@ -169,7 +174,22 @@ impl ResultsDelegate {
             issue_entries: Vec::new(),
             hreflang_columns: 0,
             counts_cache: None,
+            layout_changes: HashMap::new(),
         }
+    }
+
+    /// Installs the result of comparing the crawl's layouts with the
+    /// baseline's, which changes the Changes and Layout tabs.
+    pub fn set_layout_changes(&mut self, layout_changes: HashMap<String, PageLayoutChange>) {
+        self.layout_changes = layout_changes;
+        self.invalidate_counts();
+        self.rebuild_filter();
+    }
+
+    /// Whether any loaded page has a captured layout, which is when the
+    /// Layout tab has anything to show.
+    pub fn has_layouts(&self) -> bool {
+        self.all_pages.iter().any(|page| page.layout.is_some())
     }
 
     /// Drops the cached counts so the next `tab_filter_counts` call recomputes
@@ -256,7 +276,7 @@ impl ResultsDelegate {
 
     fn change_entries(&self) -> Vec<ChangeEntry> {
         match &self.baseline_pages {
-            Some(baseline) => build_change_entries(&self.all_pages, baseline),
+            Some(baseline) => build_change_entries(&self.all_pages, baseline, &self.layout_changes),
             None => Vec::new(),
         }
     }
@@ -302,6 +322,7 @@ impl ResultsDelegate {
         self.baseline_pages = None;
         self.baseline_started_at = None;
         self.baseline_issue_counts.clear();
+        self.layout_changes.clear();
         self.invalidate_counts();
         self.rebuild_columns();
         self.rebuild_filter();
@@ -331,6 +352,7 @@ impl ResultsDelegate {
         self.baseline_pages = None;
         self.baseline_started_at = None;
         self.baseline_issue_counts.clear();
+        self.layout_changes.clear();
         self.invalidate_counts();
         self.rebuild_columns();
     }
@@ -353,6 +375,9 @@ impl ResultsDelegate {
                         _ => self.all_pages.iter().find(|p| p.url == url),
                     }
                 }
+                FlatRow::LayoutTemplate(template) => template
+                    .example_page()
+                    .and_then(|page_index| self.all_pages.get(page_index)),
                 FlatRow::IssuesRow { .. }
                 | FlatRow::ImageAggregate(_)
                 | FlatRow::DirectoryAggregate { .. } => None,
@@ -609,6 +634,16 @@ impl ResultsDelegate {
             });
             return;
         }
+        if self.active_tab == ResultTab::Layout {
+            let filter = self.issue_filter;
+            self.flat_rows.retain(|row| {
+                let FlatRow::LayoutTemplate(template) = row else {
+                    return true;
+                };
+                layout_template_matches(template, filter)
+            });
+            return;
+        }
         if self.active_tab == ResultTab::SiteStructure {
             self.flat_rows.retain(|row| {
                 let FlatRow::DirectoryAggregate { depth, .. } = row else {
@@ -629,6 +664,7 @@ impl ResultsDelegate {
                 FlatRow::IssuesRow { .. }
                 | FlatRow::ChangeRow { .. }
                 | FlatRow::ImageAggregate(_)
+                | FlatRow::LayoutTemplate(_)
                 | FlatRow::DirectoryAggregate { .. } => return true,
             };
             let Some(page) = self.all_pages.get(page_index) else {
@@ -744,6 +780,7 @@ impl ResultsDelegate {
                 }
             }
             FlatRow::ImageAggregate(image) => image_aggregate_cell_text(image, col_key).into(),
+            FlatRow::LayoutTemplate(template) => layout_template_cell_text(template, col_key),
             FlatRow::DirectoryAggregate {
                 path,
                 depth,
@@ -914,6 +951,18 @@ impl TableDelegate for ResultsDelegate {
                         _ => cell.child(text),
                     }
                 }
+                FlatRow::LayoutTemplate(template) => {
+                    let text = SharedString::from(layout_template_cell_text(template, &key));
+                    match key.as_ref() {
+                        "layout_missing_markup" if !template.missing_markup.is_empty() => {
+                            cell.child(tone_tag(Tone::Warn, cx).child(text))
+                        }
+                        "layout_changed" if !template.changed.is_empty() => {
+                            cell.child(tone_tag(ChangeKind::Changed.tone(), cx).child(text))
+                        }
+                        _ => cell.child(text),
+                    }
+                }
                 FlatRow::DirectoryAggregate {
                     path,
                     depth,
@@ -970,6 +1019,7 @@ impl TableDelegate for ResultsDelegate {
                         FlatRow::IssuesRow { .. }
                         | FlatRow::ChangeRow { .. }
                         | FlatRow::ImageAggregate(_)
+                        | FlatRow::LayoutTemplate(_)
                         | FlatRow::DirectoryAggregate { .. }
                         | FlatRow::A11yIssue { .. } => unreachable!(),
                     };

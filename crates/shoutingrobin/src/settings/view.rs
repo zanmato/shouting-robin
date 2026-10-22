@@ -426,6 +426,57 @@ impl SettingsView {
                          render to speed up crawls.",
                     ),
                     SettingItem::new(
+                        "Capture Layout",
+                        SettingField::switch(
+                            move |cx: &App| AppSettings::global(cx).settings.crawl.capture_layout,
+                            {
+                                let view_handle = view_handle.clone();
+                                move |val: bool, cx: &mut App| {
+                                    AppSettings::global_mut(cx).settings.crawl.capture_layout = val;
+
+                                    let key = "crawl.capture_layout".to_string();
+                                    let value = val.to_string();
+                                    if let Some(view) = view_handle.upgrade() {
+                                        view.update(cx, |view, cx| {
+                                            view.save_setting_debounced(key, value, cx);
+                                        });
+                                    }
+                                }
+                            },
+                        )
+                        .default_value(default_settings.crawl.capture_layout),
+                    )
+                    .description(
+                        "In Chrome mode, record the boxes each page renders, to group \
+                         pages by template and find layout changes between crawls.",
+                    ),
+                    SettingItem::new(
+                        "Scroll for Layout",
+                        SettingField::switch(
+                            move |cx: &App| AppSettings::global(cx).settings.crawl.scroll_for_layout,
+                            {
+                                let view_handle = view_handle.clone();
+                                move |val: bool, cx: &mut App| {
+                                    AppSettings::global_mut(cx).settings.crawl.scroll_for_layout = val;
+
+                                    let key = "crawl.scroll_for_layout".to_string();
+                                    let value = val.to_string();
+                                    if let Some(view) = view_handle.upgrade() {
+                                        view.update(cx, |view, cx| {
+                                            view.save_setting_debounced(key, value, cx);
+                                        });
+                                    }
+                                }
+                            },
+                        )
+                        .default_value(default_settings.crawl.scroll_for_layout),
+                    )
+                    .description(
+                        "Scroll through each page before recording its layout, so content \
+                         that loads on scroll is included. Seconds slower a page. Only \
+                         applies while Capture Layout is on.",
+                    ),
+                    SettingItem::new(
                         "Near Duplicate Threshold (%)",
                         SettingField::number_input(
                             NumberFieldOptions {

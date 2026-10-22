@@ -1047,9 +1047,9 @@ dependencies = [
 
 [[package]]
 name = "chromey"
-version = "2.54.0"
+version = "2.58.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6772c5d361271f52cdf86cfb67b3473650a746d076cbe4a9dc44cc04880c12a3"
+checksum = "81c967b80cb61038057b2731abc0b0f264ec37592e83006212526ccede90cb46"
 dependencies = [
  "aho-corasick",
  "base64 0.22.1",
@@ -1858,7 +1858,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2127,7 +2127,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3750,7 +3750,7 @@ dependencies = [
  "tokio",
  "tower-service",
  "tracing",
- "windows-registry 0.6.1",
+ "windows-registry 0.4.0",
 ]
 
 [[package]]
@@ -3765,7 +3765,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.62.2",
+ "windows-core 0.57.0",
 ]
 
 [[package]]
@@ -4989,7 +4989,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6279,7 +6279,7 @@ dependencies = [
  "once_cell",
  "socket2 0.6.3",
  "tracing",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6935,7 +6935,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys 0.12.1",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7002,7 +7002,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7522,10 +7522,12 @@ dependencies = [
  "gpui-kit",
  "gpui_tokio",
  "hex",
+ "image",
  "md5",
  "minisign-verify",
  "quick-xml 0.37.5",
  "reqwest 0.12.28",
+ "resvg 0.46.0",
  "rust-embed",
  "scraper",
  "self_update",
@@ -7739,8 +7741,8 @@ dependencies = [
 
 [[package]]
 name = "spider"
-version = "2.53.4"
-source = "git+https://github.com/zanmato/spider?branch=shouting-robin#0490c772e01ca9173f70b46b1c86a0594eb541f9"
+version = "2.54.0"
+source = "git+https://github.com/zanmato/spider?branch=shouting-robin#2b016e9adb2f65376ccafc260d2aadf588f3a03c"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -7752,6 +7754,7 @@ dependencies = [
  "case_insensitive_string",
  "chromey",
  "cookie",
+ "crossbeam-queue",
  "dashmap",
  "fastrand 2.4.1",
  "h2",
@@ -7791,8 +7794,8 @@ dependencies = [
 
 [[package]]
 name = "spider_agent_types"
-version = "2.53.4"
-source = "git+https://github.com/zanmato/spider?branch=shouting-robin#0490c772e01ca9173f70b46b1c86a0594eb541f9"
+version = "2.54.0"
+source = "git+https://github.com/zanmato/spider?branch=shouting-robin#2b016e9adb2f65376ccafc260d2aadf588f3a03c"
 dependencies = [
  "aho-corasick",
  "llm_models_spider",
@@ -8536,7 +8539,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix 1.1.4",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -10025,7 +10028,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]
@@ -10669,7 +10672,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7d6f32a0ff4a9f6f01231eb2059cc85479330739333e0e58cadf03b6af2cca10"
 dependencies = [
  "cfg-if",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

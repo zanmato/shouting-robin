@@ -78,6 +78,9 @@ pub(super) fn flat_cell_text(
             }
         }
         FlatRow::ImageAggregate(image) => image_aggregate_cell_text(image, col_key),
+        FlatRow::LayoutTemplate(template) => SharedString::from(
+            super::data_build::layout_template_cell_text(template, col_key),
+        ),
         // IssuesRow and ChangeRow have dedicated sort branches in perform_sort,
         // so they never reach this text-based path.
         FlatRow::IssuesRow { .. } | FlatRow::ChangeRow { .. } => SharedString::default(),

@@ -7,7 +7,7 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, EventEmitter, IntoElement, ParentElement, Render,
-    Styled, Subscription, Window, div,
+    SharedString, Styled, Subscription, Window, div,
 };
 
 use crate::crawl::event::PageRecord;
@@ -41,7 +41,9 @@ impl PreparedCrawl {
         root_url: &str,
     ) -> Self {
         let change_entries = match &baseline {
-            Some((baseline_pages, _)) => build_change_entries(&pages, baseline_pages),
+            Some((baseline_pages, _)) => {
+                build_change_entries(&pages, baseline_pages, &HashMap::new())
+            }
             None => Vec::new(),
         };
         let tab_filter_counts = compute_all_tab_filter_counts(
@@ -65,7 +67,20 @@ impl PreparedCrawl {
 pub struct ResultsGrid {
     state: Entity<TableState<ResultsDelegate>>,
     loading: bool,
+    layout: LayoutContext,
     _subscription: Subscription,
+}
+
+/// What the layout views need to know about the crawl on screen.
+#[derive(Clone, Debug, Default)]
+pub struct LayoutContext {
+    pub crawl_id: Option<i64>,
+    /// The baseline crawl whose layouts are compared with this one's. Unset
+    /// when there is none, or when it captured layout with other settings.
+    pub baseline_crawl_id: Option<i64>,
+    /// Shown next to the baseline note: a comparison in progress, or why
+    /// layouts are not compared.
+    pub note: Option<SharedString>,
 }
 
 impl ResultsGrid {
@@ -88,6 +103,7 @@ impl ResultsGrid {
         Self {
             state,
             loading: false,
+            layout: LayoutContext::default(),
             _subscription: sub,
         }
     }
@@ -144,7 +160,41 @@ impl ResultsGrid {
         cx.notify();
     }
 
+    pub fn layout_context(&self) -> &LayoutContext {
+        &self.layout
+    }
+
+    pub fn set_layout_context(&mut self, layout: LayoutContext, cx: &mut Context<Self>) {
+        self.layout = layout;
+        cx.notify();
+    }
+
+    /// Installs the pages whose layout changed since the baseline, for the
+    /// crawl `crawl_id`. A result for a crawl that is no longer on screen is
+    /// dropped.
+    pub fn set_layout_changes(
+        &mut self,
+        crawl_id: i64,
+        layout_changes: HashMap<String, crate::crawl::layout::PageLayoutChange>,
+        cx: &mut Context<Self>,
+    ) {
+        if self.layout.crawl_id != Some(crawl_id) {
+            return;
+        }
+        self.layout.note = None;
+        self.state.update(cx, |state, cx| {
+            state.delegate_mut().set_layout_changes(layout_changes);
+            state.refresh(cx);
+        });
+        cx.notify();
+    }
+
+    pub fn has_layouts(&self, cx: &App) -> bool {
+        self.state.read(cx).delegate().has_layouts()
+    }
+
     pub fn clear(&mut self, cx: &mut Context<Self>) {
+        self.layout = LayoutContext::default();
         self.state.update(cx, |state, cx| {
             state.delegate_mut().clear();
             state.refresh(cx);

@@ -950,3 +950,141 @@ fn test_orphans_and_blocked_urls_are_persisted() {
         assert_eq!(count, 1, "{path} should be a single row");
     }
 }
+
+/// Fetches `path` from the test server with a bare HTTP/1.1 request and
+/// returns the status line and body.
+fn fetch(port: u16, path: &str) -> (String, String) {
+    use std::io::{Read, Write};
+    let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+    )
+    .expect("send request");
+    let mut response = String::new();
+    stream.read_to_string(&mut response).expect("read response");
+    let (head, body) = response
+        .split_once("\r\n\r\n")
+        .expect("a header and a body");
+    let status = head.lines().next().unwrap_or_default().to_string();
+    (status, body.to_string())
+}
+
+/// The shop fixture's theme change between two crawls: the same stylesheet
+/// URL serves the changed rules once a test switches the variant on.
+#[test]
+fn test_shop_layout_variant_swaps_the_stylesheet() {
+    // Starting a server rewrites sitemap.xml, which a running crawl reads.
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+
+    let (status, home) = fetch(port, "/shop/");
+    assert!(
+        status.contains("200"),
+        "the shop home is served at /shop/: {status}"
+    );
+    assert!(home.contains("/shop/variant.css"));
+
+    let (_, plain) = fetch(port, "/shop/variant.css");
+    assert!(
+        !plain.contains(".breadcrumbs"),
+        "the plain variant changes nothing"
+    );
+
+    server.set_shop_layout_variant(true);
+    let (_, changed) = fetch(port, "/shop/variant.css");
+    assert!(changed.contains(".breadcrumbs { display: none; }"));
+
+    server.set_shop_layout_variant(false);
+    let (_, restored) = fetch(port, "/shop/variant.css");
+    assert_eq!(restored, plain);
+
+    server.kill();
+}
+
+/// A crawl stores the icon of the host it starts on, scaled to a PNG the
+/// history can draw without going back to the network.
+#[test]
+fn test_crawl_stores_the_site_icon() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+
+    let icons = crawl_test_site_icons(&format!("http://127.0.0.1:{port}/shop/"));
+    server.kill();
+
+    assert_eq!(icons.len(), 1, "one icon per host: {icons:?}");
+    let icon = &icons[0];
+    assert_eq!(icon.host, format!("127.0.0.1:{port}"));
+    let png = icon
+        .icon_png
+        .as_deref()
+        .expect("the shop links an SVG favicon");
+    assert!(
+        png.starts_with(b"\x89PNG"),
+        "the SVG is stored rasterized as a PNG"
+    );
+}
+
+/// A host without an icon is remembered as having none, and a later fetch
+/// that fails does not erase an icon found earlier.
+#[test]
+fn test_site_icon_misses_are_stored_without_erasing_a_found_icon() {
+    let _guard = CRAWL_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+    let (mut server, port) = spawn_http_server();
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    runtime.block_on(async {
+        // One connection, since every connection to `:memory:` is its own database.
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .unwrap();
+        shoutingrobin::storage::run_migrations(&pool).await.unwrap();
+        let client = shoutingrobin::crawl::site_icon::icon_client().unwrap();
+        let host = format!("127.0.0.1:{port}");
+
+        // The site root links no icon and the test server has no /favicon.ico.
+        let missing = shoutingrobin::crawl::site_icon::refresh_site_icon(
+            &pool,
+            &client,
+            &format!("http://{host}/"),
+        )
+        .await
+        .unwrap();
+        assert!(missing.is_none());
+        let stored = shoutingrobin::storage::load_site_icons(&pool)
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 1);
+        assert!(stored[0].icon_png.is_none(), "the miss is recorded");
+
+        let found = shoutingrobin::crawl::site_icon::refresh_site_icon(
+            &pool,
+            &client,
+            &format!("http://{host}/shop/"),
+        )
+        .await
+        .unwrap();
+        assert!(found.is_some());
+
+        server.kill();
+        let after_outage = shoutingrobin::crawl::site_icon::refresh_site_icon(
+            &pool,
+            &client,
+            &format!("http://{host}/shop/"),
+        )
+        .await
+        .unwrap();
+        assert!(after_outage.is_none(), "the server is gone");
+
+        let stored = shoutingrobin::storage::load_site_icons(&pool)
+            .await
+            .unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].icon_png, found, "the icon found earlier is kept");
+    });
+}

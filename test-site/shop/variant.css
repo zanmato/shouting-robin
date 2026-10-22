@@ -1,0 +1,3 @@
+/* Empty on purpose. The integration test server serves variant-changed.css
+   at this URL when a test switches the shop's layout variant on, to stand in
+   for a theme change between two crawls. */

@@ -7,7 +7,10 @@
 //! `SR_SCENE_READY` the file written once the window shows the scene.
 //! `SR_CRAWL_FIXTURE` is the SQL file of recorded crawls the scenes show. The
 //! `record` scene makes that file's data instead: it crawls `SR_RECORD_URL`
-//! over HTTP and then in Chrome, and the script dumps the result.
+//! over HTTP and then in Chrome, and the script dumps the result. The
+//! `record-layout` scene makes the layout scene's data: one Chrome crawl of
+//! `SR_RECORD_URL` with layout capture, run twice by the script with the test
+//! shop's theme change in between.
 
 use std::time::Duration;
 
@@ -30,6 +33,10 @@ const WINDOW_HEIGHT: f32 = 1040.;
 /// apart on the day the fixture was recorded.
 const CRAWL_AGES: [i64; 2] = [3 * 86_400 + 4 * 3600, 2 * 3600];
 
+/// The page the layout scene opens: a product page, which the theme change
+/// touches in every way it can.
+const LAYOUT_PAGE: &str = "/shop/product/charger-20w.html";
+
 /// What the window shows when the screenshot is taken.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Scene {
@@ -46,6 +53,11 @@ pub(crate) enum Scene {
     Ecommerce,
     /// What changed since the previous crawl of the same site.
     Changes,
+    /// Records one Chrome crawl with layout capture, for the layout fixture.
+    RecordLayout,
+    /// The layout of a product page next to its baseline's after a theme
+    /// change, with what changed.
+    Layout,
 }
 
 impl Scene {
@@ -58,6 +70,8 @@ impl Scene {
             "ecommerce" => Some(Self::Ecommerce),
             "accessibility" => Some(Self::Accessibility),
             "changes" => Some(Self::Changes),
+            "record-layout" => Some(Self::RecordLayout),
+            "layout" => Some(Self::Layout),
             _ => {
                 tracing::error!("Unknown SR_SCENE {scene:?}");
                 None
@@ -67,7 +81,8 @@ impl Scene {
 
     fn tab(self) -> ResultTab {
         match self {
-            Self::Record | Self::Overview => ResultTab::Overview,
+            Self::Record | Self::RecordLayout | Self::Overview => ResultTab::Overview,
+            Self::Layout => ResultTab::Changes,
             Self::Details => ResultTab::PageTitles,
             Self::Accessibility => ResultTab::Accessibility,
             Self::Ecommerce => ResultTab::Ecommerce,
@@ -82,7 +97,8 @@ impl Scene {
             Self::Ecommerce => Some("/about.html"),
             Self::Accessibility => Some("/a11y.html"),
             Self::Changes => Some("/spa.html"),
-            Self::Record | Self::Overview => None,
+            Self::Layout => Some(LAYOUT_PAGE),
+            Self::Record | Self::RecordLayout | Self::Overview => None,
         }
     }
 }
@@ -125,7 +141,7 @@ async fn seed_database(database: &AppDatabase) -> anyhow::Result<()> {
         database.save_setting(key, value).await?;
     }
 
-    if Scene::from_env() == Some(Scene::Record) {
+    if matches!(Scene::from_env(), Some(Scene::Record | Scene::RecordLayout)) {
         return Ok(());
     }
 
@@ -163,7 +179,8 @@ pub(crate) fn stage(scene: Scene, app: Entity<ShoutingRobinApp>, window: &Window
     window
         .spawn(cx, async move |cx| {
             let staged = match scene {
-                Scene::Record => record(&app, cx).await,
+                Scene::Record => record(&app, &[RenderMode::Http, RenderMode::Chrome], cx).await,
+                Scene::RecordLayout => record(&app, &[RenderMode::Chrome], cx).await,
                 _ => stage_scene(scene, &app, cx).await,
             };
             if let Err(error) = staged {
@@ -182,17 +199,23 @@ pub(crate) fn stage(scene: Scene, app: Entity<ShoutingRobinApp>, window: &Window
 /// Crawl the site over HTTP and then in Chrome, the way a user starts a crawl
 /// from the crawl bar. The Chrome crawl is the newer one, so the scenes show
 /// it with the HTTP crawl as its baseline.
-async fn record(app: &Entity<ShoutingRobinApp>, cx: &mut AsyncWindowContext) -> anyhow::Result<()> {
+async fn record(
+    app: &Entity<ShoutingRobinApp>,
+    modes: &[RenderMode],
+    cx: &mut AsyncWindowContext,
+) -> anyhow::Result<()> {
     let url = std::env::var("SR_RECORD_URL")?;
     let (crawl_bar, status_bar) = app.read_with(cx, |app, _| {
         (app.crawl_bar().clone(), app.status_bar().clone())
     });
     settle(cx, 1000).await;
 
-    for mode in [RenderMode::Http, RenderMode::Chrome] {
+    let capture_layout = Scene::from_env() == Some(Scene::RecordLayout);
+    for mode in modes.iter().copied() {
         crawl_bar.update_in(cx, |bar, window, cx| {
             bar.url_input
                 .update(cx, |input, cx| input.set_value(url.clone(), window, cx));
+            bar.set_capture_layout(capture_layout, cx);
             bar.start_crawl(mode, cx);
         })?;
         settle(cx, 500).await;
@@ -288,7 +311,40 @@ async fn stage_scene(
         }
     }
 
+    if scene == Scene::Layout {
+        open_layout(app, &results_grid, cx).await?;
+    }
+
     settle(cx, 1500).await;
+    Ok(())
+}
+
+/// Waits for the layout comparison, then opens the selected page's layout.
+async fn open_layout(
+    app: &Entity<ShoutingRobinApp>,
+    results_grid: &Entity<crate::views::ResultsGrid>,
+    cx: &mut AsyncWindowContext,
+) -> anyhow::Result<()> {
+    let mut compared = false;
+    for _ in 0..200 {
+        settle(cx, 50).await;
+        let layout = results_grid.read_with(cx, |grid, _| grid.layout_context().clone());
+        if layout.baseline_crawl_id.is_some() && layout.note.is_none() {
+            compared = true;
+            break;
+        }
+    }
+    if !compared {
+        anyhow::bail!("the crawl's layouts were not compared with its baseline");
+    }
+    let url = results_grid
+        .read_with(cx, |grid, cx| grid.root_url(cx))
+        .and_then(|root| url::Url::parse(&root).ok())
+        .and_then(|root| root.join(LAYOUT_PAGE).ok())
+        .map(|url| url.to_string())
+        .ok_or_else(|| anyhow::anyhow!("the crawl has no root URL"))?;
+    app.update_in(cx, |app, window, cx| app.open_layout_view(url, window, cx))?;
+    settle(cx, 2000).await;
     Ok(())
 }
 

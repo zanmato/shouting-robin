@@ -1,7 +1,7 @@
 //! The crawl config is persisted so a crawl can be replayed from the sidebar's
 //! Recrawl action with the settings it actually ran with.
 
-use shoutingrobin::crawl::CrawlConfig;
+use shoutingrobin::crawl::{CrawlConfig, LayoutCapture};
 
 fn sample_config() -> CrawlConfig {
     CrawlConfig {
@@ -21,6 +21,7 @@ fn sample_config() -> CrawlConfig {
         crawl_subdomains: true,
         list_mode: true,
         check_resources: true,
+        layout_capture: LayoutCapture::Scrolled,
         seed_urls: vec![
             "https://example.com/one".to_string(),
             "https://example.com/two".to_string(),
@@ -112,5 +113,87 @@ fn unknown_crawl_id_reads_back_as_none() {
             .await
             .expect("a missing row is not an error");
         assert!(loaded.is_none());
+    });
+}
+
+/// A config stored before layout capture existed has no `layout_capture`
+/// key. Replaying it must not turn capture on.
+#[test]
+fn config_stored_before_layout_capture_reads_back_as_off() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let pool = memory_pool().await;
+        let mut stored = serde_json::to_value(sample_config()).unwrap();
+        stored
+            .as_object_mut()
+            .expect("the config serializes as an object")
+            .remove("layout_capture");
+
+        let result = sqlx::query(
+            "INSERT INTO crawls (root_url, started_at, render_mode, config_json) VALUES (?, ?, ?, ?)",
+        )
+        .bind("https://example.com/")
+        .bind(0_i64)
+        .bind("chrome")
+        .bind(stored.to_string())
+        .execute(&pool)
+        .await
+        .expect("insert should succeed");
+
+        let loaded = shoutingrobin::storage::load_crawl_config(&pool, result.last_insert_rowid())
+            .await
+            .expect("load_crawl_config should succeed")
+            .expect("the config should parse without the new key");
+        assert_eq!(loaded.layout_capture, LayoutCapture::Off);
+
+        let crawls = shoutingrobin::storage::list_crawls(&pool).await.unwrap();
+        assert_eq!(crawls[0].layout_capture, LayoutCapture::Off);
+    });
+}
+
+/// The sidebar shows whether a crawl captured layout, read from the config it
+/// ran with.
+#[test]
+fn listed_crawls_carry_their_layout_capture() {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+
+    rt.block_on(async {
+        let pool = memory_pool().await;
+        for capture in [
+            LayoutCapture::Off,
+            LayoutCapture::Loaded,
+            LayoutCapture::Scrolled,
+        ] {
+            let config = CrawlConfig {
+                layout_capture: capture,
+                ..sample_config()
+            };
+            shoutingrobin::storage::create_crawl(&pool, "https://example.com/", "chrome", &config)
+                .await
+                .expect("create_crawl should succeed");
+        }
+
+        let mut listed: Vec<LayoutCapture> = shoutingrobin::storage::list_crawls(&pool)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|crawl| crawl.layout_capture)
+            .collect();
+        listed.sort_by_key(|capture| *capture as u8);
+        assert_eq!(
+            listed,
+            [
+                LayoutCapture::Off,
+                LayoutCapture::Loaded,
+                LayoutCapture::Scrolled
+            ]
+        );
     });
 }

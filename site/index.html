@@ -502,6 +502,7 @@ img[width="1600"] { cursor: zoom-in; }
         <button type="button" role="tab" id="tab-details" aria-controls="panel-details" aria-selected="true">Page details</button>
         <button type="button" role="tab" id="tab-a11y" aria-controls="panel-a11y" aria-selected="false" tabindex="-1">Accessibility</button>
         <button type="button" role="tab" id="tab-changes" aria-controls="panel-changes" aria-selected="false" tabindex="-1">Changes</button>
+        <button type="button" role="tab" id="tab-layout" aria-controls="panel-layout" aria-selected="false" tabindex="-1">Layout</button>
       </div>
 
       <div class="panel" id="panel-details" role="tabpanel" aria-labelledby="tab-details">
@@ -537,6 +538,18 @@ img[width="1600"] { cursor: zoom-in; }
         <picture>
           <source media="(prefers-color-scheme: dark)" srcset="images/changes-mocha.webp">
           <img src="images/changes-latte.webp" width="1600" height="1000" loading="lazy" alt="The Changes tab comparing a Chrome crawl with an HTTP crawl of the same site from three days earlier, with two crawls in the sidebar">
+        </picture>
+      </div>
+
+      <div class="panel" id="panel-layout" role="tabpanel" aria-labelledby="tab-layout">
+        <div class="panel-copy">
+          <h3>Layout</h3>
+          <p>Turn on Capture Layout and a Chrome crawl records the boxes every page draws. The next crawl lists the pages whose layout changed and what changed: boxes added or removed, moved, resized or restyled. A product swapped for another in a list, or new text, is content and is not counted as a layout change.</p>
+          <p>Pages are grouped into templates by their structured data and their layout, so a product page without Product markup is found by its layout.</p>
+        </div>
+        <picture>
+          <source media="(prefers-color-scheme: dark)" srcset="images/layout-mocha.webp">
+          <img src="images/layout-latte.webp" width="1600" height="1000" loading="lazy" alt="The layout of a product page next to the previous crawl's after a theme change, listing the removed breadcrumbs and trust badges, the larger heading and the restyled prices and footer">
         </picture>
       </div>
     </div>

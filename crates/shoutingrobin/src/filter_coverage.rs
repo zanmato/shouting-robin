@@ -852,6 +852,7 @@ fn crawl_and_load(root_url: &str, render_mode: RenderMode, timeout: Duration) ->
                 // The fixture links to other origins on purpose; a filter test
                 // must not send requests to them.
                 check_resources: false,
+                layout_capture: crate::crawl::LayoutCapture::Off,
             },
         )
     };
@@ -1327,6 +1328,9 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::MissingBrand => both(&["/product-bare"], &["/sd-product"]),
         F::MissingReviewRating => both(&["/product-bare"], &["/sd-product"]),
         F::MissingProductImage => both(&["/product-bare"], &["/sd-product"]),
+        // Needs captured layouts, which the fixture crawls do not take.
+        // tests/layout_capture.rs covers it against the shop fixture.
+        F::ProductLayoutWithoutMarkup => both(&[], &["/product-bare", "/sd-product"]),
 
         // Sitemaps
         F::UrlsInSitemap => both(&["/"], &["/images"]),
@@ -1409,7 +1413,10 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         | F::DepthDeep
         | F::ChangeAdded
         | F::ChangeRemoved
-        | F::ChangeChanged => same_as_all(),
+        | F::ChangeChanged
+        | F::ChangeLayout
+        | F::LayoutMissingMarkup
+        | F::LayoutChanged => same_as_all(),
     }
 }
 

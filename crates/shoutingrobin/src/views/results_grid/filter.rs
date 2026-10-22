@@ -165,6 +165,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::MissingProductImage,
             IssueFilter::MissingBreadcrumbs,
             IssueFilter::OutOfStockIndexable,
+            IssueFilter::ProductLayoutWithoutMarkup,
         ],
         ResultTab::Sitemaps => &[
             IssueFilter::All,
@@ -231,6 +232,12 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::ChangeAdded,
             IssueFilter::ChangeRemoved,
             IssueFilter::ChangeChanged,
+            IssueFilter::ChangeLayout,
+        ],
+        ResultTab::Layout => &[
+            IssueFilter::All,
+            IssueFilter::LayoutMissingMarkup,
+            IssueFilter::LayoutChanged,
         ],
     }
 }
@@ -998,6 +1005,14 @@ pub(super) fn filter_for_tab(
                 let page = &pages[idx];
                 page.ecommerce.is_some() && !page.sd_types.iter().any(|t| t == "BreadcrumbList")
             }),
+            // Laid out like the crawl's product pages, without Product markup:
+            // only a crawl that captured layout can tell.
+            IssueFilter::ProductLayoutWithoutMarkup => indices.retain(|&idx| {
+                pages[idx].layout.as_ref().is_some_and(|layout| {
+                    layout.misses_template_markup()
+                        && layout.template_type.as_deref() == Some("Product")
+                })
+            }),
             IssueFilter::IndexableParameterUrl => indices.retain(|&idx| {
                 let page = &pages[idx];
                 page.url.contains('?') && is_page_document(page) && page.is_indexable()
@@ -1354,6 +1369,9 @@ pub(super) fn flat_row_matches_filter(
             sd_item_matches_filter(sd_item, page, filter)
         }
         FlatRow::IssuesRow { .. } | FlatRow::ChangeRow { .. } => true,
+        FlatRow::LayoutTemplate(template) => {
+            super::data_build::layout_template_matches(template, filter)
+        }
         FlatRow::DirectoryAggregate { depth, .. } => match filter {
             IssueFilter::DepthShallow => *depth <= 1,
             IssueFilter::DepthMedium => *depth >= 2 && *depth <= 3,

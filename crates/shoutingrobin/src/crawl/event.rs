@@ -114,6 +114,30 @@ pub struct PageRecord {
     /// row that is not a parsed document: a subresource, or a URL nothing was
     /// fetched for, neither of which has markup to be missing anything.
     pub has_body_tag: Option<bool>,
+    /// Set when the crawl captured this page's layout.
+    pub layout: Option<PageLayoutInfo>,
+}
+
+/// Where a page with a captured layout landed in the crawl's templates.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PageLayoutInfo {
+    /// `None` until the crawl's templates are grouped, or for a page whose
+    /// stored layout could not be read.
+    pub template: Option<String>,
+    /// The structured data type naming the template, `None` for a template
+    /// found by layout alone.
+    pub template_type: Option<String>,
+    pub assignment: Option<crate::crawl::layout_groups::Assignment>,
+}
+
+impl PageLayoutInfo {
+    /// A page whose layout matches a typed template while the page itself
+    /// carries none of its markup, such as a product page without Product
+    /// structured data.
+    pub fn misses_template_markup(&self) -> bool {
+        self.assignment == Some(crate::crawl::layout_groups::Assignment::LayoutWithoutMarkup)
+            && self.template_type.is_some()
+    }
 }
 
 #[derive(Debug, Clone)]

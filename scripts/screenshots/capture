@@ -5,14 +5,20 @@
 #
 # Usage: scripts/screenshots/capture [scene...]
 #        scripts/screenshots/capture --record
+#        scripts/screenshots/capture --record-layout
 #
-# Scenes: overview details ecommerce accessibility changes (default: all).
+# Scenes: overview details ecommerce accessibility changes layout (default:
+# all).
 # Writes docs/images/screenshots/<scene>-<theme>.webp, and a lossless
 # <scene>-<theme>.png per capture into $PNG_DIR when that is set.
 #
 # --record crawls test-site/, served on 127.0.0.1:8000, once over HTTP and
 # once in Chrome, and writes the two crawls to scripts/screenshots/crawls.sql,
-# which the scenes show. Capturing needs no network. Recording needs Chrome
+# which the scenes show. --record-layout crawls test-site/shop/ twice in
+# Chrome with layout capture, the second time with the shop's theme change
+# (variant-changed.css served as variant.css), and writes
+# scripts/screenshots/layout-crawls.sql, which the layout scene shows.
+# Capturing needs no network. Recording needs Chrome
 # (google-chrome or chromium on PATH). Its crawls request nothing but the
 # local server and the test site's .invalid hosts, which cannot resolve.
 #
@@ -30,18 +36,22 @@ height=1040
 port=8000
 out="$root/docs/images/screenshots"
 fixture="$root/scripts/screenshots/crawls.sql"
+layout_fixture="$root/scripts/screenshots/layout-crawls.sql"
 
 record=false
+record_layout=false
 scenes=()
 for arg in "$@"; do
   if [[ "$arg" == --record ]]; then
     record=true
+  elif [[ "$arg" == --record-layout ]]; then
+    record_layout=true
   else
     scenes+=("$arg")
   fi
 done
 if [[ ${#scenes[@]} -eq 0 ]]; then
-  scenes=(overview details ecommerce accessibility changes)
+  scenes=(overview details ecommerce accessibility changes layout)
 fi
 
 # The light and dark pair every scene gets.
@@ -223,26 +233,20 @@ stop_app() {
   app_pid=""
 }
 
-record_crawls() {
+# start_server <site dir>
+# Serves a copy of the test site the way the integration tests do (see
+# crates/shoutingrobin/tests/common/mod.rs): the same headers, a real 301 at
+# /moved, directory indexes, the shop's theme change once $work/variant
+# exists, and a small fixed latency, so Chrome measures a time to first byte.
+start_server() {
   if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then
     echo "Port $port is taken, the test site needs it" >&2
     exit 1
   fi
-
-  # A copy, so the sitemap the tests rewrite stays as it is in the repo. The
-  # sitemap is the one the tests write, for this port.
-  local site="$work/test-site"
-  cp -r "$root/test-site" "$site"
-  sed "s|http://127.0.0.1:[0-9]*/|http://127.0.0.1:$port/|" "$root/test-site/sitemap.xml" \
-    > "$site/sitemap.xml"
-
-  # Serves the copy the way the integration tests do (see
-  # crates/shoutingrobin/tests/common/mod.rs): the same headers, a real 301
-  # at /moved and a small fixed latency, so Chrome measures a time to first
-  # byte.
-  python3 - "$site" "$port" >"$work/server.log" 2>&1 <<'PY' &
+  python3 - "$1" "$port" "$work/variant" >"$work/server.log" 2>&1 <<'PY' &
 import http.server, pathlib, sys, time
 site, port = pathlib.Path(sys.argv[1]).resolve(), int(sys.argv[2])
+variant = pathlib.Path(sys.argv[3])
 types = {
     ".html": "text/html; charset=utf-8", ".css": "text/css", ".js": "application/javascript",
     ".json": "application/json", ".xml": "application/xml", ".txt": "text/plain",
@@ -257,7 +261,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?")[0].split("#")[0]
         if path == "/moved":
             return self.reply(301, b"", None, [("Location", "/redirect-target.html")])
+        if path == "/shop/variant.css" and variant.exists():
+            path = "/shop/variant-changed.css"
         file = (site / (path.lstrip("/") or "index.html")).resolve()
+        if file.is_dir():
+            file = file / "index.html"
         if not file.is_relative_to(site) or not file.is_file():
             return self.reply(404, b"404 Not Found", "text/plain")
         self.reply(200, file.read_bytes(), types.get(file.suffix, "application/octet-stream"))
@@ -282,30 +290,32 @@ PY
     (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null && break
     sleep 0.1
   done
+}
 
-  local run="$work/record"
-  echo "Recording crawls of http://127.0.0.1:$port/"
-  run_app "$run" record "Catppuccin Latte" SR_RECORD_URL="http://127.0.0.1:$port/"
-  wait_ready "$run" "the recording" 9000
-  stop_app
+stop_server() {
   kill "$server_pid" 2>/dev/null || true
   wait "$server_pid" 2>/dev/null || true
   server_pid=""
+}
 
-  # Only the crawls and the rows that belong to them, with their column
-  # names, so a column added by a later migration does not break the
-  # fixture. Settings and every other table stay behind.
-  python3 - "$run/home/.local/share/shoutingrobin/shoutingrobin.db" "$fixture" <<'PY'
+# dump_crawls <database> <fixture> <comment>
+# Only the crawls and the rows that belong to them, with their column names,
+# so a column added by a later migration does not break the fixture. The site
+# icons go along so the history shows them. Settings and every other table
+# stay behind.
+dump_crawls() {
+  python3 - "$1" "$2" "$3" <<'PY'
 import sqlite3, sys
-source, target = sys.argv[1:]
+source, target, comment = sys.argv[1:]
 db = sqlite3.connect(source)
 tables = ["crawls"] + [
     name
     for (name,) in db.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
-    if any(column[1] == "crawl_id" for column in db.execute(f'PRAGMA table_info("{name}")'))
+    if name == "site_icons"
+    or any(column[1] == "crawl_id" for column in db.execute(f'PRAGMA table_info("{name}")'))
 ]
 with open(target, "w") as out:
-    out.write("-- Two crawls of test-site/, written by scripts/screenshots/capture --record.\n")
+    out.write(f"-- {comment}\n")
     for table in tables:
         columns = [column[1] for column in db.execute(f'PRAGMA table_info("{table}")')]
         names = ", ".join(columns)
@@ -314,7 +324,54 @@ with open(target, "w") as out:
         for (statement,) in db.execute(query):
             out.write(statement + "\n")
 PY
-  echo "Wrote $fixture"
+  echo "Wrote $2"
+}
+
+record_crawls() {
+  # A copy, so the sitemap the tests rewrite stays as it is in the repo. The
+  # sitemap is the one the tests write, for this port.
+  local site="$work/test-site"
+  cp -r "$root/test-site" "$site"
+  sed "s|http://127.0.0.1:[0-9]*/|http://127.0.0.1:$port/|" "$root/test-site/sitemap.xml" \
+    > "$site/sitemap.xml"
+  start_server "$site"
+
+  local run="$work/record"
+  echo "Recording crawls of http://127.0.0.1:$port/"
+  run_app "$run" record "Catppuccin Latte" SR_RECORD_URL="http://127.0.0.1:$port/"
+  wait_ready "$run" "the recording" 9000
+  stop_app
+  stop_server
+
+  dump_crawls "$run/home/.local/share/shoutingrobin/shoutingrobin.db" "$fixture" \
+    "Two crawls of test-site/, written by scripts/screenshots/capture --record."
+}
+
+record_layout_crawls() {
+  # Only the shop, so the crawl starting at /shop/ finds no sitemap and stays
+  # in it.
+  local site="$work/shop-site"
+  mkdir -p "$site"
+  cp -r "$root/test-site/shop" "$site/shop"
+  start_server "$site"
+
+  # Both crawls go into one data directory, the second after the theme
+  # change, so the second is compared with the first.
+  local run="$work/record-layout"
+  echo "Recording the shop at http://127.0.0.1:$port/shop/"
+  run_app "$run" record-layout "Catppuccin Latte" SR_RECORD_URL="http://127.0.0.1:$port/shop/"
+  wait_ready "$run" "the first layout recording" 9000
+  stop_app
+  rm -f "$run/ready"
+  touch "$work/variant"
+  echo "Recording the shop again with its theme change"
+  run_app "$run" record-layout "Catppuccin Latte" SR_RECORD_URL="http://127.0.0.1:$port/shop/"
+  wait_ready "$run" "the second layout recording" 9000
+  stop_app
+  stop_server
+
+  dump_crawls "$run/home/.local/share/shoutingrobin/shoutingrobin.db" "$layout_fixture" \
+    "Two Chrome crawls of test-site/shop/ with layout capture, the second after its theme change, written by scripts/screenshots/capture --record-layout."
 }
 
 # capture <scene> <slug> <theme name>
@@ -322,8 +379,11 @@ capture() {
   local scene="$1" slug="$2" theme="$3"
   local run="$work/$scene-$slug"
 
+  local scene_fixture="$fixture"
+  [[ "$scene" == layout ]] && scene_fixture="$layout_fixture"
+
   echo "Capturing $scene in $theme"
-  run_app "$run" "$scene" "$theme" SR_CRAWL_FIXTURE="$fixture"
+  run_app "$run" "$scene" "$theme" SR_CRAWL_FIXTURE="$scene_fixture"
   wait_ready "$run" "$scene" 600
   # One more frame for anything the last update scheduled.
   sleep 0.5
@@ -349,8 +409,9 @@ capture() {
   fi
 }
 
-if [[ "$record" == true ]]; then
-  record_crawls
+if [[ "$record" == true || "$record_layout" == true ]]; then
+  [[ "$record" == true ]] && record_crawls
+  [[ "$record_layout" == true ]] && record_layout_crawls
   exit 0
 fi
 

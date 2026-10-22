@@ -303,6 +303,15 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("change_status", "Status", 120., None),
             col("change_detail", "Detail", 400., None),
         ],
+        ResultTab::Layout => vec![
+            col("layout_template", "Template", 200., Some(ColumnFixed::Left)),
+            col("layout_type", "Type", 130., None),
+            col("layout_pages", "Pages", 80., None),
+            col("layout_joined_by_layout", "Joined by Layout", 130., None),
+            col("layout_missing_markup", "Missing Markup", 120., None),
+            col("layout_changed", "Layout Changed", 120., None),
+            col("layout_common_change", "Most Common Change", 420., None),
+        ],
     }
 }
 
@@ -490,6 +499,10 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "sd_microdata"
             | "a11y_errors"
             | "a11y_warnings"
+            | "layout_pages"
+            | "layout_joined_by_layout"
+            | "layout_missing_markup"
+            | "layout_changed"
     )
 }
 

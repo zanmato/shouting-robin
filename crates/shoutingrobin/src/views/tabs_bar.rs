@@ -27,6 +27,7 @@ pub enum ResultTab {
     Overview,
     Links,
     Changes,
+    Layout,
 }
 
 impl ResultTab {
@@ -47,6 +48,7 @@ impl ResultTab {
         ResultTab::StructuredData,
         ResultTab::Accessibility,
         ResultTab::Performance,
+        ResultTab::Layout,
         ResultTab::Ecommerce,
         ResultTab::Sitemaps,
         ResultTab::SiteStructure,
@@ -81,6 +83,7 @@ impl ResultTab {
             ResultTab::Overview => "Overview".into(),
             ResultTab::Links => "Links".into(),
             ResultTab::Changes => "Changes".into(),
+            ResultTab::Layout => "Layout".into(),
         }
     }
 
@@ -118,6 +121,7 @@ impl ResultTab {
             ResultTab::Overview => Some(Icon::CircleAlert),
             ResultTab::Links => Some(Icon::Link),
             ResultTab::Changes => Some(Icon::ArrowUpDown),
+            ResultTab::Layout => Some(Icon::LayoutPanelLeft),
             _ => None,
         }
     }

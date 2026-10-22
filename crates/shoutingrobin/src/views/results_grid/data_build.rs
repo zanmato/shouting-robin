@@ -2,12 +2,14 @@ use std::collections::HashMap;
 
 use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::{HreflangIssue, PageRecord};
+use crate::crawl::layout::PageLayoutChange;
+use crate::crawl::layout_groups::Assignment;
 use crate::views::ResultTab;
 
 use super::columns::{char_length, header_exists};
 use super::types::{
     ChangeEntry, ChangeKind, FlatRow, ImageAggregateRow, IssueEntry, IssueFilter, IssuePriority,
-    IssueType,
+    IssueType, LayoutTemplateRow,
 };
 
 /// The rows one page contributes to a flattened tab that lists per-item rows.
@@ -52,6 +54,7 @@ pub(super) fn change_entry_matches(entry: &ChangeEntry, filter: IssueFilter) -> 
         IssueFilter::ChangeAdded => entry.kind == ChangeKind::Added,
         IssueFilter::ChangeRemoved => entry.kind == ChangeKind::Removed,
         IssueFilter::ChangeChanged => entry.kind == ChangeKind::Changed,
+        IssueFilter::ChangeLayout => entry.layout.is_some(),
         _ => true,
     }
 }
@@ -74,6 +77,7 @@ pub(super) fn build_rows_for_tab(
             .map(|index| FlatRow::ChangeRow { index })
             .collect(),
         ResultTab::SiteStructure => build_directory_aggregates(pages, root_origin),
+        ResultTab::Layout => build_layout_template_rows(pages, change_entries),
         ResultTab::Images => build_image_aggregates(page_indices, pages),
         _ => page_indices
             .iter()
@@ -171,6 +175,10 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Product Pages Missing Breadcrumbs" => {
             Some((ResultTab::Ecommerce, IssueFilter::MissingBreadcrumbs))
         }
+        "Product Layout Without Product Markup" => Some((
+            ResultTab::Ecommerce,
+            IssueFilter::ProductLayoutWithoutMarkup,
+        )),
         "Missing <body> Tag" => Some((ResultTab::Content, IssueFilter::MissingBodyTag)),
         "Images Missing Alt Attribute" => {
             Some((ResultTab::Images, IssueFilter::MissingAltAttribute))
@@ -1234,6 +1242,19 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         hint: "Breadcrumb markup earns the category path in the search snippet and tells \
                search engines where the product sits in the catalogue.",
     },
+    FilterDerivedRule {
+        name: "Product Layout Without Product Markup",
+        tab: ResultTab::Ecommerce,
+        filter: IssueFilter::ProductLayoutWithoutMarkup,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::High,
+        denominator: Denominator::Documents,
+        description: "Pages laid out like the site's product pages that carry no Product \
+                      structured data. Found from the captured layout.",
+        hint: "Without Product markup a product page earns no price, availability or \
+               review details in search results. Check the template's markup for the \
+               condition that leaves it out on these pages.",
+    },
 ];
 
 fn filter_derived_entry(
@@ -1286,6 +1307,7 @@ fn filter_derived_entry(
 pub(super) fn build_change_entries(
     current: &[PageRecord],
     baseline: &[PageRecord],
+    layout_changes: &HashMap<String, PageLayoutChange>,
 ) -> Vec<ChangeEntry> {
     let current_by_url: HashMap<&str, &PageRecord> = current
         .iter()
@@ -1308,9 +1330,14 @@ pub(super) fn build_change_entries(
                 status_before: None,
                 status_after: page.status,
                 changes: Vec::new(),
+                layout: None,
             }),
             Some(previous) => {
-                let changes = describe_changes(previous, page);
+                let mut changes = describe_changes(previous, page);
+                let layout = layout_changes.get(*url).cloned();
+                if let Some(layout) = &layout {
+                    changes.push(format!("layout: {}", layout.summary));
+                }
                 if !changes.is_empty() {
                     entries.push(ChangeEntry {
                         url: (*url).to_string(),
@@ -1318,6 +1345,7 @@ pub(super) fn build_change_entries(
                         status_before: previous.status,
                         status_after: page.status,
                         changes,
+                        layout,
                     });
                 }
             }
@@ -1332,12 +1360,113 @@ pub(super) fn build_change_entries(
                 status_before: previous.status,
                 status_after: None,
                 changes: Vec::new(),
+                layout: None,
             });
         }
     }
 
     entries.sort_by(|a, b| a.kind.cmp(&b.kind).then_with(|| a.url.cmp(&b.url)));
     entries
+}
+
+/// One row per layout template, with how its pages joined it and which of
+/// them changed since the baseline. Pages without a template (a crawl whose
+/// grouping has not run) are left out.
+pub(super) fn build_layout_template_rows(
+    pages: &[PageRecord],
+    change_entries: &[ChangeEntry],
+) -> Vec<FlatRow> {
+    let changes_by_url: HashMap<&str, &PageLayoutChange> = change_entries
+        .iter()
+        .filter_map(|entry| {
+            entry
+                .layout
+                .as_ref()
+                .map(|layout| (entry.url.as_str(), layout))
+        })
+        .collect();
+    let mut rows: Vec<LayoutTemplateRow> = Vec::new();
+    let mut row_by_name: HashMap<&str, usize> = HashMap::new();
+    let mut change_counts: Vec<HashMap<&str, usize>> = Vec::new();
+    for (page_index, page) in pages.iter().enumerate() {
+        let Some(layout) = &page.layout else {
+            continue;
+        };
+        let Some(name) = layout.template.as_deref() else {
+            continue;
+        };
+        let row_index = *row_by_name.entry(name).or_insert_with(|| {
+            rows.push(LayoutTemplateRow {
+                name: name.to_string(),
+                type_key: layout.template_type.clone(),
+                pages: Vec::new(),
+                joined_by_layout: 0,
+                missing_markup: Vec::new(),
+                changed: Vec::new(),
+                common_change: None,
+            });
+            change_counts.push(HashMap::new());
+            rows.len() - 1
+        });
+        let row = &mut rows[row_index];
+        row.pages.push(page_index);
+        if layout
+            .assignment
+            .is_some_and(|assignment| assignment != Assignment::StructuredData)
+        {
+            row.joined_by_layout += 1;
+        }
+        if layout.misses_template_markup() {
+            row.missing_markup.push(page_index);
+        }
+        if let Some(change) = changes_by_url.get(page.url.as_str()) {
+            row.changed.push(page_index);
+            *change_counts[row_index]
+                .entry(change.summary.as_str())
+                .or_default() += 1;
+        }
+    }
+    for (row, counts) in rows.iter_mut().zip(change_counts) {
+        row.common_change = counts
+            .into_iter()
+            .max_by(|a, b| a.1.cmp(&b.1).then_with(|| b.0.cmp(a.0)))
+            .map(|(summary, count)| (summary.to_string(), count));
+    }
+    rows.sort_by(|a, b| {
+        b.pages
+            .len()
+            .cmp(&a.pages.len())
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    rows.into_iter()
+        .map(|row| FlatRow::LayoutTemplate(Box::new(row)))
+        .collect()
+}
+
+/// Whether a Layout tab row belongs to the given sub-filter.
+pub(super) fn layout_template_matches(row: &LayoutTemplateRow, filter: IssueFilter) -> bool {
+    match filter {
+        IssueFilter::LayoutMissingMarkup => !row.missing_markup.is_empty(),
+        IssueFilter::LayoutChanged => !row.changed.is_empty(),
+        _ => true,
+    }
+}
+
+pub(super) fn layout_template_cell_text(row: &LayoutTemplateRow, col_key: &str) -> String {
+    match col_key {
+        "layout_template" => row.name.clone(),
+        "layout_type" => row.type_key.clone().unwrap_or_default(),
+        "layout_pages" => row.pages.len().to_string(),
+        "layout_joined_by_layout" => row.joined_by_layout.to_string(),
+        "layout_missing_markup" => row.missing_markup.len().to_string(),
+        "layout_changed" => row.changed.len().to_string(),
+        "layout_common_change" => row
+            .common_change
+            .as_ref()
+            .map(|(summary, count)| format!("{summary} ({count})"))
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
 }
 
 fn describe_changes(before: &PageRecord, after: &PageRecord) -> Vec<String> {
@@ -1634,7 +1763,7 @@ mod tests {
         changed.status = Some(200);
         let current = vec![changed, page("https://a.test/new", Some("Heading"))];
 
-        let entries = build_change_entries(&current, &baseline);
+        let entries = build_change_entries(&current, &baseline, &HashMap::new());
 
         assert_eq!(
             change_for(&entries, "https://a.test/new").unwrap().kind,
@@ -1653,7 +1782,112 @@ mod tests {
     fn change_entries_skip_unchanged_pages() {
         let baseline = vec![page("https://a.test/keep", Some("Heading"))];
         let current = vec![page("https://a.test/keep", Some("Heading"))];
-        assert!(build_change_entries(&current, &baseline).is_empty());
+        assert!(build_change_entries(&current, &baseline, &HashMap::new()).is_empty());
+    }
+
+    fn layout_change(summary: &str) -> PageLayoutChange {
+        PageLayoutChange {
+            layout_changes: 1,
+            content_changes: 0,
+            summary: summary.into(),
+        }
+    }
+
+    #[test]
+    fn a_layout_change_alone_makes_a_page_changed() {
+        let baseline = vec![page("https://a.test/keep", Some("Heading"))];
+        let current = vec![page("https://a.test/keep", Some("Heading"))];
+        let layout_changes: HashMap<String, PageLayoutChange> = [(
+            "https://a.test/keep".to_string(),
+            layout_change("h1.title restyled"),
+        )]
+        .into_iter()
+        .collect();
+        let entries = build_change_entries(&current, &baseline, &layout_changes);
+        let entry = change_for(&entries, "https://a.test/keep").expect("a changed entry");
+        assert_eq!(entry.kind, ChangeKind::Changed);
+        assert_eq!(entry.detail_text(), "layout: h1.title restyled");
+        assert!(change_entry_matches(entry, IssueFilter::ChangeLayout));
+    }
+
+    fn page_in_template(
+        url: &str,
+        template: &str,
+        assignment: Assignment,
+        template_type: Option<&str>,
+    ) -> PageRecord {
+        PageRecord {
+            layout: Some(crate::crawl::event::PageLayoutInfo {
+                template: Some(template.into()),
+                template_type: template_type.map(str::to_string),
+                assignment: Some(assignment),
+            }),
+            ..page(url, None)
+        }
+    }
+
+    #[test]
+    fn layout_rows_summarise_each_template() {
+        let pages = vec![
+            page_in_template(
+                "https://a.test/p1",
+                "Product",
+                Assignment::StructuredData,
+                Some("Product"),
+            ),
+            page_in_template(
+                "https://a.test/p2",
+                "Product",
+                Assignment::StructuredData,
+                Some("Product"),
+            ),
+            page_in_template(
+                "https://a.test/p3",
+                "Product",
+                Assignment::LayoutWithoutMarkup,
+                Some("Product"),
+            ),
+            page_in_template("https://a.test/info", "Layout 1", Assignment::Shape, None),
+            page("https://a.test/no-layout", None),
+        ];
+        let change_entries: Vec<ChangeEntry> = ["https://a.test/p1", "https://a.test/p2"]
+            .iter()
+            .map(|url| ChangeEntry {
+                url: (*url).into(),
+                kind: ChangeKind::Changed,
+                status_before: Some(200),
+                status_after: Some(200),
+                changes: Vec::new(),
+                layout: Some(layout_change("p.price restyled")),
+            })
+            .collect();
+        let rows: Vec<LayoutTemplateRow> = build_layout_template_rows(&pages, &change_entries)
+            .into_iter()
+            .filter_map(|row| match row {
+                FlatRow::LayoutTemplate(template) => Some(*template),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(rows.len(), 2, "pages without a layout are left out");
+        let product = &rows[0];
+        assert_eq!(product.name, "Product");
+        assert_eq!(product.pages.len(), 3);
+        assert_eq!(product.joined_by_layout, 1);
+        assert_eq!(product.missing_markup, [2]);
+        assert_eq!(product.changed.len(), 2);
+        assert_eq!(
+            product.common_change,
+            Some(("p.price restyled".to_string(), 2))
+        );
+        assert_eq!(product.example_page(), Some(0), "a changed page first");
+        assert!(layout_template_matches(
+            product,
+            IssueFilter::LayoutMissingMarkup
+        ));
+        assert!(!layout_template_matches(
+            &rows[1],
+            IssueFilter::LayoutChanged
+        ));
     }
 }
 

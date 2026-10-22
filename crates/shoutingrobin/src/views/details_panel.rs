@@ -1,13 +1,14 @@
 use std::rc::Rc;
 
+use gpui_kit::component::button::Button;
 use gpui_kit::component::{
     ActiveTheme, Icon as UiIcon, Sizable as _, VirtualListScrollHandle,
     scroll::ScrollableElement as _, tooltip::Tooltip, v_virtual_list,
 };
 use gpui_kit::{
-    AnyElement, App, Context, Entity, Hsla, InteractiveElement, IntoElement, ParentElement, Pixels,
-    Render, SharedString, Size, StatefulInteractiveElement, Styled, Window, div,
-    prelude::FluentBuilder, px,
+    AnyElement, App, Context, Entity, EventEmitter, Hsla, InteractiveElement, IntoElement,
+    ParentElement, Pixels, Render, SharedString, Size, StatefulInteractiveElement, Styled, Window,
+    div, prelude::FluentBuilder, px,
 };
 
 use crate::a11y_rules::rule_description;
@@ -166,6 +167,75 @@ impl DetailsPanel {
         self.active_tab = DetailsTab::Overview;
         cx.notify();
     }
+}
+
+/// Asks the app to open a page's layout, which needs the crawl and its
+/// baseline from the database.
+#[derive(Clone, Debug)]
+pub enum DetailsPanelEvent {
+    ViewLayout { url: String },
+}
+
+impl EventEmitter<DetailsPanelEvent> for DetailsPanel {}
+
+/// Where the page landed among the crawl's layout templates, for a crawl that
+/// captured layout.
+fn layout_section(
+    rec: &PageRecord,
+    panel: &Entity<DetailsPanel>,
+    muted: Hsla,
+    border: Hsla,
+) -> Option<AnyElement> {
+    let layout = rec.layout.as_ref()?;
+    let template = layout
+        .template
+        .clone()
+        .unwrap_or_else(|| "Not grouped".to_string());
+    let joined_by = layout
+        .assignment
+        .map(|assignment| assignment.label())
+        .unwrap_or("");
+    let url = rec.url.clone();
+    let panel = panel.clone();
+    let body = div()
+        .flex()
+        .flex_col()
+        .gap_1()
+        .child(row("Template", SharedString::from(template), muted))
+        .child(row("Joined by", SharedString::from(joined_by), muted))
+        .when(layout.misses_template_markup(), |body| {
+            body.child(row(
+                "Markup",
+                SharedString::from(format!(
+                    "No {} structured data",
+                    layout.template_type.clone().unwrap_or_default()
+                )),
+                muted,
+            ))
+        })
+        .child(
+            div().pt_1().child(
+                Button::new("view-layout")
+                    .xsmall()
+                    .outline()
+                    .label("View Layout")
+                    .on_click(move |_, _, cx| {
+                        let url = url.clone();
+                        panel.update(cx, |_, cx| {
+                            cx.emit(DetailsPanelEvent::ViewLayout { url });
+                        });
+                    }),
+            ),
+        )
+        .into_any_element();
+    Some(section(
+        "Layout",
+        Some(Icon::LayoutPanelLeft),
+        None,
+        muted,
+        border,
+        body,
+    ))
 }
 
 impl Default for DetailsPanel {
@@ -1787,6 +1857,9 @@ impl Render for DetailsPanel {
                 .flex()
                 .flex_col()
                 .child(url_information_section(rec, muted, border, cx))
+                .when_some(layout_section(rec, &panel, muted, border), |el, s| {
+                    el.child(s)
+                })
                 .child(page_content_section(rec, muted, border))
                 .child(serp_section(rec, muted, border, cx))
                 .child(structured_data_section(

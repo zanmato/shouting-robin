@@ -1,3 +1,6 @@
+// Each test binary uses its own part of these helpers.
+#![allow(dead_code)]
+
 use std::net::TcpListener as StdTcpListener;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -25,11 +28,18 @@ fn test_site_dir() -> PathBuf {
 /// explicit `kill()` and on drop, so a panicking test still tears it down.
 pub struct ServerGuard {
     shutdown: Arc<Notify>,
+    shop_layout_variant: Arc<AtomicBool>,
 }
 
 impl ServerGuard {
     pub fn kill(&mut self) {
         self.shutdown.notify_one();
+    }
+
+    /// Serves `shop/variant-changed.css` at `/shop/variant.css` while on, so
+    /// a second crawl of the shop sees a theme change the first did not.
+    pub fn set_shop_layout_variant(&self, on: bool) {
+        self.shop_layout_variant.store(on, Ordering::SeqCst);
     }
 }
 
@@ -53,9 +63,11 @@ pub fn spawn_http_server() -> (ServerGuard, u16) {
 
     let test_site_dir = test_site_dir();
     let shutdown = Arc::new(Notify::new());
+    let shop_layout_variant = Arc::new(AtomicBool::new(false));
 
     std::thread::spawn({
         let shutdown = shutdown.clone();
+        let shop_layout_variant = shop_layout_variant.clone();
         move || {
             let runtime = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -69,8 +81,9 @@ pub fn spawn_http_server() -> (ServerGuard, u16) {
                         accepted = listener.accept() => {
                             if let Ok((stream, _)) = accepted {
                                 let dir = test_site_dir.clone();
+                                let variant = shop_layout_variant.load(Ordering::SeqCst);
                                 tokio::spawn(async move {
-                                    if let Err(error) = handle_connection(stream, dir).await {
+                                    if let Err(error) = handle_connection(stream, dir, variant).await {
                                         eprintln!("test server connection error: {error}");
                                     }
                                 });
@@ -84,7 +97,13 @@ pub fn spawn_http_server() -> (ServerGuard, u16) {
 
     for _ in 0..100 {
         if std::net::TcpStream::connect(("127.0.0.1", port)).is_ok() {
-            return (ServerGuard { shutdown }, port);
+            return (
+                ServerGuard {
+                    shutdown,
+                    shop_layout_variant,
+                },
+                port,
+            );
         }
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -92,7 +111,11 @@ pub fn spawn_http_server() -> (ServerGuard, u16) {
     panic!("test http server did not start within 2s");
 }
 
-async fn handle_connection(mut stream: TcpStream, test_site_dir: PathBuf) -> std::io::Result<()> {
+async fn handle_connection(
+    mut stream: TcpStream,
+    test_site_dir: PathBuf,
+    shop_layout_variant: bool,
+) -> std::io::Result<()> {
     let mut buffer = [0u8; 8192];
     let read = stream.read(&mut buffer).await?;
     if read == 0 {
@@ -119,15 +142,16 @@ async fn handle_connection(mut stream: TcpStream, test_site_dir: PathBuf) -> std
     }
 
     let relative = path.trim_start_matches('/');
-    let relative = if relative.is_empty() {
-        "index.html"
-    } else {
-        relative
+    let relative = match relative {
+        "" => "index.html".to_string(),
+        "shop/variant.css" if shop_layout_variant => "shop/variant-changed.css".to_string(),
+        directory if directory.ends_with('/') => format!("{directory}index.html"),
+        relative => relative.to_string(),
     };
 
     // canonicalize() resolves `..` and fails for missing files, so a path that
     // escapes the test-site root or doesn't exist falls through to a 404.
-    let candidate = test_site_dir.join(relative);
+    let candidate = test_site_dir.join(&relative);
     let within_root = match (candidate.canonicalize(), test_site_dir.canonicalize()) {
         (Ok(resolved), Ok(root)) if resolved.starts_with(&root) && resolved.is_file() => {
             Some(resolved)
@@ -267,6 +291,24 @@ pub fn crawl_test_site_with_mode(
     crawl_test_site_inner(root_url, render_mode, timeout, false, false)
 }
 
+/// The site icons stored by an HTTP crawl of `root_url`, read once it finished.
+pub fn crawl_test_site_icons(root_url: &str) -> Vec<shoutingrobin::storage::StoredSiteIcon> {
+    let crawl = run_test_crawl(
+        root_url,
+        shoutingrobin::crawl::render_mode::RenderMode::Http,
+        Duration::from_secs(30),
+        false,
+    );
+    assert!(
+        crawl.crawl_id.is_some(),
+        "crawl should report a finished event"
+    );
+    crawl
+        .runtime
+        .block_on(shoutingrobin::storage::load_site_icons(&crawl.pool))
+        .expect("load site icons after crawl")
+}
+
 fn crawl_test_site_inner(
     root_url: &str,
     render_mode: shoutingrobin::crawl::render_mode::RenderMode,
@@ -274,20 +316,68 @@ fn crawl_test_site_inner(
     reload_after_finish: bool,
     check_resources: bool,
 ) -> Vec<shoutingrobin::crawl::event::PageRecord> {
-    let _chrome_guard = matches!(
-        render_mode,
-        shoutingrobin::crawl::render_mode::RenderMode::Chrome
-    )
-    .then(chrome_test_guard);
+    let crawl = run_test_crawl(root_url, render_mode, timeout, check_resources);
+    if reload_after_finish {
+        let crawl_id = crawl
+            .crawl_id
+            .expect("crawl should report a finished event");
+        return crawl.runtime.block_on(async {
+            shoutingrobin::storage::load_pages_for_crawl(&crawl.pool, crawl_id, root_url)
+                .await
+                .expect("reload pages after crawl")
+        });
+    }
+    crawl.pages
+}
 
-    let cancel = Arc::new(AtomicBool::new(false));
+struct FinishedTestCrawl {
+    pages: Vec<shoutingrobin::crawl::event::PageRecord>,
+    /// `None` when the crawl timed out before reporting it finished.
+    crawl_id: Option<i64>,
+    pool: sqlx::SqlitePool,
+    runtime: tokio::runtime::Runtime,
+}
 
-    let rt = tokio::runtime::Builder::new_multi_thread()
+fn run_test_crawl(
+    root_url: &str,
+    render_mode: shoutingrobin::crawl::render_mode::RenderMode,
+    timeout: Duration,
+    check_resources: bool,
+) -> FinishedTestCrawl {
+    let database = test_database();
+    let (pages, crawl_id) = crawl_into(
+        &database,
+        root_url,
+        TestCrawlOptions {
+            render_mode,
+            timeout,
+            check_resources,
+            layout_capture: shoutingrobin::crawl::LayoutCapture::Off,
+            follow_sitemaps: true,
+        },
+    );
+    FinishedTestCrawl {
+        pages,
+        crawl_id,
+        pool: database.pool,
+        runtime: database.runtime,
+    }
+}
+
+/// An in-memory database and the runtime that drives it, which several
+/// crawls can share, as two crawls of the same site do in the app.
+pub struct TestDatabase {
+    pub runtime: tokio::runtime::Runtime,
+    pub pool: sqlx::SqlitePool,
+}
+
+pub fn test_database() -> TestDatabase {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .thread_stack_size(8 * 1024 * 1024)
         .build()
         .unwrap();
-    let pool = rt.block_on(async {
+    let pool = runtime.block_on(async {
         let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
         sqlx::query(
             "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
@@ -298,14 +388,49 @@ fn crawl_test_site_inner(
         shoutingrobin::storage::run_migrations(&pool).await.unwrap();
         pool
     });
+    TestDatabase { runtime, pool }
+}
 
+#[derive(Clone, Copy)]
+pub struct TestCrawlOptions {
+    pub render_mode: shoutingrobin::crawl::render_mode::RenderMode,
+    pub timeout: Duration,
+    pub check_resources: bool,
+    pub layout_capture: shoutingrobin::crawl::LayoutCapture,
+    /// Off keeps a crawl of `/shop/` to the shop, since the sitemap lists
+    /// the rest of the test site.
+    pub follow_sitemaps: bool,
+}
+
+/// Crawls `root_url` into `database` and returns the streamed records and
+/// the crawl's id, `None` when it timed out before finishing.
+pub fn crawl_into(
+    database: &TestDatabase,
+    root_url: &str,
+    options: TestCrawlOptions,
+) -> (Vec<shoutingrobin::crawl::event::PageRecord>, Option<i64>) {
+    let TestCrawlOptions {
+        render_mode,
+        timeout,
+        check_resources,
+        layout_capture,
+        follow_sitemaps,
+    } = options;
+    let _chrome_guard = matches!(
+        render_mode,
+        shoutingrobin::crawl::render_mode::RenderMode::Chrome
+    )
+    .then(chrome_test_guard);
+
+    let cancel = Arc::new(AtomicBool::new(false));
+    let rt = &database.runtime;
     let (tx, rx) = shoutingrobin::crawl::engine::channel();
     let (_, fut) = {
         let mut engine = shoutingrobin::crawl::engine::CrawlEngine::new();
         engine.start(
             root_url.to_string(),
             tx,
-            pool.clone(),
+            database.pool.clone(),
             render_mode,
             shoutingrobin::crawl::CrawlConfig {
                 max_pages: 0,
@@ -313,7 +438,7 @@ fn crawl_test_site_inner(
                 delay_ms: 0,
                 timeout_seconds: 30,
                 respect_robots_txt: true,
-                follow_sitemaps: true,
+                follow_sitemaps,
                 block_images: false,
                 near_duplicate_threshold: 90,
                 content_selector: String::new(),
@@ -325,6 +450,7 @@ fn crawl_test_site_inner(
                 list_mode: false,
                 seed_urls: Vec::new(),
                 check_resources,
+                layout_capture,
             },
         )
     };
@@ -363,16 +489,7 @@ fn crawl_test_site_inner(
 
     cancel.store(true, Ordering::Relaxed);
 
-    if reload_after_finish {
-        let crawl_id = finished_crawl_id.expect("crawl should report a finished event");
-        return rt.block_on(async {
-            shoutingrobin::storage::load_pages_for_crawl(&pool, crawl_id, root_url)
-                .await
-                .expect("reload pages after crawl")
-        });
-    }
-
-    pages
+    (pages, finished_crawl_id)
 }
 
 pub fn chrome_available() -> bool {
