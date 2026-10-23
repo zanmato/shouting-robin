@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.2.2] - 2026-10-23
 
 ### Features
 
@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
   Overview
 - Showed each site's favicon in the crawls sidebar
 - Added the layout comparison to the screenshots and the website tour
+- Wider copy and text selection support
 
 ### Fixes
 

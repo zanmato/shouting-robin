@@ -1,9 +1,14 @@
 [workspace]
-members = ["crates/shoutingrobin", "crates/gpui_tokio", "crates/ui", "crates/vsx-themes"]
+members = [
+    "crates/shoutingrobin",
+    "crates/gpui_tokio",
+    "crates/ui",
+    "crates/vsx-themes",
+]
 resolver = "2"
 
 [workspace.package]
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 authors = ["Andreas Johansson <z@zanmato.se>"]
 license = "Apache-2.0"
