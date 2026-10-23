@@ -944,54 +944,25 @@ fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> 
     let fcp_str = rec.fcp_ms.map(|ms| format!("{ms}ms")).unwrap_or_default();
     let ttfb_str = rec.ttfb_ms.map(|ms| format!("{ms}ms")).unwrap_or_default();
 
+    let tiles = [
+        ("LCP", lcp_str, rec.lcp_ms.map(lcp_tone)),
+        ("CLS", cls_str, rec.cls.map(cls_tone)),
+        ("FCP", fcp_str, rec.fcp_ms.map(fcp_tone)),
+        ("TTFB", ttfb_str, rec.ttfb_ms.map(ttfb_tone)),
+    ];
     let vitals_body = div()
         .flex()
-        .flex_col()
         .gap_2()
-        .child(
-            div()
-                .flex()
-                .gap_2()
-                .child(div().flex_1().child(vital_tile(
-                    "LCP",
-                    SharedString::from(lcp_str),
-                    rec.lcp_ms.map(lcp_tone),
-                    muted,
-                    border,
-                    panel2,
-                )))
-                .child(div().flex_1().child(vital_tile(
-                    "CLS",
-                    SharedString::from(cls_str),
-                    rec.cls.map(cls_tone),
-                    muted,
-                    border,
-                    panel2,
-                )))
-                .child(div().flex_1().child(vital_tile(
-                    "FCP",
-                    SharedString::from(fcp_str),
-                    rec.fcp_ms.map(fcp_tone),
-                    muted,
-                    border,
-                    panel2,
-                ))),
-        )
-        .child(
-            div()
-                .flex()
-                .gap_2()
-                .child(div().flex_1().child(vital_tile(
-                    "TTFB",
-                    SharedString::from(ttfb_str),
-                    rec.ttfb_ms.map(ttfb_tone),
-                    muted,
-                    border,
-                    panel2,
-                )))
-                .child(div().flex_1())
-                .child(div().flex_1()),
-        )
+        .children(tiles.into_iter().map(|(label, value, tone)| {
+            div().flex_1().min_w_0().child(vital_tile(
+                label,
+                SharedString::from(value),
+                tone,
+                muted,
+                border,
+                panel2,
+            ))
+        }))
         .into_any_element();
 
     section(
