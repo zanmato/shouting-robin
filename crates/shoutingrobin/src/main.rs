@@ -1,8 +1,19 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", not(test)))]
 #[global_allocator]
 static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+// Tests count allocations for the frame benchmarks, through the allocator the
+// app ships with so the counts are the ones users get.
+#[cfg(all(target_os = "linux", test))]
+#[global_allocator]
+static GLOBAL: gpui::CountingAllocator<tikv_jemallocator::Jemalloc> =
+    gpui::CountingAllocator::new(tikv_jemallocator::Jemalloc);
+
+#[cfg(all(not(target_os = "linux"), test))]
+#[global_allocator]
+static GLOBAL: gpui::CountingAllocator = gpui::CountingAllocator::new(std::alloc::System);
 
 // gpui-fast's macros emit `gpui::` paths, and GPUI Kit is the only GPUI
 // dependency here, so it has to answer to that name.

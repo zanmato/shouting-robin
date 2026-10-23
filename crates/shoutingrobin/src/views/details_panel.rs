@@ -1,20 +1,24 @@
+use std::cell::Cell;
 use std::rc::Rc;
 
+use gpui_kit::base::TextSelection;
 use gpui_kit::component::button::Button;
+use gpui_kit::component::menu::{ContextMenuExt as _, PopupMenu, PopupMenuItem};
 use gpui_kit::component::{
-    ActiveTheme, Icon as UiIcon, Sizable as _, VirtualListScrollHandle,
+    ActiveTheme, Icon as UiIcon, IconName, Sizable as _, VirtualListScrollHandle,
     scroll::ScrollableElement as _, tooltip::Tooltip, v_virtual_list,
 };
 use gpui_kit::{
-    AnyElement, App, Context, Entity, EventEmitter, Hsla, InteractiveElement, IntoElement,
-    ParentElement, Pixels, Render, SharedString, Size, StatefulInteractiveElement, Styled, Window,
-    div, prelude::FluentBuilder, px,
+    AnyElement, App, ClipboardItem, Context, Entity, EventEmitter, Hsla, InteractiveElement,
+    IntoElement, ParentElement, Pixels, Render, SharedString, Size, StatefulInteractiveElement,
+    Styled, Window, div, prelude::FluentBuilder, px,
 };
 
 use crate::a11y_rules::rule_description;
 use crate::crawl::RenderMode;
 use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdSeverity};
 use crate::ui::icon::Icon;
+use crate::ui::selectable_text::SelectableText;
 use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::results_grid::ssr_diff_label;
 use shoutingrobin_ui::{HtmlView, JsonView};
@@ -127,11 +131,12 @@ impl DetailsPanel {
             Some(rec) => rec
                 .sd_items
                 .iter()
-                .map(|item| {
+                .enumerate()
+                .map(|(index, item)| {
                     if item.raw_json.is_empty() {
                         None
                     } else {
-                        Some(JsonView::new(&item.raw_json, cx))
+                        Some(JsonView::new(("sd-json", index), &item.raw_json, cx).copyable())
                     }
                 })
                 .collect(),
@@ -141,12 +146,13 @@ impl DetailsPanel {
             Some(rec) => rec
                 .a11y_issues
                 .iter()
-                .map(|issue| {
+                .enumerate()
+                .map(|(index, issue)| {
                     issue
                         .html
                         .as_deref()
                         .filter(|h| !h.is_empty())
-                        .map(|h| HtmlView::new(h, cx))
+                        .map(|h| HtmlView::new(("a11y-html", index), h, cx).copyable())
                 })
                 .collect(),
             None => Vec::new(),
@@ -182,6 +188,7 @@ impl EventEmitter<DetailsPanelEvent> for DetailsPanel {}
 /// captured layout.
 fn layout_section(
     rec: &PageRecord,
+    order: &TextOrder,
     panel: &Entity<DetailsPanel>,
     muted: Hsla,
     border: Hsla,
@@ -201,10 +208,16 @@ fn layout_section(
         .flex()
         .flex_col()
         .gap_1()
-        .child(row("Template", SharedString::from(template), muted))
-        .child(row("Joined by", SharedString::from(joined_by), muted))
+        .child(row(order, "Template", SharedString::from(template), muted))
+        .child(row(
+            order,
+            "Joined by",
+            SharedString::from(joined_by),
+            muted,
+        ))
         .when(layout.misses_template_markup(), |body| {
             body.child(row(
+                order,
                 "Markup",
                 SharedString::from(format!(
                     "No {} structured data",
@@ -269,21 +282,121 @@ fn or_blank(value: &Option<String>) -> SharedString {
     }
 }
 
-fn row(label: &str, value: impl IntoElement, muted: Hsla) -> AnyElement {
+/// Gives each selectable text in the panel its place in reading order, so a
+/// selection dragged across several values copies them top to bottom rather
+/// than in whatever order the window's registry holds them. The position is
+/// also the text's element id, which keeps ids unique within a render and the
+/// same from one frame to the next, so each text keeps its selection state.
+struct TextOrder {
+    next: Cell<u64>,
+}
+
+impl TextOrder {
+    fn starting_at(first: u64) -> Self {
+        Self {
+            next: Cell::new(first),
+        }
+    }
+
+    fn text(&self, text: impl Into<SharedString>) -> SelectableText {
+        let position = self.next.get();
+        self.next.set(position + 1);
+        SelectableText::new(("details-text", position as usize), text).document_order(position)
+    }
+}
+
+/// Where the virtual lists' text starts in reading order. A list is the only
+/// pane on screen when its tab is open, so it only has to come after the
+/// header above it.
+const LIST_TEXT_ORDER: u64 = 1 << 32;
+
+/// What a row shows on the right: text, which can be selected and copied, or
+/// an element such as a status tag.
+enum RowValue {
+    Text(SharedString),
+    Element(AnyElement),
+}
+
+impl From<SharedString> for RowValue {
+    fn from(text: SharedString) -> Self {
+        Self::Text(text)
+    }
+}
+
+impl From<AnyElement> for RowValue {
+    fn from(element: AnyElement) -> Self {
+        Self::Element(element)
+    }
+}
+
+fn row(
+    order: &TextOrder,
+    label: impl Into<SharedString>,
+    value: impl Into<RowValue>,
+    muted: Hsla,
+) -> AnyElement {
+    // Only the value is selectable. Every selectable text costs each frame
+    // more while a selection is active (gpui-base republishes the selection to
+    // all of them as each registers), and the label is beside the value anyway.
+    let label: SharedString = label.into();
+    let value = match value.into() {
+        RowValue::Text(text) => order.text(text).into_any_element(),
+        RowValue::Element(element) => element,
+    };
     div()
         .flex()
         .flex_grow(1.0)
         .justify_between()
         .gap_3()
         .text_xs()
-        .child(
-            div()
-                .flex_shrink_0()
-                .text_color(muted)
-                .child(label.to_string()),
-        )
+        .child(div().flex_shrink_0().text_color(muted).child(label))
         .child(div().max_w_full().min_w(px(0.)).child(value))
         .into_any_element()
+}
+
+/// "Copy" for whatever text is selected in the window. The text is read when
+/// the menu opens: by the time an item is clicked, the press that opened the
+/// menu or the click itself may have cleared the selection.
+fn copy_selection_item(window: &mut Window, cx: &mut App) -> PopupMenuItem {
+    let selected = TextSelection::selected_text(window, cx).trim().to_string();
+    PopupMenuItem::new("Copy")
+        .icon(IconName::Copy)
+        .disabled(selected.is_empty())
+        .on_click(move |_, _, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(selected.clone()));
+        })
+}
+
+fn copy_text_item(label: &'static str, text: SharedString) -> PopupMenuItem {
+    PopupMenuItem::new(label)
+        .icon(IconName::Copy)
+        .on_click(move |_, _, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(text.to_string()));
+        })
+}
+
+fn open_url_item(url: SharedString) -> PopupMenuItem {
+    PopupMenuItem::new("Open in Browser")
+        .icon(Icon::ExternalLink)
+        .on_click(move |_, _, cx| cx.open_url(&url))
+}
+
+/// The menu for one entry in a list: the selection, the entry's URL, and the
+/// one piece of detail worth copying on its own, such as a link's anchor text.
+fn link_menu(
+    menu: PopupMenu,
+    window: &mut Window,
+    cx: &mut App,
+    url: &SharedString,
+    detail: Option<(&'static str, SharedString)>,
+) -> PopupMenu {
+    menu.item(copy_selection_item(window, cx))
+        .separator()
+        .item(copy_text_item("Copy URL", url.clone()))
+        .when_some(detail, |menu, (label, text)| {
+            menu.item(copy_text_item(label, text))
+        })
+        .item(open_url_item(url.clone()))
 }
 
 fn section_header(
@@ -339,7 +452,7 @@ fn a11y_impact_tone(impact: &str) -> Tone {
     }
 }
 
-fn serp_preview(rec: &PageRecord, cx: &App) -> AnyElement {
+fn serp_preview(rec: &PageRecord, order: &TextOrder, cx: &App) -> AnyElement {
     let title = rec
         .title
         .as_deref()
@@ -366,25 +479,27 @@ fn serp_preview(rec: &PageRecord, cx: &App) -> AnyElement {
                 .font_family(crate::ui::fonts::FAMILY)
                 .text_size(px(18.))
                 .text_color(cx.theme().blue)
-                .child(SharedString::from(title.to_string())),
+                .child(order.text(title.to_string())),
         )
         .child(
             div()
                 .text_xs()
                 .text_color(cx.theme().green)
-                .child(SharedString::from(url_display)),
+                .child(order.text(url_display)),
         )
         .child(
             div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(SharedString::from(desc.to_string())),
+                .child(order.text(desc.to_string())),
         )
         .into_any_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn a11y_issue_row(
     issue: &A11yIssue,
+    order: &TextOrder,
     html_view: Option<&HtmlView>,
     index: usize,
     muted: Hsla,
@@ -402,14 +517,14 @@ fn a11y_issue_row(
                 .id(("a11y-rule-tip", index))
                 .text_color(fg)
                 .text_sm()
-                .child(rule_name)
+                .child(order.text(rule_name))
                 .tooltip(move |window, cx| Tooltip::new(desc.clone()).build(window, cx))
                 .into_any_element()
         }
         None => div()
             .text_color(fg)
             .text_sm()
-            .child(rule_name)
+            .child(order.text(rule_name))
             .into_any_element(),
     };
     div()
@@ -428,12 +543,7 @@ fn a11y_issue_row(
                 .child(rule_el),
         )
         .when_some(issue.target.clone(), |el, target| {
-            el.child(
-                div()
-                    .text_xs()
-                    .text_color(muted)
-                    .child(SharedString::from(target)),
-            )
+            el.child(div().text_xs().text_color(muted).child(order.text(target)))
         })
         .when_some(html_view.cloned(), |el, view| el.child(view))
         .into_any_element()
@@ -474,7 +584,8 @@ fn ttfb_tone(ms: u64) -> Tone {
 }
 
 fn vital_tile(
-    label: &str,
+    label: &'static str,
+    order: &TextOrder,
     value: SharedString,
     tone: Option<Tone>,
     muted: Hsla,
@@ -487,10 +598,11 @@ fn vital_tile(
         Some(Tone::Err) => Some(gpui_kit::hsla(0. / 360., 0.84, 0.60, 1.0)),
         _ => None,
     };
+    let label = order.text(label);
     let mut value_div = div()
         .text_sm()
         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-        .child(value);
+        .child(order.text(value));
     if let Some(c) = value_color {
         value_div = value_div.text_color(c);
     }
@@ -504,17 +616,12 @@ fn vital_tile(
         .flex_col()
         .items_center()
         .gap_0p5()
-        .child(
-            div()
-                .text_xs()
-                .text_color(muted)
-                .child(SharedString::from(label.to_string())),
-        )
+        .child(div().text_xs().text_color(muted).child(label))
         .child(value_div)
         .into_any_element()
 }
 
-fn header_block(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
+fn header_block(rec: &PageRecord, order: &TextOrder, muted: Hsla, border: Hsla) -> AnyElement {
     let url = rec.url.clone();
     div()
         .px_3()
@@ -556,12 +663,18 @@ fn header_block(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
                 .mt_1()
                 .text_xs()
                 .text_color(muted)
-                .child(SharedString::from(rec.url.clone())),
+                .child(order.text(rec.url.clone())),
         )
         .into_any_element()
 }
 
-fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App) -> AnyElement {
+fn url_information_section(
+    rec: &PageRecord,
+    order: &TextOrder,
+    muted: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> AnyElement {
     let status_tag = match rec.status {
         Some(c) => tone_tag(status_code_tone(c), cx)
             .child(SharedString::from(c.to_string()))
@@ -581,27 +694,44 @@ fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App
         .flex_col()
         .w_full()
         .gap_1()
-        .child(row("Address", SharedString::from(rec.url.clone()), muted))
-        .child(row("Status", status_tag, muted))
-        .child(row("Content Type", or_blank(&rec.content_type), muted))
         .child(row(
+            order,
+            "Address",
+            SharedString::from(rec.url.clone()),
+            muted,
+        ))
+        .child(row(order, "Status", status_tag, muted))
+        .child(row(
+            order,
+            "Content Type",
+            or_blank(&rec.content_type),
+            muted,
+        ))
+        .child(row(
+            order,
             "Size",
             SharedString::from(format_bytes(rec.size_bytes)),
             muted,
         ))
-        .child(row("Indexability", indexability_tag, muted))
-        .child(row("Canonical", or_blank(&rec.canonical), muted))
+        .child(row(order, "Indexability", indexability_tag, muted))
+        .child(row(order, "Canonical", or_blank(&rec.canonical), muted))
         .when_some(rec.redirect_url.clone(), |el, redirect| {
-            el.child(row("Redirect URI", SharedString::from(redirect), muted))
-                .child(row(
-                    "Redirect Status",
-                    SharedString::from(
-                        rec.redirect_status
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| "301".to_string()),
-                    ),
-                    muted,
-                ))
+            el.child(row(
+                order,
+                "Redirect URI",
+                SharedString::from(redirect),
+                muted,
+            ))
+            .child(row(
+                order,
+                "Redirect Status",
+                SharedString::from(
+                    rec.redirect_status
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| "301".to_string()),
+                ),
+                muted,
+            ))
         })
         .when(
             rec.headers
@@ -609,6 +739,7 @@ fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App
                 .any(|(k, _)| k.eq_ignore_ascii_case("last-modified")),
             |el| {
                 el.child(row(
+                    order,
                     "Last Modified",
                     SharedString::from(
                         rec.headers
@@ -626,13 +757,19 @@ fn url_information_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App
     section("URL Information", None, None, muted, border, url_info)
 }
 
-fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
+fn page_content_section(
+    rec: &PageRecord,
+    order: &TextOrder,
+    muted: Hsla,
+    border: Hsla,
+) -> AnyElement {
     let page_content = div()
         .flex()
         .flex_col()
         .gap_1()
-        .child(row("Title", or_blank(&rec.title), muted))
+        .child(row(order, "Title", or_blank(&rec.title), muted))
         .child(row(
+            order,
             "Title Length",
             SharedString::from(
                 rec.title
@@ -643,6 +780,7 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             muted,
         ))
         .child(row(
+            order,
             "Title Pixel Width",
             SharedString::from(
                 rec.title_pixel_width
@@ -652,10 +790,16 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             muted,
         ))
         .when_some(rec.title_2.clone(), |el, t2| {
-            el.child(row("Title 2", SharedString::from(t2), muted))
+            el.child(row(order, "Title 2", SharedString::from(t2), muted))
         })
-        .child(row("Meta Desc", or_blank(&rec.meta_description), muted))
         .child(row(
+            order,
+            "Meta Desc",
+            or_blank(&rec.meta_description),
+            muted,
+        ))
+        .child(row(
+            order,
             "Meta Length",
             SharedString::from(
                 rec.meta_description
@@ -666,6 +810,7 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             muted,
         ))
         .child(row(
+            order,
             "Meta Pixel Width",
             SharedString::from(
                 rec.meta_description_pixel_width
@@ -675,10 +820,11 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             muted,
         ))
         .when_some(rec.meta_description_2.clone(), |el, md2| {
-            el.child(row("Meta Desc 2", SharedString::from(md2), muted))
+            el.child(row(order, "Meta Desc 2", SharedString::from(md2), muted))
         })
-        .child(row("H1", or_blank(&rec.h1), muted))
+        .child(row(order, "H1", or_blank(&rec.h1), muted))
         .child(row(
+            order,
             "H1 Length",
             SharedString::from(
                 rec.h1
@@ -689,16 +835,18 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             muted,
         ))
         .when_some(rec.h1_2.clone(), |el, h1_2| {
-            el.child(row("H1-2", SharedString::from(h1_2), muted))
+            el.child(row(order, "H1-2", SharedString::from(h1_2), muted))
         })
-        .child(row("H2", or_blank(&rec.h2), muted))
+        .child(row(order, "H2", or_blank(&rec.h2), muted))
         .child(row(
+            order,
             "Word Count",
             SharedString::from(rec.word_count.map(|w| w.to_string()).unwrap_or_default()),
             muted,
         ))
         .when(rec.ssr_word_count.is_some(), |el| {
             el.child(row(
+                order,
                 "SSR Words",
                 SharedString::from(
                     rec.ssr_word_count
@@ -708,12 +856,13 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
                 muted,
             ))
             .child(row(
+                order,
                 "SSR/CSR Diff",
                 SharedString::from(ssr_diff_label(rec)),
                 muted,
             ))
         })
-        .child(row("Meta Robots", or_blank(&rec.robots), muted))
+        .child(row(order, "Meta Robots", or_blank(&rec.robots), muted))
         .into_any_element();
 
     section("Page Content", None, None, muted, border, page_content)
@@ -721,6 +870,7 @@ fn page_content_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
 
 fn structured_data_section(
     rec: &PageRecord,
+    order: &TextOrder,
     json_views: &[Option<JsonView>],
     muted: Hsla,
     fg: Hsla,
@@ -764,7 +914,7 @@ fn structured_data_section(
                         div()
                             .text_color(fg)
                             .text_sm()
-                            .child(SharedString::from(item.type_name.clone())),
+                            .child(order.text(item.type_name.clone())),
                     ),
                 )
                 .when_some(json_view.clone(), |el, view| el.child(view)),
@@ -791,14 +941,14 @@ fn structured_data_section(
                             div()
                                 .text_color(fg)
                                 .text_sm()
-                                .child(SharedString::from(issue.type_name.clone())),
+                                .child(order.text(issue.type_name.clone())),
                         ),
                 )
                 .child(
                     div()
                         .text_xs()
                         .text_color(muted)
-                        .child(SharedString::from(issue.message.clone())),
+                        .child(order.text(issue.message.clone())),
                 ),
         );
     }
@@ -807,25 +957,29 @@ fn structured_data_section(
         .flex()
         .flex_col()
         .gap_1()
-        .child(row("Types", sd_types_text, muted))
+        .child(row(order, "Types", sd_types_text, muted))
         .child(row(
+            order,
             "JSON-LD",
             SharedString::from(rec.sd_jsonld_count.to_string()),
             muted,
         ))
         .child(row(
+            order,
             "Microdata",
             SharedString::from(rec.sd_microdata_count.to_string()),
             muted,
         ))
         .when(rec.og_type.is_some(), |el| {
             el.child(row(
+                order,
                 "Open Graph",
                 SharedString::from(rec.og_type.clone().unwrap_or_default()),
                 muted,
             ))
         })
         .child(row(
+            order,
             "Errors",
             if rec.sd_errors > 0 {
                 tone_tag(Tone::Err, cx)
@@ -837,6 +991,7 @@ fn structured_data_section(
             muted,
         ))
         .child(row(
+            order,
             "Warnings",
             if rec.sd_warnings > 0 {
                 tone_tag(Tone::Warn, cx)
@@ -865,6 +1020,7 @@ fn structured_data_section(
 
 fn accessibility_section(
     rec: &PageRecord,
+    order: &TextOrder,
     html_views: &[Option<HtmlView>],
     muted: Hsla,
     fg: Hsla,
@@ -891,6 +1047,7 @@ fn accessibility_section(
         .flex_col()
         .gap_1()
         .child(row(
+            order,
             "Errors",
             if rec.a11y_errors > 0 {
                 tone_tag(Tone::Err, cx)
@@ -902,6 +1059,7 @@ fn accessibility_section(
             muted,
         ))
         .child(row(
+            order,
             "Warnings",
             if rec.a11y_warnings > 0 {
                 tone_tag(Tone::Warn, cx)
@@ -915,6 +1073,7 @@ fn accessibility_section(
     for (index, issue) in rec.a11y_issues.iter().enumerate() {
         a11y_body = a11y_body.child(a11y_issue_row(
             issue,
+            order,
             html_views[index].as_ref(),
             index,
             muted,
@@ -935,7 +1094,13 @@ fn accessibility_section(
     )
 }
 
-fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> AnyElement {
+fn vitals_section(
+    rec: &PageRecord,
+    order: &TextOrder,
+    muted: Hsla,
+    border: Hsla,
+    panel2: Hsla,
+) -> AnyElement {
     let lcp_str = rec
         .lcp_ms
         .map(|ms| format!("{:.1}s", ms as f32 / 1000.0))
@@ -956,6 +1121,7 @@ fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> 
         .children(tiles.into_iter().map(|(label, value, tone)| {
             div().flex_1().min_w_0().child(vital_tile(
                 label,
+                order,
                 SharedString::from(value),
                 tone,
                 muted,
@@ -975,7 +1141,12 @@ fn vitals_section(rec: &PageRecord, muted: Hsla, border: Hsla, panel2: Hsla) -> 
     )
 }
 
-fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyElement {
+fn link_metrics_section(
+    rec: &PageRecord,
+    order: &TextOrder,
+    muted: Hsla,
+    border: Hsla,
+) -> AnyElement {
     let link_score_str = rec
         .link_score
         .map(|s| format!("{s:.1}"))
@@ -985,16 +1156,19 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
         .flex_col()
         .gap_1()
         .child(row(
+            order,
             "Inlinks",
             SharedString::from(rec.inlinks_count.to_string()),
             muted,
         ))
         .child(row(
+            order,
             "CSR Inlinks",
             SharedString::from(rec.csr_inlinks_count.to_string()),
             muted,
         ))
         .child(row(
+            order,
             "CSR In %",
             SharedString::from(if rec.inlinks_count > 0 && rec.csr_inlinks_count > 0 {
                 format!(
@@ -1008,11 +1182,13 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             muted,
         ))
         .child(row(
+            order,
             "Outlinks",
             SharedString::from(rec.outlinks.len().to_string()),
             muted,
         ))
         .child(row(
+            order,
             "CSR Outlinks",
             SharedString::from(
                 rec.outlinks
@@ -1024,6 +1200,7 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             muted,
         ))
         .child(row(
+            order,
             "CSR Out %",
             SharedString::from({
                 let total = rec.outlinks.len();
@@ -1039,23 +1216,32 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             }),
             muted,
         ))
-        .child(row("Link Score", SharedString::from(link_score_str), muted))
         .child(row(
+            order,
+            "Link Score",
+            SharedString::from(link_score_str),
+            muted,
+        ))
+        .child(row(
+            order,
             "Backlinks",
             SharedString::from(rec.backlinks.len().to_string()),
             muted,
         ))
         .child(row(
+            order,
             "Depth",
             SharedString::from(rec.depth.map(|d| d.to_string()).unwrap_or_default()),
             muted,
         ))
         .child(row(
+            order,
             "Hreflang",
             SharedString::from(rec.hreflang_tags.len().to_string()),
             muted,
         ))
         .child(row(
+            order,
             "Near Duplicates",
             SharedString::from(
                 rec.near_duplicate_count
@@ -1065,6 +1251,7 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
             muted,
         ))
         .child(row(
+            order,
             "Closest Similarity",
             SharedString::from(
                 rec.closest_similarity
@@ -1078,7 +1265,14 @@ fn link_metrics_section(rec: &PageRecord, muted: Hsla, border: Hsla) -> AnyEleme
     section("Link Metrics", None, None, muted, border, links_body)
 }
 
-fn images_section(rec: &PageRecord, muted: Hsla, fg: Hsla, border: Hsla, cx: &App) -> AnyElement {
+fn images_section(
+    rec: &PageRecord,
+    order: &TextOrder,
+    muted: Hsla,
+    fg: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> AnyElement {
     let images_summary = if rec.images.is_empty() {
         None
     } else {
@@ -1129,7 +1323,7 @@ fn images_section(rec: &PageRecord, muted: Hsla, fg: Hsla, border: Hsla, cx: &Ap
                             .text_xs()
                             .font_family(cx.theme().mono_font_family.clone())
                             .text_color(fg)
-                            .child(SharedString::from(image.src.clone())),
+                            .child(order.text(image.src.clone())),
                     )
                     .child(
                         div()
@@ -1145,9 +1339,7 @@ fn images_section(rec: &PageRecord, muted: Hsla, fg: Hsla, border: Hsla, cx: &Ap
                                     .child(div().text_color(muted).child("Alt:"))
                                     .child(alt_tag)
                                     .when_some(image.alt.clone(), |el, alt| {
-                                        el.child(
-                                            div().text_color(fg).child(SharedString::from(alt)),
-                                        )
+                                        el.child(div().text_color(fg).child(order.text(alt)))
                                     }),
                             )
                             .child(
@@ -1192,19 +1384,26 @@ fn images_section(rec: &PageRecord, muted: Hsla, fg: Hsla, border: Hsla, cx: &Ap
     )
 }
 
-fn serp_section(rec: &PageRecord, muted: Hsla, border: Hsla, cx: &App) -> AnyElement {
+fn serp_section(
+    rec: &PageRecord,
+    order: &TextOrder,
+    muted: Hsla,
+    border: Hsla,
+    cx: &App,
+) -> AnyElement {
     section(
         "SERP Preview",
         None,
         None,
         muted,
         border,
-        serp_preview(rec, cx),
+        serp_preview(rec, order, cx),
     )
 }
 
 fn hreflang_section(
     rec: &PageRecord,
+    order: &TextOrder,
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
@@ -1254,20 +1453,10 @@ fn hreflang_section(
                             Tone::Err => "error",
                             _ => "warning",
                         })))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(fg)
-                                .child(SharedString::from(name)),
-                        ),
+                        .child(div().text_xs().text_color(fg).child(order.text(name))),
                 )
                 .when_some(detail, |el, detail| {
-                    el.child(
-                        div()
-                            .text_xs()
-                            .text_color(muted)
-                            .child(SharedString::from(detail)),
-                    )
+                    el.child(div().text_xs().text_color(muted).child(order.text(detail)))
                 }),
         );
     }
@@ -1294,16 +1483,30 @@ fn hreflang_section(
 /// one block of text.
 const LINK_ROW_HEIGHT: Pixels = px(46.);
 
+/// One entry in a list: its URL and a line of detail, both selectable, with a
+/// menu for copying or opening it. `copyable_detail` offers the part of the
+/// detail worth copying on its own, such as a link's anchor text, under the
+/// given menu label.
+///
+/// The row is identified by its list and index. The menu keys its open state
+/// on that id, and without one every row would share a single menu.
+#[allow(clippy::too_many_arguments)]
 fn link_row(
+    list: &'static str,
+    row_index: usize,
     url: SharedString,
     detail: SharedString,
+    copyable_detail: Option<(&'static str, SharedString)>,
     trailing: Option<AnyElement>,
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
     cx: &App,
 ) -> AnyElement {
+    let order = TextOrder::starting_at(LIST_TEXT_ORDER + row_index as u64 * 2);
+    let menu_url = url.clone();
     div()
+        .id((list, row_index))
         .h(LINK_ROW_HEIGHT)
         .flex()
         .flex_col()
@@ -1325,11 +1528,20 @@ fn link_row(
                         .font_family(cx.theme().mono_font_family.clone())
                         .text_color(fg)
                         .truncate()
-                        .child(url),
+                        .child(order.text(url)),
                 )
                 .when_some(trailing, |el, tag| el.child(tag)),
         )
-        .child(div().text_xs().text_color(muted).truncate().child(detail))
+        .child(
+            div()
+                .text_xs()
+                .text_color(muted)
+                .truncate()
+                .child(order.text(detail)),
+        )
+        .context_menu(move |menu, window, cx| {
+            link_menu(menu, window, cx, &menu_url, copyable_detail.clone())
+        })
         .into_any_element()
 }
 
@@ -1368,6 +1580,7 @@ fn selected_page(panel: &DetailsPanel) -> Option<&PageRecord> {
 
 fn headers_section(
     rec: &PageRecord,
+    order: &TextOrder,
     muted: Hsla,
     fg: Hsla,
     border: Hsla,
@@ -1377,7 +1590,7 @@ fn headers_section(
         return None;
     }
     let mut headers_body = div().flex().flex_col().gap_0p5();
-    for (key, value) in &rec.headers {
+    for (index, (key, value)) in rec.headers.iter().enumerate() {
         // Truncate by characters, not bytes: slicing a multi-byte value at byte
         // 80 would land mid-character and panic.
         let display_value = if value.chars().count() > 80 {
@@ -1398,7 +1611,7 @@ fn headers_section(
                         .text_xs()
                         .font_weight(gpui_kit::FontWeight::SEMIBOLD)
                         .text_color(muted)
-                        .child(SharedString::from(key.clone())),
+                        .child(order.text(key.clone())),
                 )
                 .child(
                     div()
@@ -1406,7 +1619,10 @@ fn headers_section(
                         .font_family(cx.theme().mono_font_family.clone())
                         .text_color(fg)
                         .overflow_x_scrollbar()
-                        .child(SharedString::from(display_value)),
+                        // One scroll position per header, rather than one for
+                        // every value this line makes.
+                        .id(("header-value", index))
+                        .child(order.text(display_value)),
                 ),
         );
     }
@@ -1425,7 +1641,12 @@ fn headers_section(
     ))
 }
 
-fn image_header_block(image: &ImageDetails, muted: Hsla, border: Hsla) -> AnyElement {
+fn image_header_block(
+    image: &ImageDetails,
+    order: &TextOrder,
+    muted: Hsla,
+    border: Hsla,
+) -> AnyElement {
     let src = image.src.clone();
     div()
         .px_3()
@@ -1467,12 +1688,17 @@ fn image_header_block(image: &ImageDetails, muted: Hsla, border: Hsla) -> AnyEle
                 .mt_1()
                 .text_xs()
                 .text_color(muted)
-                .child(SharedString::from(image.src.clone())),
+                .child(order.text(image.src.clone())),
         )
         .into_any_element()
 }
 
-fn image_information_section(image: &ImageDetails, muted: Hsla, border: Hsla) -> AnyElement {
+fn image_information_section(
+    image: &ImageDetails,
+    order: &TextOrder,
+    muted: Hsla,
+    border: Hsla,
+) -> AnyElement {
     let dimensions = match (image.width, image.height) {
         (Some(w), Some(h)) => format!("{w} x {h}"),
         // One side declared is worth showing, and the missing half is what the
@@ -1493,12 +1719,19 @@ fn image_information_section(image: &ImageDetails, muted: Hsla, border: Hsla) ->
         .flex_col()
         .gap_1()
         .child(row(
+            order,
             "References",
             SharedString::from(image.references.len().to_string()),
             muted,
         ))
-        .child(row("Dimensions", SharedString::from(dimensions), muted))
         .child(row(
+            order,
+            "Dimensions",
+            SharedString::from(dimensions),
+            muted,
+        ))
+        .child(row(
+            order,
             "Missing alt",
             SharedString::from(missing_alt.to_string()),
             muted,
@@ -1628,7 +1861,7 @@ impl Render for DetailsPanel {
         let border = theme.border;
         let panel2 = theme.secondary;
 
-        let Some(selection) = self.selected.clone() else {
+        let Some(selection) = &self.selected else {
             return div()
                 .w(px(420.))
                 .h_full()
@@ -1641,10 +1874,12 @@ impl Render for DetailsPanel {
                         .text_sm()
                         .text_color(muted)
                         .child("Select a URL to inspect details."),
-                );
+                )
+                .into_any_element();
         };
 
-        let tabs = tabs_for(&selection, self);
+        let order = &TextOrder::starting_at(0);
+        let tabs = tabs_for(selection, self);
         // The selection can change under an open tab, and a page with no
         // inlinks does not offer one.
         let active = if tabs.iter().any(|(tab, _)| *tab == self.active_tab) {
@@ -1653,9 +1888,13 @@ impl Render for DetailsPanel {
             DetailsTab::Overview
         };
 
+        let selected_url = SharedString::from(match &selection {
+            DetailsSelection::Page(rec) => rec.url.clone(),
+            DetailsSelection::Image(image) => image.src.clone(),
+        });
         let header = match &selection {
-            DetailsSelection::Page(rec) => header_block(rec, muted, border),
-            DetailsSelection::Image(image) => image_header_block(image, muted, border),
+            DetailsSelection::Page(rec) => header_block(rec, order, muted, border),
+            DetailsSelection::Image(image) => image_header_block(image, order, muted, border),
         };
 
         // Every pane either scrolls itself or is a virtual list that does; the
@@ -1673,12 +1912,19 @@ impl Render for DetailsPanel {
                         let Some(rec) = selected_page(this) else {
                             return Vec::new();
                         };
+                        let first = range.start;
                         rec.near_duplicate_urls
                             .get(range)
                             .unwrap_or_default()
                             .iter()
-                            .map(|dup_url| {
+                            .enumerate()
+                            .map(|(offset, dup_url)| {
+                                let row_index = first + offset;
+                                let url = SharedString::from(dup_url.clone());
+                                let order =
+                                    TextOrder::starting_at(LIST_TEXT_ORDER + row_index as u64);
                                 div()
+                                    .id(("near-duplicates", row_index))
                                     .h(DUPLICATE_ROW_HEIGHT)
                                     .flex()
                                     .items_center()
@@ -1686,7 +1932,10 @@ impl Render for DetailsPanel {
                                     .font_family(mono.clone())
                                     .text_color(fg)
                                     .truncate()
-                                    .child(SharedString::from(dup_url.clone()))
+                                    .child(order.text(url.clone()))
+                                    .context_menu(move |menu, window, cx| {
+                                        link_menu(menu, window, cx, &url, None)
+                                    })
                                     .into_any_element()
                             })
                             .collect()
@@ -1698,7 +1947,7 @@ impl Render for DetailsPanel {
                 .flex_1()
                 .min_h(px(0.))
                 .overflow_y_scrollbar()
-                .child(images_section(rec, muted, fg, border, cx))
+                .child(images_section(rec, order, muted, fg, border, cx))
                 .into_any_element(),
             (DetailsSelection::Page(rec), DetailsTab::Inlinks) => list_pane(
                 "inlinks",
@@ -1709,23 +1958,28 @@ impl Render for DetailsPanel {
                     let Some(rec) = selected_page(this) else {
                         return Vec::new();
                     };
+                    let first = range.start;
                     rec.backlinks
                         .get(range)
                         .unwrap_or_default()
                         .iter()
-                        .map(|backlink| {
-                            let anchor = backlink
-                                .anchor
-                                .as_deref()
-                                .filter(|a| !a.trim().is_empty())
-                                .unwrap_or("No anchor");
+                        .enumerate()
+                        .map(|(offset, backlink)| {
+                            let anchor =
+                                backlink.anchor.as_deref().filter(|a| !a.trim().is_empty());
+                            let shown_anchor = anchor.unwrap_or("No anchor");
                             let detail = match backlink.rel.as_deref() {
-                                Some(rel) => format!("{anchor} · rel={rel}"),
-                                None => anchor.to_string(),
+                                Some(rel) => format!("{shown_anchor} · rel={rel}"),
+                                None => shown_anchor.to_string(),
                             };
                             link_row(
+                                "inlinks",
+                                first + offset,
                                 SharedString::from(backlink.source_url.clone()),
                                 SharedString::from(detail),
+                                anchor.map(|anchor| {
+                                    ("Copy Anchor Text", SharedString::from(anchor.to_string()))
+                                }),
                                 None,
                                 muted,
                                 fg,
@@ -1745,11 +1999,13 @@ impl Render for DetailsPanel {
                     let Some(rec) = selected_page(this) else {
                         return Vec::new();
                     };
+                    let first = range.start;
                     rec.outlinks
                         .get(range)
                         .unwrap_or_default()
                         .iter()
-                        .map(|link| {
+                        .enumerate()
+                        .map(|(offset, link)| {
                             let is_nofollow = link
                                 .rel
                                 .as_deref()
@@ -1759,14 +2015,15 @@ impl Render for DetailsPanel {
                                     .child(SharedString::from("nofollow"))
                                     .into_any_element()
                             });
-                            let anchor = link
-                                .anchor
-                                .as_deref()
-                                .filter(|a| !a.trim().is_empty())
-                                .unwrap_or("No anchor text");
+                            let anchor = link.anchor.as_deref().filter(|a| !a.trim().is_empty());
                             link_row(
+                                "outlinks",
+                                first + offset,
                                 SharedString::from(link.dst_url.clone()),
-                                SharedString::from(anchor.to_string()),
+                                SharedString::from(anchor.unwrap_or("No anchor text").to_string()),
+                                anchor.map(|anchor| {
+                                    ("Copy Anchor Text", SharedString::from(anchor.to_string()))
+                                }),
                                 trailing,
                                 muted,
                                 fg,
@@ -1786,12 +2043,14 @@ impl Render for DetailsPanel {
                     let Some(DetailsSelection::Image(image)) = &this.selected else {
                         return Vec::new();
                     };
+                    let first = range.start;
                     image
                         .references
                         .get(range)
                         .unwrap_or_default()
                         .iter()
-                        .map(|reference| {
+                        .enumerate()
+                        .map(|(offset, reference)| {
                             // The tag says what is missing, not merely that
                             // something is: this row is about the alt text this
                             // page gives the image, and nothing else.
@@ -1805,9 +2064,13 @@ impl Render for DetailsPanel {
                             let trailing = tone_tag(tone, cx)
                                 .child(SharedString::from(label))
                                 .into_any_element();
+                            let alt = SharedString::from(reference.alt.clone().unwrap_or_default());
                             link_row(
+                                "image-references",
+                                first + offset,
                                 SharedString::from(reference.page_url.clone()),
-                                SharedString::from(reference.alt.clone().unwrap_or_default()),
+                                alt.clone(),
+                                (!alt.is_empty()).then_some(("Copy Alt Text", alt)),
                                 Some(trailing),
                                 muted,
                                 fg,
@@ -1827,14 +2090,16 @@ impl Render for DetailsPanel {
                 .overflow_y_scrollbar()
                 .flex()
                 .flex_col()
-                .child(url_information_section(rec, muted, border, cx))
-                .when_some(layout_section(rec, &panel, muted, border), |el, s| {
-                    el.child(s)
-                })
-                .child(page_content_section(rec, muted, border))
-                .child(serp_section(rec, muted, border, cx))
+                .child(url_information_section(rec, order, muted, border, cx))
+                .when_some(
+                    layout_section(rec, order, &panel, muted, border),
+                    |el, s| el.child(s),
+                )
+                .child(page_content_section(rec, order, muted, border))
+                .child(serp_section(rec, order, muted, border, cx))
                 .child(structured_data_section(
                     rec,
+                    order,
                     &self.json_views,
                     muted,
                     fg,
@@ -1846,28 +2111,31 @@ impl Render for DetailsPanel {
                 .when(self.render_mode.renders_javascript(), |el| {
                     el.child(accessibility_section(
                         rec,
+                        order,
                         &self.html_views,
                         muted,
                         fg,
                         border,
                         cx,
                     ))
-                    .child(vitals_section(rec, muted, border, panel2))
+                    .child(vitals_section(rec, order, muted, border, panel2))
                 })
-                .child(link_metrics_section(rec, muted, border))
-                .when_some(hreflang_section(rec, muted, fg, border, cx), |el, s| {
-                    el.child(s)
-                })
-                .when_some(headers_section(rec, muted, fg, border, cx), |el, s| {
-                    el.child(s)
-                })
+                .child(link_metrics_section(rec, order, muted, border))
+                .when_some(
+                    hreflang_section(rec, order, muted, fg, border, cx),
+                    |el, s| el.child(s),
+                )
+                .when_some(
+                    headers_section(rec, order, muted, fg, border, cx),
+                    |el, s| el.child(s),
+                )
                 .into_any_element(),
             (DetailsSelection::Image(image), _) => div()
                 .id("details-image-overview")
                 .flex_1()
                 .min_h(px(0.))
                 .overflow_y_scrollbar()
-                .child(image_information_section(image, muted, border))
+                .child(image_information_section(image, order, muted, border))
                 .into_any_element(),
         };
 
@@ -1884,5 +2152,10 @@ impl Render for DetailsPanel {
                 el.child(tab_strip(&tabs, active, &panel, cx))
             })
             .child(pane)
+            .context_menu(move |menu, window, cx| link_menu(menu, window, cx, &selected_url, None))
+            .into_any_element()
     }
 }
+
+#[cfg(test)]
+mod frame_bench;

@@ -1433,6 +1433,7 @@ impl Render for ShoutingRobinApp {
             .text_color(fg)
             .on_action(cx.listener(Self::on_quit))
             .on_action(cx.listener(Self::on_settings))
+            .child(crate::ui::selectable_text::end_released_selection_drag())
             .child(
                 TitleBar::new().child(
                     div()
