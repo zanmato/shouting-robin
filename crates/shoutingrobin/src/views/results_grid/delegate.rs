@@ -1,13 +1,14 @@
 use std::collections::HashMap;
 
 use gpui_kit::component::{
-    ActiveTheme, StyledExt as _,
+    ActiveTheme, IconName, StyledExt as _,
+    menu::{PopupMenu, PopupMenuItem},
     table::{ColumnSort, TableDelegate, TableState},
     tooltip::Tooltip,
 };
 use gpui_kit::{
-    App, Context, InteractiveElement, IntoElement, ParentElement, SharedString,
-    StatefulInteractiveElement, Styled, Window, div,
+    App, ClipboardItem, Context, InteractiveElement, IntoElement, MouseButton, MouseDownEvent,
+    ParentElement, SharedString, StatefulInteractiveElement, Styled, Window, div,
 };
 
 use crate::a11y_rules::rule_description;
@@ -123,6 +124,9 @@ pub struct ResultsDelegate {
     /// Pages whose layout changed since the baseline, by URL. Filled in after
     /// the crawl is on screen, since comparing layouts reads every page's.
     layout_changes: HashMap<String, PageLayoutChange>,
+    /// The cell under the last right click, as row and column. The table
+    /// only tells the context menu the row.
+    right_clicked_cell: Option<(usize, usize)>,
 }
 
 /// The loaded crawl, detached from the grid.
@@ -175,6 +179,7 @@ impl ResultsDelegate {
             hreflang_columns: 0,
             counts_cache: None,
             layout_changes: HashMap::new(),
+            right_clicked_cell: None,
         }
     }
 
@@ -686,35 +691,11 @@ impl ResultsDelegate {
         };
 
         for row_ix in 0..row_count {
-            let mut cells: Vec<String> = Vec::with_capacity(self.columns.len());
-            for col in &self.columns {
-                let key = col.key.as_ref();
-                let text = if tab_is_flattened(self.active_tab) {
-                    let Some(row) = self.flat_rows.get(row_ix) else {
-                        cells.push(String::new());
-                        continue;
-                    };
-                    self.flat_row_cell_text(row, key)
-                } else {
-                    let Some(record) = self
-                        .filtered_indices
-                        .get(row_ix)
-                        .and_then(|&idx| self.all_pages.get(idx))
-                    else {
-                        cells.push(String::new());
-                        continue;
-                    };
-                    cell_text(
-                        record,
-                        key,
-                        &self.occurrence_counts,
-                        self.active_tab,
-                        self.root_origin.as_deref(),
-                    )
-                    .into()
-                };
-                cells.push(text);
-            }
+            let cells: Vec<String> = self
+                .columns
+                .iter()
+                .map(|column| self.text_at(row_ix, column.key.as_ref()))
+                .collect();
             wtr.write_record(&cells)?;
         }
 
@@ -726,6 +707,32 @@ impl ResultsDelegate {
         let mut csv = String::from("\u{FEFF}");
         csv.push_str(&String::from_utf8_lossy(&bytes));
         Ok(csv)
+    }
+
+    /// The text of one cell as the export writes it.
+    fn text_at(&self, row_ix: usize, col_key: &str) -> String {
+        if tab_is_flattened(self.active_tab) {
+            return self
+                .flat_rows
+                .get(row_ix)
+                .map(|row| self.flat_row_cell_text(row, col_key))
+                .unwrap_or_default();
+        }
+        let Some(record) = self
+            .filtered_indices
+            .get(row_ix)
+            .and_then(|&index| self.all_pages.get(index))
+        else {
+            return String::new();
+        };
+        cell_text(
+            record,
+            col_key,
+            &self.occurrence_counts,
+            self.active_tab,
+            self.root_origin.as_deref(),
+        )
+        .into()
     }
 
     /// A copy of the loaded crawl and its baseline, for work that should run
@@ -849,6 +856,32 @@ impl TableDelegate for ResultsDelegate {
             .child(column.name)
     }
 
+    fn context_menu(
+        &mut self,
+        row_ix: usize,
+        menu: PopupMenu,
+        _window: &mut Window,
+        _cx: &mut Context<TableState<Self>>,
+    ) -> PopupMenu {
+        let text = self
+            .right_clicked_cell
+            .take()
+            .filter(|(row, _)| *row == row_ix)
+            .and_then(|(_, col_ix)| self.columns.get(col_ix))
+            .map(|column| self.text_at(row_ix, column.key.as_ref()));
+        let has_text = text.is_some();
+        menu.item(
+            PopupMenuItem::new("Copy")
+                .icon(IconName::Copy)
+                .disabled(!has_text)
+                .on_click(move |_event, _window, cx| {
+                    if let Some(text) = &text {
+                        cx.write_to_clipboard(ClipboardItem::new_string(text.clone()));
+                    }
+                }),
+        )
+    }
+
     fn render_td(
         &mut self,
         row_ix: usize,
@@ -865,7 +898,17 @@ impl TableDelegate for ResultsDelegate {
         // `h_full` is what makes `items_center` do anything: the table's own td
         // wrapper is the element that carries the row height, so without it this
         // div shrinks to its content and everything sits at the top of the cell.
-        let mut cell = div().flex().h_full().items_center().text_xs();
+        let mut cell = div()
+            .flex()
+            .size_full()
+            .items_center()
+            .text_xs()
+            .on_mouse_down(
+                MouseButton::Right,
+                cx.listener(move |table, _: &MouseDownEvent, _window, _cx| {
+                    table.delegate_mut().right_clicked_cell = Some((row_ix, col_ix));
+                }),
+            );
         // Quantities line up on their last digit, so columns of them can be
         // compared down the page rather than read one row at a time.
         if is_right_aligned_column(&key) {
