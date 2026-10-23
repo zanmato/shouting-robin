@@ -965,8 +965,10 @@ pub async fn load_backlinks_for_crawl(
     pool: &SqlitePool,
     crawl_id: i64,
 ) -> Result<std::collections::HashMap<String, Vec<crate::crawl::event::Backlink>>, sqlx::Error> {
+    // External targets are included: the page that holds an external link is
+    // the only way to find where a broken one has to be fixed.
     let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
-        "SELECT dst_url, src_url, anchor, rel FROM links WHERE crawl_id = ? AND kind = 'internal'",
+        "SELECT dst_url, src_url, anchor, rel FROM links WHERE crawl_id = ?",
     )
     .bind(crawl_id)
     .fetch_all(pool)

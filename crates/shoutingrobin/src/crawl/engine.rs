@@ -83,6 +83,14 @@ impl CrawlEngine {
             RenderMode::Chrome => "chrome",
         };
         let fut = async move {
+            if matches!(render_mode, RenderMode::Chrome)
+                && config.user_agent.as_deref().is_none_or(str::is_empty)
+            {
+                match chrome_user_agent().await {
+                    Ok(user_agent) => config.user_agent = Some(user_agent),
+                    Err(e) => tracing::warn!(error=%e, "could not read Chrome's user agent"),
+                }
+            }
             let root_url = resolve_start_url(&root_url, &config).await;
 
             let crawl_id = match storage::create_crawl(&pool, &root_url, mode_str, &config).await {
@@ -128,12 +136,25 @@ impl CrawlEngine {
             };
 
             let sitemap_entries = if config.follow_sitemaps {
-                let sitemap_urls = crate::crawl::sitemap::discover_sitemaps(&root_url).await;
-                let entries = crate::crawl::sitemap::fetch_sitemap_urls(&sitemap_urls, 3).await;
-                if let Err(e) = storage::insert_sitemap_urls(&pool, crawl_id, &entries).await {
-                    tracing::warn!(error=%e, "failed to persist sitemap URLs");
+                match build_ssr_client(&config) {
+                    Ok(client) => {
+                        let sitemap_urls =
+                            crate::crawl::sitemap::discover_sitemaps(&client, &root_url).await;
+                        let entries =
+                            crate::crawl::sitemap::fetch_sitemap_urls(&client, &sitemap_urls, 3)
+                                .await;
+                        if let Err(e) =
+                            storage::insert_sitemap_urls(&pool, crawl_id, &entries).await
+                        {
+                            tracing::warn!(error=%e, "failed to persist sitemap URLs");
+                        }
+                        entries
+                    }
+                    Err(e) => {
+                        tracing::warn!(error=%e, "failed to build client for sitemaps");
+                        Vec::new()
+                    }
                 }
-                entries
             } else {
                 Vec::new()
             };
@@ -1340,24 +1361,9 @@ async fn fetch_declared_canonical_targets(
 /// A client that reports redirects instead of following them, so `Location` is
 /// readable.
 fn build_redirect_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Error> {
-    let mut builder = reqwest::Client::builder()
-        .timeout(Duration::from_secs(config.timeout_seconds.max(1) as u64))
-        .redirect(reqwest::redirect::Policy::none());
-    if let Some(ua) = config.user_agent.as_deref().filter(|ua| !ua.is_empty()) {
-        builder = builder.user_agent(ua);
-    }
-    if !config.extra_headers.is_empty() {
-        let mut headers = reqwest::header::HeaderMap::new();
-        for (key, value) in &config.extra_headers {
-            if let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_bytes())
-                && let Ok(val) = reqwest::header::HeaderValue::from_str(value)
-            {
-                headers.insert(name, val);
-            }
-        }
-        builder = builder.default_headers(headers);
-    }
-    builder.build()
+    http_client_builder(config)
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
 }
 
 /// The status a URL answers with and the absolute URL it points at, from its
@@ -2063,11 +2069,65 @@ fn is_another_spelling_of_the_same_host(from: &str, to: &str) -> bool {
 }
 
 fn build_ssr_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Error> {
+    http_client_builder(config).build()
+}
+
+/// The user agent of the installed Chrome, as Chrome reports it over CDP.
+///
+/// Without a configured agent spider identifies as `spider/<version>`, both to
+/// Chrome and to its own HTTP client, and bot protection treats that as a bot.
+/// The browser's own agent is what a visitor sends. Headless Chrome names
+/// itself `HeadlessChrome`, which Cloudflare blocks on sight, so that is
+/// spelled the way the headed browser spells it. Asked once per session,
+/// because it costs a Chrome launch.
+async fn chrome_user_agent() -> anyhow::Result<String> {
+    use spider::tokio_stream::StreamExt;
+
+    static USER_AGENT: spider::tokio::sync::OnceCell<String> =
+        spider::tokio::sync::OnceCell::const_new();
+
+    let user_agent = USER_AGENT
+        .get_or_try_init(|| async {
+            let configuration = spider::configuration::Configuration::new();
+            let (mut browser, mut handler, _) =
+                spider::features::chrome::setup_browser_configuration(&configuration)
+                    .await
+                    .ok_or_else(|| anyhow::anyhow!("Chrome did not start"))?;
+            let handler_task =
+                spider::tokio::spawn(async move { while handler.next().await.is_some() {} });
+            let user_agent = browser.user_agent().await;
+            // A browser reached through CHROME_URL is someone else's to close.
+            if browser.has_child() {
+                if let Err(e) = browser.close().await {
+                    tracing::debug!(error=%e, "closing the user agent probe failed");
+                }
+                if let Err(e) = browser.wait().await {
+                    tracing::debug!(error=%e, "waiting for the user agent probe failed");
+                }
+            }
+            handler_task.abort();
+            anyhow::Ok(user_agent?.replace("HeadlessChrome", "Chrome"))
+        })
+        .await?;
+    Ok(user_agent.clone())
+}
+
+/// The crawl's timeout, user agent and extra headers on a plain HTTP client.
+///
+/// reqwest sends no `User-Agent` at all unless told to, and Cloudflare answers
+/// such a request with a 403 challenge, which reported live external links as
+/// broken. A Chrome crawl without a configured agent has Chrome's by now
+/// (`chrome_user_agent`). Otherwise these clients identify themselves the way
+/// spider does, so every request in a crawl looks the same.
+fn http_client_builder(config: &CrawlConfig) -> reqwest::ClientBuilder {
+    let user_agent = config
+        .user_agent
+        .as_deref()
+        .filter(|ua| !ua.is_empty())
+        .unwrap_or_else(|| spider::configuration::get_ua(true));
     let mut builder = reqwest::Client::builder()
-        .timeout(Duration::from_secs(config.timeout_seconds.max(1) as u64));
-    if let Some(ua) = config.user_agent.as_deref().filter(|ua| !ua.is_empty()) {
-        builder = builder.user_agent(ua);
-    }
+        .timeout(Duration::from_secs(config.timeout_seconds.max(1) as u64))
+        .user_agent(user_agent);
     if !config.extra_headers.is_empty() {
         let mut headers = reqwest::header::HeaderMap::new();
         for (key, value) in &config.extra_headers {
@@ -2079,7 +2139,7 @@ fn build_ssr_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Er
         }
         builder = builder.default_headers(headers);
     }
-    builder.build()
+    builder
 }
 
 /// The server's HTML for the page Chrome is showing, taken from Chrome rather
@@ -3276,5 +3336,17 @@ mod resource_timing_tests {
             !failed.is_interception_stub(),
             "a request that failed has no status, and keeps its row"
         );
+    }
+}
+
+#[cfg(test)]
+mod chrome_user_agent_tests {
+    use super::chrome_user_agent;
+
+    #[tokio::test]
+    async fn chrome_reports_the_agent_a_visitor_sends() {
+        let user_agent = chrome_user_agent().await.expect("Chrome's user agent");
+        assert!(user_agent.contains(" Chrome/"), "{user_agent}");
+        assert!(!user_agent.contains("Headless"), "{user_agent}");
     }
 }

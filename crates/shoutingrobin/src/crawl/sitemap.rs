@@ -15,10 +15,10 @@ pub struct SitemapUrl {
     pub hreflang: Vec<(String, String)>,
 }
 
-pub async fn discover_sitemaps(root_url: &str) -> Vec<String> {
+pub async fn discover_sitemaps(client: &reqwest::Client, root_url: &str) -> Vec<String> {
     let mut sitemap_urls = Vec::new();
 
-    if let Ok(robots_sitemaps) = fetch_robots_sitemaps(root_url).await {
+    if let Ok(robots_sitemaps) = fetch_robots_sitemaps(client, root_url).await {
         sitemap_urls.extend(robots_sitemaps);
     }
 
@@ -33,12 +33,17 @@ pub async fn discover_sitemaps(root_url: &str) -> Vec<String> {
     sitemap_urls
 }
 
-pub async fn fetch_sitemap_urls(sitemap_urls: &[String], max_depth: usize) -> Vec<SitemapUrl> {
+pub async fn fetch_sitemap_urls(
+    client: &reqwest::Client,
+    sitemap_urls: &[String],
+    max_depth: usize,
+) -> Vec<SitemapUrl> {
     let mut results = Vec::new();
     let mut visited: HashSet<String> = HashSet::new();
 
     for sitemap_url in sitemap_urls {
         expand_sitemap(
+            client,
             sitemap_url,
             sitemap_url,
             max_depth,
@@ -52,6 +57,7 @@ pub async fn fetch_sitemap_urls(sitemap_urls: &[String], max_depth: usize) -> Ve
 }
 
 async fn expand_sitemap(
+    client: &reqwest::Client,
     root_sitemap: &str,
     url: &str,
     depth_left: usize,
@@ -63,13 +69,14 @@ async fn expand_sitemap(
     }
     visited.insert(url.to_string());
 
-    let Ok(body) = fetch_url(url).await else {
+    let Ok(body) = fetch_url(client, url).await else {
         return;
     };
 
     if let Some(child_sitemaps) = parse_sitemap_index(&body) {
         for child in child_sitemaps {
             Box::pin(expand_sitemap(
+                client,
                 root_sitemap,
                 &child,
                 depth_left.saturating_sub(1),
@@ -99,10 +106,13 @@ async fn expand_sitemap(
     }
 }
 
-async fn fetch_robots_sitemaps(root_url: &str) -> Result<Vec<String>, reqwest::Error> {
+async fn fetch_robots_sitemaps(
+    client: &reqwest::Client,
+    root_url: &str,
+) -> Result<Vec<String>, reqwest::Error> {
     let base = root_url.trim_end_matches('/');
     let robots_url = format!("{base}/robots.txt");
-    let body = fetch_url(&robots_url).await?;
+    let body = fetch_url(client, &robots_url).await?;
 
     let mut sitemaps = Vec::new();
     for line in body.lines() {
@@ -122,10 +132,7 @@ async fn fetch_robots_sitemaps(root_url: &str) -> Result<Vec<String>, reqwest::E
     Ok(sitemaps)
 }
 
-async fn fetch_url(url: &str) -> Result<String, reqwest::Error> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()?;
+async fn fetch_url(client: &reqwest::Client, url: &str) -> Result<String, reqwest::Error> {
     let bytes = client.get(url).send().await?.bytes().await?;
     Ok(decode_sitemap_body(&bytes))
 }
