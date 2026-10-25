@@ -11,6 +11,11 @@
 //! `record-layout` scene makes the layout scene's data: one Chrome crawl of
 //! `SR_RECORD_URL` with layout capture, run twice by the script with the test
 //! shop's theme change in between.
+//!
+//! With the `scene-export` feature, `SR_SCENE_EXPORT` names a file the shown
+//! frame is written to as a vector snapshot, or for the `motion` scene the
+//! directory its keyframes go to. `SR_FONT` and `SR_MONO_FONT`, when set,
+//! replace the theme's fonts.
 
 use std::time::Duration;
 
@@ -58,6 +63,15 @@ pub(crate) enum Scene {
     /// The layout of a product page next to its baseline's after a theme
     /// change, with what changed.
     Layout,
+    /// Not a screenshot: the keyframes of the website's motion demo, each
+    /// exported as a snapshot into the directory `SR_SCENE_EXPORT` names. The
+    /// test site at `SR_RECORD_URL` typed into the crawl bar and crawled in
+    /// Chrome while its pages arrive, then the Overview, a page's details and
+    /// the accessibility violations. Then, for the hotspots shown when the
+    /// demo stops, the Performance, Ecommerce and Changes tabs. The recorded
+    /// crawls are loaded first, so the history lists them and the new crawl
+    /// has a baseline.
+    Motion,
 }
 
 impl Scene {
@@ -72,6 +86,7 @@ impl Scene {
             "changes" => Some(Self::Changes),
             "record-layout" => Some(Self::RecordLayout),
             "layout" => Some(Self::Layout),
+            "motion" => Some(Self::Motion),
             _ => {
                 tracing::error!("Unknown SR_SCENE {scene:?}");
                 None
@@ -81,7 +96,9 @@ impl Scene {
 
     fn tab(self) -> ResultTab {
         match self {
-            Self::Record | Self::RecordLayout | Self::Overview => ResultTab::Overview,
+            Self::Record | Self::RecordLayout | Self::Overview | Self::Motion => {
+                ResultTab::Overview
+            }
             Self::Layout => ResultTab::Changes,
             Self::Details => ResultTab::PageTitles,
             Self::Accessibility => ResultTab::Accessibility,
@@ -98,7 +115,7 @@ impl Scene {
             Self::Accessibility => Some("/a11y.html"),
             Self::Changes => Some("/spa.html"),
             Self::Layout => Some(LAYOUT_PAGE),
-            Self::Record | Self::RecordLayout | Self::Overview => None,
+            Self::Record | Self::RecordLayout | Self::Overview | Self::Motion => None,
         }
     }
 }
@@ -139,6 +156,16 @@ async fn seed_database(database: &AppDatabase) -> anyhow::Result<()> {
         ("general.check_for_updates", "false"),
     ] {
         database.save_setting(key, value).await?;
+    }
+    // The theme's fonts are installed where the screenshots are taken. A run
+    // elsewhere can name ones it has, so text keeps its look and metrics.
+    for (key, variable) in [
+        ("appearance.font_family", "SR_FONT"),
+        ("appearance.mono_font_family", "SR_MONO_FONT"),
+    ] {
+        if let Ok(family) = std::env::var(variable) {
+            database.save_setting(key, &family).await?;
+        }
     }
 
     if matches!(Scene::from_env(), Some(Scene::Record | Scene::RecordLayout)) {
@@ -181,11 +208,18 @@ pub(crate) fn stage(scene: Scene, app: Entity<ShoutingRobinApp>, window: &Window
             let staged = match scene {
                 Scene::Record => record(&app, &[RenderMode::Http, RenderMode::Chrome], cx).await,
                 Scene::RecordLayout => record(&app, &[RenderMode::Chrome], cx).await,
+                Scene::Motion => motion(&app, cx).await,
                 _ => stage_scene(scene, &app, cx).await,
             };
             if let Err(error) = staged {
                 tracing::error!("Failed to stage the screenshot scene: {error:#}");
                 return;
+            }
+            // The motion scene exports its keyframes as it goes.
+            if scene != Scene::Motion
+                && let Some(path) = std::env::var_os("SR_SCENE_EXPORT")
+            {
+                export_frame(path.into(), cx).await;
             }
             if let Ok(path) = std::env::var("SR_SCENE_READY")
                 && let Err(error) = std::fs::write(&path, "ready")
@@ -317,6 +351,204 @@ async fn stage_scene(
 
     settle(cx, 1500).await;
     Ok(())
+}
+
+/// The page [`Scene::Motion`] selects for its details, and the one it selects
+/// among the accessibility violations.
+const MOTION_DETAILS_PAGE: &str = "/redirect-target.html";
+const MOTION_A11Y_PAGE: &str = "/a11y.html";
+/// The product page [`Scene::Motion`] selects on the Ecommerce tab, and the
+/// page it selects on the Changes tab.
+const MOTION_PRODUCT_PAGE: &str = "/about.html";
+const MOTION_CHANGED_PAGE: &str = "/spa.html";
+/// How many pages the crawl has found at each keyframe [`Scene::Motion`]
+/// exports while it runs.
+const MOTION_CRAWL_STEPS: [u64; 3] = [3, 9, 16];
+
+/// Stage the motion demo's keyframes; see [`Scene::Motion`].
+async fn motion(app: &Entity<ShoutingRobinApp>, cx: &mut AsyncWindowContext) -> anyhow::Result<()> {
+    let url = std::env::var("SR_RECORD_URL")?;
+    let (crawl_bar, sidebar, results_grid, status_bar) = app.read_with(cx, |app, _| {
+        (
+            app.crawl_bar().clone(),
+            app.sidebar().clone(),
+            app.results_grid().clone(),
+            app.status_bar().clone(),
+        )
+    });
+    let pool = cx.update(|_, cx| AppDatabase::global(cx).pool().clone())?;
+    let (fixture_crawl,): (i64,) = sqlx::query_as("SELECT id FROM crawls ORDER BY id DESC LIMIT 1")
+        .fetch_one(&pool)
+        .await?;
+    settle(cx, 1500).await;
+
+    // An empty crawl bar, then the site's address typed into it.
+    crawl_bar.update_in(cx, |bar, window, cx| {
+        bar.url_input
+            .update(cx, |input, cx| input.set_value("", window, cx));
+        bar.set_capture_layout(false, cx);
+    })?;
+    settle(cx, 300).await;
+    export_keyframe("01-start", cx).await;
+    crawl_bar.update_in(cx, |bar, window, cx| {
+        bar.url_input
+            .update(cx, |input, cx| input.set_value(url.clone(), window, cx));
+    })?;
+    settle(cx, 300).await;
+    export_keyframe("02-url", cx).await;
+
+    // The crawl, in Chrome, the crawl bar's default, with the Internal tab
+    // showing the pages as they arrive.
+    app.update(cx, |app, cx| app.select_tab(ResultTab::Internal, cx));
+    crawl_bar.update_in(cx, |bar, _, cx| bar.start_crawl(RenderMode::Chrome, cx))?;
+    let mut steps = MOTION_CRAWL_STEPS.iter().enumerate().peekable();
+    let mut finished = false;
+    for _ in 0..6000 {
+        settle(cx, 50).await;
+        let (pages, running) = status_bar.read_with(cx, |status, _| (status.pages, status.running));
+        if let Some(&(ix, &at)) = steps.peek()
+            && pages >= at
+            && running
+        {
+            export_keyframe(&format!("{:02}-crawling-{}", ix + 3, ix + 1), cx).await;
+            steps.next();
+        }
+        if !running && pages > 0 {
+            finished = true;
+            break;
+        }
+    }
+    if !finished {
+        anyhow::bail!("the crawl did not finish");
+    }
+    let mut loaded = false;
+    for _ in 0..200 {
+        settle(cx, 50).await;
+        if results_grid.read_with(cx, |grid, cx| !grid.is_loading() && grid.has_results(cx)) {
+            loaded = true;
+            break;
+        }
+    }
+    if !loaded {
+        anyhow::bail!("the crawl's results did not load");
+    }
+    settle(cx, 500).await;
+    export_keyframe("06-crawled", cx).await;
+
+    app.update(cx, |app, cx| app.select_tab(ResultTab::Overview, cx));
+    settle(cx, 600).await;
+    export_keyframe("07-overview", cx).await;
+
+    // Each tab as it opens, then with a page selected.
+    app.update(cx, |app, cx| app.select_tab(ResultTab::PageTitles, cx));
+    settle(cx, 600).await;
+    export_keyframe("08-titles", cx).await;
+    select_page(
+        app,
+        &results_grid,
+        ResultTab::PageTitles,
+        MOTION_DETAILS_PAGE,
+        cx,
+    )
+    .await?;
+    export_keyframe("09-details", cx).await;
+    app.update(cx, |app, cx| app.select_tab(ResultTab::Accessibility, cx));
+    settle(cx, 600).await;
+    export_keyframe("10-accessibility", cx).await;
+    select_page(
+        app,
+        &results_grid,
+        ResultTab::Accessibility,
+        MOTION_A11Y_PAGE,
+        cx,
+    )
+    .await?;
+    export_keyframe("11-violation", cx).await;
+
+    // For the hotspots' cards.
+    app.update(cx, |app, cx| app.select_tab(ResultTab::Performance, cx));
+    settle(cx, 600).await;
+    export_keyframe("12-performance", cx).await;
+    select_page(
+        app,
+        &results_grid,
+        ResultTab::Ecommerce,
+        MOTION_PRODUCT_PAGE,
+        cx,
+    )
+    .await?;
+    export_keyframe("13-ecommerce", cx).await;
+    // What changed between the two recorded crawls, the HTTP crawl and the
+    // Chrome crawl after it, which differ in what JavaScript adds.
+    sidebar.update(cx, |sidebar, cx| sidebar.open(fixture_crawl, cx));
+    let mut reopened = false;
+    for _ in 0..200 {
+        settle(cx, 50).await;
+        if results_grid.read_with(cx, |grid, cx| !grid.is_loading() && grid.has_results(cx)) {
+            reopened = true;
+            break;
+        }
+    }
+    if !reopened {
+        anyhow::bail!("crawl {fixture_crawl} did not load");
+    }
+    select_page(
+        app,
+        &results_grid,
+        ResultTab::Changes,
+        MOTION_CHANGED_PAGE,
+        cx,
+    )
+    .await?;
+    export_keyframe("14-changes", cx).await;
+    Ok(())
+}
+
+/// Show `tab` with the row of the page at `path` selected, which opens its
+/// details beside the grid.
+async fn select_page(
+    app: &Entity<ShoutingRobinApp>,
+    results_grid: &Entity<crate::views::ResultsGrid>,
+    tab: ResultTab,
+    path: &str,
+    cx: &mut AsyncWindowContext,
+) -> anyhow::Result<()> {
+    app.update(cx, |app, cx| app.select_tab(tab, cx));
+    settle(cx, 400).await;
+    let selected = results_grid.update(cx, |grid, cx| {
+        grid.select_row_where(|page: &PageRecord| url_path(&page.url) == path, cx)
+    });
+    if !selected {
+        anyhow::bail!("no row for {path}");
+    }
+    settle(cx, 800).await;
+    Ok(())
+}
+
+/// Write the frame the window shows next to `path`, with the `scene-export`
+/// feature; without it there is nothing to write.
+async fn export_frame(path: std::path::PathBuf, cx: &mut AsyncWindowContext) {
+    #[cfg(all(feature = "scene-export", not(target_os = "windows")))]
+    {
+        let written = crate::scene_export::request(path);
+        cx.update(|window, _| window.refresh()).ok();
+        match written.await {
+            Ok(Ok(())) => {}
+            Ok(Err(error)) => tracing::error!("Failed to export the scene: {error:#}"),
+            Err(_) => tracing::error!("The scene export was dropped"),
+        }
+    }
+    #[cfg(not(all(feature = "scene-export", not(target_os = "windows"))))]
+    let _ = (path, cx);
+}
+
+/// Export the frame the window shows next as `<name>.json` in the directory
+/// `SR_SCENE_EXPORT` names, if it names one.
+async fn export_keyframe(name: &str, cx: &mut AsyncWindowContext) {
+    if let Some(dir) = std::env::var_os("SR_SCENE_EXPORT") {
+        let path = std::path::Path::new(&dir).join(format!("{name}.json"));
+        export_frame(path, cx).await;
+    }
 }
 
 /// Waits for the layout comparison, then opens the selected page's layout.
