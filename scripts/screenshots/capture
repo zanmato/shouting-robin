@@ -10,7 +10,10 @@
 # Scenes: overview details ecommerce accessibility changes layout (default:
 # all).
 # Writes docs/images/screenshots/<scene>-<theme>.webp, and a lossless
-# <scene>-<theme>.png per capture into $PNG_DIR when that is set.
+# <scene>-<theme>.png per capture into $PNG_DIR when that is set. With
+# $SNAPSHOT_DIR set, also writes a vector snapshot of each capture there as
+# <scene>-<theme>.json, for scripts/motion; that needs the `scene-export`
+# feature as well.
 #
 # --record crawls test-site/, served on 127.0.0.1:8000, once over HTTP and
 # once in Chrome, and writes the two crawls to scripts/screenshots/crawls.sql,
@@ -58,7 +61,9 @@ fi
 themes=("latte:Catppuccin Latte" "mocha:Catppuccin Mocha")
 
 if [[ -z "${SR_BIN:-}" ]]; then
-  cargo build --release -p shoutingrobin --features screenshots
+  features=screenshots
+  [[ -n "${SNAPSHOT_DIR:-}" ]] && features+=,scene-export
+  cargo build --release -p shoutingrobin --features "$features"
   SR_BIN="$root/target/release/shoutingrobin"
 fi
 
@@ -383,7 +388,8 @@ capture() {
   [[ "$scene" == layout ]] && scene_fixture="$layout_fixture"
 
   echo "Capturing $scene in $theme"
-  run_app "$run" "$scene" "$theme" SR_CRAWL_FIXTURE="$scene_fixture"
+  run_app "$run" "$scene" "$theme" SR_CRAWL_FIXTURE="$scene_fixture" \
+    ${SNAPSHOT_DIR:+SR_SCENE_EXPORT="$SNAPSHOT_DIR/$scene-$slug.json"}
   wait_ready "$run" "$scene" 600
   # One more frame for anything the last update scheduled.
   sleep 0.5
@@ -415,7 +421,7 @@ if [[ "$record" == true || "$record_layout" == true ]]; then
   exit 0
 fi
 
-mkdir -p "$out" ${PNG_DIR:+"$PNG_DIR"}
+mkdir -p "$out" ${PNG_DIR:+"$PNG_DIR"} ${SNAPSHOT_DIR:+"$SNAPSHOT_DIR"}
 for scene in "${scenes[@]}"; do
   for theme in "${themes[@]}"; do
     capture "$scene" "${theme%%:*}" "${theme#*:}"

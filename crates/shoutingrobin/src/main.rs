@@ -27,6 +27,8 @@ mod assets;
 mod crawl;
 mod report;
 mod result_ext;
+#[cfg(all(feature = "scene-export", not(target_os = "windows")))]
+mod scene_export;
 #[cfg(feature = "screenshots")]
 mod screenshots;
 mod settings;
@@ -42,6 +44,7 @@ mod filter_coverage;
 mod parity_export;
 
 use assets::Assets;
+#[cfg(not(all(feature = "scene-export", not(target_os = "windows"))))]
 use gpui_kit::application;
 use gpui_kit::component::ThemeRegistry;
 use gpui_kit::{AppContext, SharedString, WindowBounds, WindowOptions, px, size};
@@ -55,7 +58,13 @@ use themes_manager::ThemesManager;
 fn main() {
     tracing_subscriber::fmt::init();
 
-    let app = application()
+    #[cfg(all(feature = "scene-export", not(target_os = "windows")))]
+    let app = gpui_kit::Application::with_platform(scene_export::wrap(
+        gpui_kit::platform::current_platform(false),
+    ));
+    #[cfg(not(all(feature = "scene-export", not(target_os = "windows"))))]
+    let app = application();
+    let app = app
         .with_quit_mode(gpui_kit::QuitMode::LastWindowClosed)
         .with_assets(Assets);
 
