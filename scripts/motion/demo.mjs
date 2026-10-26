@@ -16,9 +16,6 @@
 
 import { renderSvg } from "./render.mjs";
 
-const WIDTH = 1640;
-const HEIGHT = 984;
-
 /// What the scene types into the crawl bar, as the keyframe `02-url` holds it.
 const URL_TEXT = "http://127.0.0.1:8000/";
 
@@ -81,12 +78,16 @@ const HOTSPOTS = [
 
 export function mountDemo(root, bundle, options = {}) {
   const { keyframes, icons } = bundle;
+  // The window as the keyframes hold it, in logical pixels.
+  const { width, height } = keyframes["01-start"];
   const reduced =
     options.reducedMotion ??
     globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
 
   injectStyles();
   root.classList.add("bd-root");
+  root.style.setProperty("--bd-width", width);
+  root.style.setProperty("--bd-height", height);
   root.innerHTML = `
     <div class="bd-viewport">
       <div class="bd-stage"><div class="bd-camera"></div></div>
@@ -144,10 +145,11 @@ export function mountDemo(root, bundle, options = {}) {
   );
   camera.append(cover);
 
-  const plan = makePlan(keyframes);
+  const plan = makePlan(keyframes, { width, height });
   const rows = rowElements(layers[plan.staggerKey], keyframes[plan.staggerKey], plan.grid);
   buildHotspots(spots, dim, keyframes, plan.lastKey, {
     docs: options.docs ?? null,
+    size: { width, height },
     scale: () => scale,
     // A card's crop of a keyframe is an SVG of its own, with ids of its own.
     media: (key, box, ix) =>
@@ -161,7 +163,7 @@ export function mountDemo(root, bundle, options = {}) {
 
   let scale = 1;
   const resize = () => {
-    scale = viewport.clientWidth / WIDTH;
+    scale = viewport.clientWidth / width;
     stage.style.transform = `scale(${scale})`;
   };
   new ResizeObserver(resize).observe(viewport);
@@ -182,8 +184,8 @@ export function mountDemo(root, bundle, options = {}) {
     // zoom.
     const view = interpolate(plan.camera, t);
     const zoom = view.z;
-    const tx = clamp(WIDTH / 2 - view.x * zoom, WIDTH - WIDTH * zoom, 0);
-    const ty = clamp(HEIGHT / 2 - view.y * zoom, HEIGHT - HEIGHT * zoom, 0);
+    const tx = clamp(width / 2 - view.x * zoom, width - width * zoom, 0);
+    const ty = clamp(height / 2 - view.y * zoom, height - height * zoom, 0);
     camera.style.transform = `translate(${tx}px, ${ty}px) scale(${zoom})`;
     const toScreen = (x, y) => [(x * zoom + tx) * scale, (y * zoom + ty) * scale];
 
@@ -195,7 +197,7 @@ export function mountDemo(root, bundle, options = {}) {
       layer.style.display = visible ? "" : "none";
       layer.style.zIndex = name === top ? 3 : 1;
       layer.style.opacity = name === top ? opacity : 1;
-      layer.style.clipPath = name === top && reveal ? notch(reveal) : "";
+      layer.style.clipPath = name === top && reveal ? notch(reveal, width, height) : "";
     }
     cover.style.display = reveal?.cover ? "" : "none";
     cover.style.clipPath = reveal?.cover ? hole(reveal) : "";
@@ -262,7 +264,7 @@ export function mountDemo(root, bundle, options = {}) {
       // otherwise push the ring out of.
       const [x0, y0] = toScreen(highlight.b[0] - 4, highlight.b[1] - 4).map((v) => Math.max(v, 3));
       const [x1, y1] = toScreen(highlight.b[0] + highlight.b[2] + 4, highlight.b[1] + highlight.b[3] + 4).map(
-        (v, ix) => Math.min(v, (ix ? HEIGHT : WIDTH) * scale - 3),
+        (v, ix) => Math.min(v, (ix ? height : width) * scale - 3),
       );
       const p = clamp(Math.min(t - highlight.from, highlight.to - t) / 0.3, 0, 1);
       ring.style.display = "";
@@ -364,7 +366,8 @@ export function mountDemo(root, bundle, options = {}) {
 /// Adds the hotspots, placed by where their features are in `items`, the last
 /// keyframe's. Pointing at one, or focusing or tapping it, shows its card and
 /// dims the rest of the window around it.
-function buildHotspots(container, dim, keyframes, lastKey, { docs, scale, media }) {
+function buildHotspots(container, dim, keyframes, lastKey, { docs, size, scale, media }) {
+  const { width, height } = size;
   const items = keyframes[lastKey].items;
   const base = docs && (docs.endsWith("/") ? docs : `${docs}/`);
   let index = 0;
@@ -388,11 +391,11 @@ function buildHotspots(container, dim, keyframes, lastKey, { docs, scale, media 
     const id = `bd-card-${Math.random().toString(36).slice(2, 8)}`;
     const element = document.createElement("div");
     element.className = "bd-spot";
-    element.style.left = `${(at.x / WIDTH) * 100}%`;
-    element.style.top = `${(at.y / HEIGHT) * 100}%`;
+    element.style.left = `${(at.x / width) * 100}%`;
+    element.style.top = `${(at.y / height) * 100}%`;
     element.style.setProperty("--i", index++);
-    element.dataset.side = at.x > WIDTH * 0.55 ? "left" : "right";
-    element.dataset.rise = at.y > HEIGHT * 0.55 ? "up" : "down";
+    element.dataset.side = at.x > width * 0.55 ? "left" : "right";
+    element.dataset.rise = at.y > height * 0.55 ? "up" : "down";
     element.innerHTML = `
       <button class="bd-dot" type="button" aria-label="${spot.title}" aria-describedby="${id}"></button>
       <div class="bd-card${figure ? " bd-wide" : ""}" role="tooltip" id="${id}">
@@ -407,7 +410,7 @@ function buildHotspots(container, dim, keyframes, lastKey, { docs, scale, media 
       }
       element.classList.add("bd-open");
       const radius = 70 * scale();
-      dim.style.background = `radial-gradient(circle at ${(at.x / WIDTH) * 100}% ${(at.y / HEIGHT) * 100}%, transparent ${radius}px, rgb(17 17 27 / 0.62) ${radius + 70 * scale()}px)`;
+      dim.style.background = `radial-gradient(circle at ${(at.x / width) * 100}% ${(at.y / height) * 100}%, transparent ${radius}px, rgb(17 17 27 / 0.62) ${radius + 70 * scale()}px)`;
       dim.classList.add("bd-on");
     };
     const hide = () => {
@@ -486,7 +489,8 @@ function gridCrop(items, [first, last], rows, width) {
 }
 
 /// Works out the timeline from where things are in the keyframes.
-function makePlan(keyframes) {
+function makePlan(keyframes, size) {
+  const { width, height } = size;
   // Typing: the address, and when each character appears.
   // The crawl bar's, the topmost: the history lists a crawl by the same
   // address.
@@ -566,9 +570,10 @@ function makePlan(keyframes) {
     details,
     accessibility,
     violation,
+    width,
     camera: [
-      { t: 0, ...view(WIDTH / 2, HEIGHT / 2, 1) },
-      { t: 0.6, ...view(WIDTH / 2, HEIGHT / 2, 1) },
+      { t: 0, ...view(width / 2, height / 2, 1) },
+      { t: 0.6, ...view(width / 2, height / 2, 1) },
       // Onto the crawl bar for the typing.
       { t: 1.6, ...view(420, 120, 2.1) },
       { t: typed + 0.1, ...view(440, 120, 2.1) },
@@ -588,8 +593,8 @@ function makePlan(keyframes) {
       { t: accessibility + 0.8, ...view(700, 330, 1.5) },
       { t: violation + 0.6, ...view(760, 340, 1.5) },
       { t: outro, ...view(780, 360, 1.45) },
-      { t: outro + 1.3, ...view(WIDTH / 2, HEIGHT / 2, 1) },
-      { t: duration, ...view(WIDTH / 2, HEIGHT / 2, 1) },
+      { t: outro + 1.3, ...view(width / 2, height / 2, 1) },
+      { t: duration, ...view(width / 2, height / 2, 1) },
     ],
     pointer: [
       { t: 0, x: 1200, y: 400, o: 0 },
@@ -635,7 +640,7 @@ function layerState(plan, t) {
   if (t < plan.typingStart) return { base: "01-start" };
   if (t < plan.typed) {
     const shown = plan.line.chars.filter((c) => c.t <= t).length;
-    const x = shown < plan.line.chars.length ? plan.line.chars[shown].x : WIDTH;
+    const x = shown < plan.line.chars.length ? plan.line.chars[shown].x : plan.width;
     return {
       base: "01-start",
       top: "02-url",
@@ -714,9 +719,9 @@ function findRun(snapshot, test) {
 
 /// A clip path showing all of a layer but a hole from `x` to `right` on a
 /// line, the text still to be typed.
-function notch({ x, top, bottom, right }) {
+function notch({ x, top, bottom, right }, width, height) {
   if (x >= right) return "";
-  return `polygon(evenodd, 0 0, ${WIDTH}px 0, ${WIDTH}px ${HEIGHT}px, 0 ${HEIGHT}px, 0 0, ${x}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${x}px ${bottom}px, ${x}px ${top}px)`;
+  return `polygon(evenodd, 0 0, ${width}px 0, ${width}px ${height}px, 0 ${height}px, 0 0, ${x}px ${top}px, ${right}px ${top}px, ${right}px ${bottom}px, ${x}px ${bottom}px, ${x}px ${top}px)`;
 }
 
 /// The value of keyed `frames` at `t`, eased between keys.
@@ -755,11 +760,11 @@ function injectStyles() {
   style.textContent = `
     .bd-root { container-type: inline-size; position: relative; }
     .bd-viewport {
-      position: relative; aspect-ratio: ${WIDTH} / ${HEIGHT}; overflow: hidden;
+      position: relative; aspect-ratio: var(--bd-width) / var(--bd-height); overflow: hidden;
       border-radius: 12px; background: #11111b;
       box-shadow: 0 0 0 1px rgb(255 255 255 / 0.08), 0 40px 80px -30px rgb(0 0 0 / 0.6);
     }
-    .bd-stage { position: absolute; left: 0; top: 0; width: ${WIDTH}px; height: ${HEIGHT}px; transform-origin: 0 0; }
+    .bd-stage { position: absolute; left: 0; top: 0; width: calc(var(--bd-width) * 1px); height: calc(var(--bd-height) * 1px); transform-origin: 0 0; }
     .bd-camera { position: absolute; inset: 0; transform-origin: 0 0; will-change: transform; }
     .bd-layer { position: absolute; inset: 0; }
     .bd-layer svg { display: block; }

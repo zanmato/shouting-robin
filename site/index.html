@@ -13,7 +13,7 @@
 <link rel="icon" type="image/png" href="images/icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Atkinson+Hyperlegible+Next:ital,wght@0,200..800;1,200..800&family=Atkinson+Hyperlegible+Mono:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wdth,wght@12..96,75..100,200..800&family=Atkinson+Hyperlegible+Next:ital,wght@0,200..800;1,200..800&family=Atkinson+Hyperlegible+Mono:wght@400;500;700&family=Ubuntu&family=Fira+Code&display=swap">
 <style>
 :root {
   /* Robin egg blue ground, robin breast orange accent. */
@@ -453,11 +453,13 @@ img[width="1600"] { cursor: zoom-in; }
   </section>
 
   <figure class="wrap shot">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="images/overview-mocha.webp">
-      <img src="images/overview-latte.webp" width="1600" height="1000" alt="Shouting Robin showing the Overview tab of a Chrome crawl of its test site, with each finding's type, priority, URL count and the count from the previous crawl">
-    </picture>
-    <figcaption>The Overview tab after a crawl of the test site in the repository. Findings are grouped into issues, opportunities and warnings and sorted by priority. When the site has been crawled before, the previous count is shown next to each one.</figcaption>
+    <div id="demo">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="images/overview-mocha.webp">
+        <img src="images/overview-latte.webp" width="1600" height="1000" alt="Shouting Robin showing the Overview tab of a Chrome crawl of its test site, with each finding's type, priority, URL count and the count from the previous crawl">
+      </picture>
+    </div>
+    <figcaption>A Chrome crawl of the test site in the repository, as Shouting Robin shows it: the pages as they arrive, the Overview with its findings sorted by priority, a page's details and the accessibility violations axe-core found. Once it stops, point at the dots to read about each feature.</figcaption>
   </figure>
 
   <section class="block" id="checks">
@@ -843,6 +845,27 @@ img[width="1600"] { cursor: zoom-in; }
     });
   });
 })();
+</script>
+<script type="module">
+// The demo replaces the Overview screenshot once its keyframes have loaded.
+// Without them the screenshot stays.
+import { mountDemo } from "./motion/demo.mjs";
+
+const root = document.getElementById("demo");
+try {
+  const response = await fetch("motion/demo.json");
+  if (!response.ok) throw new Error(`motion/demo.json answered ${response.status}`);
+  const bundle = await response.json();
+  root.replaceChildren();
+  // The keyframes name the fonts the app drew with: Ubuntu and Fira Code,
+  // loaded above, and Google Sans in the search preview, which Arial stands
+  // in for as it does in the preview on this page.
+  mountDemo(root, bundle, {
+    fonts: { "Google Sans": '"Google Sans", Arial, "Liberation Sans", Helvetica, sans-serif' },
+  });
+} catch (error) {
+  console.warn("Showing the Overview screenshot, the motion demo did not load:", error);
+}
 </script>
 </body>
 </html>

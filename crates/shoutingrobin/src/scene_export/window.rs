@@ -1,6 +1,7 @@
 //! A platform window that forwards everything to the real one and writes the
 //! frame it is handed when an export was requested.
 
+use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -25,6 +26,9 @@ use super::text::ExportAtlas;
 pub(super) struct ExportWindow {
     inner: Box<dyn PlatformWindow>,
     atlas: Arc<ExportAtlas>,
+    /// The room around the window that client side decorations keep for the
+    /// window's shadow, which is not part of the window.
+    client_inset: Cell<Pixels>,
 }
 
 impl ExportWindow {
@@ -33,7 +37,11 @@ impl ExportWindow {
         // only ever uses on the main thread.
         #[allow(clippy::arc_with_non_send_sync)]
         let atlas = Arc::new(ExportAtlas::new(inner.sprite_atlas()));
-        Self { inner, atlas }
+        Self {
+            inner,
+            atlas,
+            client_inset: Cell::new(Pixels::default()),
+        }
     }
 
     /// Writes `scene` if an export is waiting for a frame.
@@ -42,9 +50,21 @@ impl ExportWindow {
         let Some((path, sender)) = recorder.request.take() else {
             return;
         };
-        let viewport = self.inner.content_size();
-        let result =
-            super::dump::write(&recorder, scene, &path, viewport, self.inner.scale_factor());
+        // Only a window that draws its own decorations is inset; the platform
+        // ignores the inset otherwise.
+        let inset = match self.inner.window_decorations() {
+            Decorations::Client { .. } => self.client_inset.get(),
+            Decorations::Server => Pixels::default(),
+        };
+        let content_size = self.inner.content_size();
+        let window = Bounds::new(
+            Point::new(inset, inset),
+            Size::new(
+                content_size.width - inset * 2.,
+                content_size.height - inset * 2.,
+            ),
+        );
+        let result = super::dump::write(&recorder, scene, &path, window, self.inner.scale_factor());
         if let Err(error) = &result {
             tracing::error!(
                 "Failed to export the frame to {}: {error:#}",
@@ -423,6 +443,7 @@ impl PlatformWindow for ExportWindow {
     }
 
     fn set_client_inset(&self, inset: Pixels) {
+        self.client_inset.set(inset);
         self.inner.set_client_inset(inset)
     }
 

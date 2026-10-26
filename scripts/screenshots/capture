@@ -6,6 +6,7 @@
 # Usage: scripts/screenshots/capture [scene...]
 #        scripts/screenshots/capture --record
 #        scripts/screenshots/capture --record-layout
+#        scripts/screenshots/capture --motion
 #
 # Scenes: overview details ecommerce accessibility changes layout (default:
 # all).
@@ -21,12 +22,16 @@
 # Chrome with layout capture, the second time with the shop's theme change
 # (variant-changed.css served as variant.css), and writes
 # scripts/screenshots/layout-crawls.sql, which the layout scene shows.
-# Capturing needs no network. Recording needs Chrome
+# --motion crawls test-site/ in Chrome the way the website's motion demo
+# shows it, on top of the recorded crawls, and bundles the keyframes it
+# exports into docs/motion/demo.json, which the website plays with
+# scripts/motion/demo.mjs. It builds with the `scene-export` feature.
+# Capturing needs no network. Recording and --motion need Chrome
 # (google-chrome or chromium on PATH). Its crawls request nothing but the
 # local server and the test site's .invalid hosts, which cannot resolve.
 #
 # Needs Xvfb, ImageMagick, x11-utils, python3, dbus-run-session and Mesa's lavapipe
-# Vulkan driver. Set SR_BIN to capture with an existing build of
+# Vulkan driver, and --motion needs Node.js as well. Set SR_BIN to capture with an existing build of
 # `cargo build --release -p shoutingrobin --features screenshots`.
 set -euo pipefail
 
@@ -39,16 +44,20 @@ height=1040
 port=8000
 out="$root/docs/images/screenshots"
 fixture="$root/scripts/screenshots/crawls.sql"
+motion_bundle="$root/docs/motion/demo.json"
 layout_fixture="$root/scripts/screenshots/layout-crawls.sql"
 
 record=false
 record_layout=false
+motion=false
 scenes=()
 for arg in "$@"; do
   if [[ "$arg" == --record ]]; then
     record=true
   elif [[ "$arg" == --record-layout ]]; then
     record_layout=true
+  elif [[ "$arg" == --motion ]]; then
+    motion=true
   else
     scenes+=("$arg")
   fi
@@ -62,7 +71,7 @@ themes=("latte:Catppuccin Latte" "mocha:Catppuccin Mocha")
 
 if [[ -z "${SR_BIN:-}" ]]; then
   features=screenshots
-  [[ -n "${SNAPSHOT_DIR:-}" ]] && features+=,scene-export
+  [[ -n "${SNAPSHOT_DIR:-}" || "$motion" == true ]] && features+=,scene-export
   cargo build --release -p shoutingrobin --features "$features"
   SR_BIN="$root/target/release/shoutingrobin"
 fi
@@ -332,14 +341,19 @@ PY
   echo "Wrote $2"
 }
 
-record_crawls() {
-  # A copy, so the sitemap the tests rewrite stays as it is in the repo. The
-  # sitemap is the one the tests write, for this port.
+# serve_test_site
+# A copy, so the sitemap the tests rewrite stays as it is in the repo. The
+# sitemap is the one the tests write, for this port.
+serve_test_site() {
   local site="$work/test-site"
   cp -r "$root/test-site" "$site"
   sed "s|http://127.0.0.1:[0-9]*/|http://127.0.0.1:$port/|" "$root/test-site/sitemap.xml" \
     > "$site/sitemap.xml"
   start_server "$site"
+}
+
+record_crawls() {
+  serve_test_site
 
   local run="$work/record"
   echo "Recording crawls of http://127.0.0.1:$port/"
@@ -379,6 +393,24 @@ record_layout_crawls() {
     "Two Chrome crawls of test-site/shop/ with layout capture, the second after its theme change, written by scripts/screenshots/capture --record-layout."
 }
 
+# The demo is drawn in the dark theme only: its pointer, caret and cards are
+# styled for it. The fonts are the ones the website loads to draw it.
+record_motion() {
+  serve_test_site
+
+  local run="$work/motion" keyframes="$work/motion-keyframes"
+  mkdir -p "$keyframes" "$(dirname "$motion_bundle")"
+  echo "Recording the motion demo's keyframes"
+  run_app "$run" motion "Catppuccin Mocha" SR_CRAWL_FIXTURE="$fixture" \
+    SR_RECORD_URL="http://127.0.0.1:$port/" SR_SCENE_EXPORT="$keyframes" \
+    SR_FONT=Ubuntu SR_MONO_FONT="Fira Code"
+  wait_ready "$run" "the motion demo" 9000
+  stop_app
+  stop_server
+
+  node "$root/scripts/motion/bundle.mjs" "$keyframes" "$motion_bundle"
+}
+
 # capture <scene> <slug> <theme name>
 capture() {
   local scene="$1" slug="$2" theme="$3"
@@ -415,9 +447,10 @@ capture() {
   fi
 }
 
-if [[ "$record" == true || "$record_layout" == true ]]; then
+if [[ "$record" == true || "$record_layout" == true || "$motion" == true ]]; then
   [[ "$record" == true ]] && record_crawls
   [[ "$record_layout" == true ]] && record_layout_crawls
+  [[ "$motion" == true ]] && record_motion
   exit 0
 fi
 

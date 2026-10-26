@@ -1,6 +1,8 @@
 //! Turns a frame's [`Scene`] into the JSON snapshot `scripts/motion` reads.
 //!
-//! Positions are in logical pixels from the window's top left. Items come in
+//! Positions are in logical pixels from the window's top left, without the
+//! room client side decorations leave around it for a shadow, as the
+//! screenshots crop it. Items come in
 //! painting order: each is a rectangle, shadow, path, underline, text run,
 //! icon or image, clipped to the rectangle in its `clip`.
 
@@ -10,7 +12,7 @@ use std::path::Path;
 use anyhow::Context as _;
 use gpui_kit::{
     AtlasKey, Background, Bounds, Corners, Edges, Hsla, Pixels, Point, Rgba, ScaledPixels, Scene,
-    Size, decode_layer_tile,
+    decode_layer_tile,
 };
 use serde_json::{Value, json};
 
@@ -31,7 +33,7 @@ pub(super) fn write(
     recorder: &Recorder,
     scene: &Scene,
     path: &Path,
-    viewport: Size<Pixels>,
+    window: Bounds<Pixels>,
     scale: f32,
 ) -> anyhow::Result<()> {
     let mut dump = Dump {
@@ -41,14 +43,17 @@ pub(super) fn write(
         icons: BTreeSet::new(),
     };
     let mut items = Vec::new();
-    dump.scene(scene, Point::default(), None, &mut items);
+    let window = window.scale(scale);
+    let offset = Point::default() - window.origin;
+    let clip = Bounds::new(Point::default(), window.size);
+    dump.scene(scene, offset, Some(clip), &mut items);
     items.sort_by_key(|item| (item.order, item.rank));
     let items = merge_text(items.into_iter().map(|item| item.value).collect());
 
     let snapshot = json!({
         "version": 1,
-        "width": f32::from(viewport.width),
-        "height": f32::from(viewport.height),
+        "width": dump.px(window.size.width),
+        "height": dump.px(window.size.height),
         "scale": scale,
         "fonts": dump.fonts,
         // Text in these families came out in a fallback font.
@@ -146,7 +151,7 @@ impl Dump<'_> {
         }
         for path in &scene.paths {
             let mut d = String::new();
-            for triangle in path.vertices.chunks_exact(3) {
+            for triangle in path.vertices.as_chunks::<3>().0 {
                 for (ix, vertex) in triangle.iter().enumerate() {
                     let p = vertex.xy_position + offset;
                     let command = if ix == 0 { 'M' } else { 'L' };
