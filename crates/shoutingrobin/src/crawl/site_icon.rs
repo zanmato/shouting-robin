@@ -37,7 +37,7 @@ pub fn icon_host(page_url: &str) -> Option<String> {
 pub fn icon_client() -> Result<reqwest::Client, reqwest::Error> {
     reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
-        .user_agent(concat!("ShoutingRobin/", env!("CARGO_PKG_VERSION")))
+        .user_agent(crate::crawl::engine::http_user_agent())
         .build()
 }
 

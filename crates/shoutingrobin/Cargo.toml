@@ -2,6 +2,7 @@
 name = "shoutingrobin"
 version.workspace = true
 edition.workspace = true
+homepage.workspace = true
 publish = false
 
 [lints]

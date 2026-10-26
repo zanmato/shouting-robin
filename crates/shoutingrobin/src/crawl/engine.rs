@@ -83,13 +83,15 @@ impl CrawlEngine {
             RenderMode::Chrome => "chrome",
         };
         let fut = async move {
-            if matches!(render_mode, RenderMode::Chrome)
-                && config.user_agent.as_deref().is_none_or(str::is_empty)
-            {
-                match chrome_user_agent().await {
-                    Ok(user_agent) => config.user_agent = Some(user_agent),
-                    Err(e) => tracing::warn!(error=%e, "could not read Chrome's user agent"),
-                }
+            if config.user_agent.as_deref().is_none_or(str::is_empty) {
+                let user_agent = match render_mode {
+                    RenderMode::Http => http_user_agent(),
+                    RenderMode::Chrome => chrome_user_agent().await.unwrap_or_else(|e| {
+                        tracing::warn!(error=%e, "could not read Chrome's user agent");
+                        http_user_agent()
+                    }),
+                };
+                config.user_agent = Some(user_agent);
             }
             let root_url = resolve_start_url(&root_url, &config).await;
 
@@ -2072,15 +2074,46 @@ fn build_ssr_client(config: &CrawlConfig) -> Result<reqwest::Client, reqwest::Er
     http_client_builder(config).build()
 }
 
-/// The user agent of the installed Chrome, as Chrome reports it over CDP.
+/// The default agent of a Chrome crawl: Shouting Robin, named the way
+/// Googlebot names itself, with the version of the installed Chrome.
 ///
 /// Without a configured agent spider identifies as `spider/<version>`, both to
 /// Chrome and to its own HTTP client, and bot protection treats that as a bot.
-/// The browser's own agent is what a visitor sends. Headless Chrome names
-/// itself `HeadlessChrome`, which Cloudflare blocks on sight, so that is
-/// spelled the way the headed browser spells it. Asked once per session,
-/// because it costs a Chrome launch.
+/// Headless Chrome's own agent names it `HeadlessChrome`, which Cloudflare
+/// blocks on sight. Googlebot's form keeps the browser tokens sites sniff for
+/// while saying who is crawling and where to read about it. The Chrome version
+/// is asked once per session, because it costs a Chrome launch.
 async fn chrome_user_agent() -> anyhow::Result<String> {
+    let chrome_user_agent = installed_chrome_user_agent().await?;
+    let chrome_version = chrome_user_agent
+        .split(' ')
+        .find_map(|token| token.split_once("Chrome/"))
+        .map(|(_, version)| version)
+        .filter(|version| !version.is_empty())
+        .ok_or_else(|| anyhow::anyhow!("no Chrome version in {chrome_user_agent:?}"))?;
+    Ok(crawler_user_agent(chrome_version))
+}
+
+/// The default agent of an HTTP crawl, in the form Googlebot uses when it
+/// does not render: no browser version to claim, only who is crawling.
+pub(crate) fn http_user_agent() -> String {
+    format!(
+        "Mozilla/5.0 (compatible; ShoutingRobin/{}; +{})",
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_HOMEPAGE"),
+    )
+}
+
+fn crawler_user_agent(chrome_version: &str) -> String {
+    format!(
+        "Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; ShoutingRobin/{}; +{}) Chrome/{chrome_version} Safari/537.36",
+        env!("CARGO_PKG_VERSION"),
+        env!("CARGO_PKG_HOMEPAGE"),
+    )
+}
+
+/// The user agent of the installed Chrome, as Chrome reports it over CDP.
+async fn installed_chrome_user_agent() -> anyhow::Result<String> {
     use spider::tokio_stream::StreamExt;
 
     static USER_AGENT: spider::tokio::sync::OnceCell<String> =
@@ -2106,7 +2139,7 @@ async fn chrome_user_agent() -> anyhow::Result<String> {
                 }
             }
             handler_task.abort();
-            anyhow::Ok(user_agent?.replace("HeadlessChrome", "Chrome"))
+            user_agent.map_err(anyhow::Error::from)
         })
         .await?;
     Ok(user_agent.clone())
@@ -2116,15 +2149,14 @@ async fn chrome_user_agent() -> anyhow::Result<String> {
 ///
 /// reqwest sends no `User-Agent` at all unless told to, and Cloudflare answers
 /// such a request with a 403 challenge, which reported live external links as
-/// broken. A Chrome crawl without a configured agent has Chrome's by now
-/// (`chrome_user_agent`). Otherwise these clients identify themselves the way
-/// spider does, so every request in a crawl looks the same.
+/// broken. A crawl without a configured agent has Shouting Robin's by now, so
+/// every request in a crawl looks the same.
 fn http_client_builder(config: &CrawlConfig) -> reqwest::ClientBuilder {
     let user_agent = config
         .user_agent
-        .as_deref()
+        .clone()
         .filter(|ua| !ua.is_empty())
-        .unwrap_or_else(|| spider::configuration::get_ua(true));
+        .unwrap_or_else(http_user_agent);
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(config.timeout_seconds.max(1) as u64))
         .user_agent(user_agent);
@@ -3341,12 +3373,33 @@ mod resource_timing_tests {
 
 #[cfg(test)]
 mod chrome_user_agent_tests {
-    use super::chrome_user_agent;
+    use super::{chrome_user_agent, http_user_agent};
+
+    #[test]
+    fn an_http_crawl_names_shouting_robin() {
+        assert_eq!(
+            http_user_agent(),
+            concat!(
+                "Mozilla/5.0 (compatible; ShoutingRobin/",
+                env!("CARGO_PKG_VERSION"),
+                "; +https://github.com/zanmato/shouting-robin)"
+            )
+        );
+    }
 
     #[tokio::test]
-    async fn chrome_reports_the_agent_a_visitor_sends() {
+    async fn a_chrome_crawl_names_shouting_robin_and_chrome() {
         let user_agent = chrome_user_agent().await.expect("Chrome's user agent");
-        assert!(user_agent.contains(" Chrome/"), "{user_agent}");
+        assert!(
+            user_agent.contains(concat!(
+                "; compatible; ShoutingRobin/",
+                env!("CARGO_PKG_VERSION"),
+                "; +https://"
+            )),
+            "{user_agent}"
+        );
+        assert!(user_agent.contains(") Chrome/"), "{user_agent}");
+        assert!(user_agent.ends_with(" Safari/537.36"), "{user_agent}");
         assert!(!user_agent.contains("Headless"), "{user_agent}");
     }
 }
