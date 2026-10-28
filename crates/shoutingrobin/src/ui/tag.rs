@@ -129,3 +129,78 @@ pub fn indexability_tone(value: &str) -> Tone {
 pub fn count_tone(count: i64, severity: Tone) -> Tone {
     if count > 0 { severity } else { Tone::Ok }
 }
+
+/// A count short enough for a badge: exact below a thousand, then thousands
+/// and millions, with one decimal while that is the only precision left
+/// (`1.2k`, `39k`, `1.2M`). Rounds down, so `1k` always means at least a
+/// thousand and a count just short of a million never reads `1000k`.
+pub fn compact_count(count: usize) -> String {
+    fn scaled(count: usize, unit: usize, suffix: &str) -> String {
+        if count >= unit * 10 {
+            return format!("{}{suffix}", count / unit);
+        }
+        let tenths = count / (unit / 10);
+        match tenths % 10 {
+            0 => format!("{}{suffix}", tenths / 10),
+            fraction => format!("{}.{fraction}{suffix}", tenths / 10),
+        }
+    }
+    match count {
+        0..1_000 => count.to_string(),
+        1_000..1_000_000 => scaled(count, 1_000, "k"),
+        _ => scaled(count, 1_000_000, "M"),
+    }
+}
+
+/// A count in full, its thousands separated by commas: `39,127`.
+pub fn group_digits(count: usize) -> String {
+    let digits = count.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (position, digit) in digits.chars().enumerate() {
+        if position > 0 && (digits.len() - position).is_multiple_of(3) {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    grouped
+}
+
+#[cfg(test)]
+mod count_label_tests {
+    use super::*;
+
+    #[test]
+    fn counts_shorten_past_a_thousand_and_round_down() {
+        let cases = [
+            (0, "0"),
+            (999, "999"),
+            (1_000, "1k"),
+            (1_049, "1k"),
+            (1_250, "1.2k"),
+            (9_999, "9.9k"),
+            (10_000, "10k"),
+            (39_127, "39k"),
+            (999_999, "999k"),
+            (1_000_000, "1M"),
+            (1_250_000, "1.2M"),
+            (12_500_000, "12M"),
+        ];
+        for (count, label) in cases {
+            assert_eq!(compact_count(count), label, "{count}");
+        }
+    }
+
+    #[test]
+    fn full_counts_group_their_thousands() {
+        let cases = [
+            (0, "0"),
+            (999, "999"),
+            (1_000, "1,000"),
+            (39_127, "39,127"),
+            (1_234_567, "1,234,567"),
+        ];
+        for (count, label) in cases {
+            assert_eq!(group_digits(count), label, "{count}");
+        }
+    }
+}

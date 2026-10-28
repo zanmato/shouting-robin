@@ -17,7 +17,7 @@ use crate::crawl::RenderMode;
 use crate::crawl::site_icon::{RETRY_MISSING_AFTER_SECONDS, icon_client, icon_host};
 use crate::storage::CrawlRow;
 use crate::ui::icon::Icon;
-use crate::ui::tag::{Tone, tone_tag};
+use crate::ui::tag::{Tone, compact_count, group_digits, tone_tag};
 
 /// One "label ..... count" line of the crawl badge's hover card.
 fn count_line(label: &'static str, count: i64, cx: &App) -> impl IntoElement {
@@ -31,7 +31,9 @@ fn count_line(label: &'static str, count: i64, cx: &App) -> impl IntoElement {
         .child(
             div()
                 .text_color(cx.theme().foreground)
-                .child(SharedString::from(format!("{count}"))),
+                .child(SharedString::from(group_digits(
+                    usize::try_from(count).unwrap_or_default(),
+                ))),
         )
 }
 
@@ -350,12 +352,12 @@ impl Render for CrawlsSidebar {
                             // parts read as a table of figures, which on one
                             // tooltip line is a sentence nobody finishes.
                             let (documents, others, unfetched) = crawl.breakdown();
-                            let total = crawl.page_count;
+                            let total = usize::try_from(crawl.page_count).unwrap_or_default();
                             HoverCard::new(("crawl-count", crawl.id as usize))
                                 .trigger(
                                     tone_tag(Tone::Neutral, cx)
                                         .rounded_full()
-                                        .child(SharedString::from(format!("{total}"))),
+                                        .child(SharedString::from(compact_count(total))),
                                 )
                                 .content(move |_, _, cx| {
                                     v_flex()
@@ -367,7 +369,8 @@ impl Render for CrawlsSidebar {
                                                 .font_semibold()
                                                 .text_color(cx.theme().foreground)
                                                 .child(SharedString::from(format!(
-                                                    "{total} URLs recorded"
+                                                    "{} URLs recorded",
+                                                    group_digits(total)
                                                 ))),
                                         )
                                         .child(count_line("HTML pages", documents, cx))
