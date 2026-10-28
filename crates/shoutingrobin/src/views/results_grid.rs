@@ -3,6 +3,8 @@ mod columns;
 mod data_build;
 mod delegate;
 mod filter;
+#[cfg(test)]
+mod frame_bench;
 mod grid;
 mod types;
 

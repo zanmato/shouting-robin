@@ -149,6 +149,9 @@ pub enum IssueFilter {
     UnderLength,
     Multiple,
     SameAsH1,
+    /// The text shows an HTML entity (`&amp;`, `&#39;`) instead of the
+    /// character it stands for: it was escaped twice on the way out.
+    HtmlEntity,
     NonSequential,
     NonIndexable,
     Html,
@@ -287,6 +290,7 @@ impl IssueFilter {
             IssueFilter::UnderLength => "Under Length",
             IssueFilter::Multiple => "Multiple",
             IssueFilter::SameAsH1 => "Same as H1",
+            IssueFilter::HtmlEntity => "HTML entity",
             IssueFilter::NonSequential => "Non-Sequential",
             IssueFilter::NonIndexable => "Non-Indexable",
             IssueFilter::Html => "HTML",
@@ -491,6 +495,7 @@ impl IssueFilter {
             | Self::UnderLength
             | Self::Multiple
             | Self::SameAsH1
+            | Self::HtmlEntity
             | Self::NonSequential
             | Self::Canonicalised
             | Self::MissingCanonical
@@ -687,4 +692,12 @@ impl ChangeEntry {
             ChangeKind::Changed => self.changes.join(", "),
         }
     }
+}
+
+/// Wraps records the way the grid stores them, for tests that build their own.
+#[cfg(test)]
+pub(super) fn shared(
+    pages: impl IntoIterator<Item = crate::crawl::event::PageRecord>,
+) -> Vec<std::sync::Arc<crate::crawl::event::PageRecord>> {
+    pages.into_iter().map(std::sync::Arc::new).collect()
 }

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::{HreflangIssue, PageRecord};
@@ -7,6 +8,8 @@ use crate::crawl::layout_groups::Assignment;
 use crate::views::ResultTab;
 
 use super::columns::{char_length, header_exists};
+#[cfg(test)]
+use super::types::shared;
 use super::types::{
     ChangeEntry, ChangeKind, FlatRow, ImageAggregateRow, IssueEntry, IssueFilter, IssuePriority,
     IssueType, LayoutTemplateRow,
@@ -67,7 +70,7 @@ pub(super) fn change_entry_matches(entry: &ChangeEntry, filter: IssueFilter) -> 
 pub(super) fn build_rows_for_tab(
     tab: ResultTab,
     page_indices: &[usize],
-    pages: &[PageRecord],
+    pages: &[Arc<PageRecord>],
     change_entries: &[ChangeEntry],
     root_origin: Option<&str>,
 ) -> Vec<FlatRow> {
@@ -162,6 +165,11 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "H2 Over 70 Characters" => Some((ResultTab::H2, IssueFilter::OverLength)),
         "Non-Sequential H2" => Some((ResultTab::H2, IssueFilter::NonSequential)),
         "Multiple H1" => Some((ResultTab::H1, IssueFilter::Multiple)),
+        "Page Title Contains HTML Entity" => Some((ResultTab::PageTitles, IssueFilter::HtmlEntity)),
+        "Meta Description Contains HTML Entity" => {
+            Some((ResultTab::MetaDesc, IssueFilter::HtmlEntity))
+        }
+        "H1 Contains HTML Entity" => Some((ResultTab::H1, IssueFilter::HtmlEntity)),
         "Canonicalised" => Some((ResultTab::Canonicals, IssueFilter::Canonicalised)),
         "Noindex" => Some((ResultTab::Directives, IssueFilter::DirectiveNoindex)),
         "Redirect Chains" => Some((ResultTab::ResponseCodes, IssueFilter::RedirectChain)),
@@ -214,13 +222,14 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
     }
 }
 
-pub(super) fn build_issues_entries(pages: &[PageRecord]) -> Vec<IssueEntry> {
+pub(super) fn build_issues_entries(pages: &[Arc<PageRecord>]) -> Vec<IssueEntry> {
     // Only URLs we actually requested. Sitemap orphans and robots-blocked URLs
     // are recorded so they can be reported, but nothing was fetched for them,
     // so counting them here would make every "missing header" rule a share of
     // URLs we never asked for.
     let internal: Vec<&PageRecord> = pages
         .iter()
+        .map(Arc::as_ref)
         .filter(|p| p.is_internal && (p.status.is_some() || p.redirect_url.is_some()))
         .collect();
     // Page-content checks (titles, headings, canonicals, content quality, a11y,
@@ -935,6 +944,42 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         hint: "Keep one H1 per page for the primary topic and demote the rest to H2.",
     },
     FilterDerivedRule {
+        name: "Page Title Contains HTML Entity",
+        tab: ResultTab::PageTitles,
+        filter: IssueFilter::HtmlEntity,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages whose title shows an HTML entity such as &amp; or &#39; \
+                      instead of the character, in the browser tab and in search results.",
+        hint: "The title was escaped twice, usually because the stored text already \
+               holds the entity. Store the plain character and let the template escape it.",
+    },
+    FilterDerivedRule {
+        name: "Meta Description Contains HTML Entity",
+        tab: ResultTab::MetaDesc,
+        filter: IssueFilter::HtmlEntity,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages whose meta description shows an HTML entity such as &amp; or \
+                      &#39; instead of the character, in the search result snippet.",
+        hint: "The description was escaped twice, usually because the stored text already \
+               holds the entity. Store the plain character and let the template escape it.",
+    },
+    FilterDerivedRule {
+        name: "H1 Contains HTML Entity",
+        tab: ResultTab::H1,
+        filter: IssueFilter::HtmlEntity,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages whose H1 shows an HTML entity such as &amp; or &#39; instead \
+                      of the character.",
+        hint: "The heading was escaped twice, usually because the stored text already \
+               holds the entity. Store the plain character and let the template escape it.",
+    },
+    FilterDerivedRule {
         name: "Canonicalised",
         tab: ResultTab::Canonicals,
         filter: IssueFilter::Canonicalised,
@@ -1258,7 +1303,7 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
 ];
 
 fn filter_derived_entry(
-    pages: &[PageRecord],
+    pages: &[Arc<PageRecord>],
     rule: &FilterDerivedRule,
     denominator: f32,
     occurrence_counts: &HashMap<String, usize>,
@@ -1305,19 +1350,19 @@ fn filter_derived_entry(
 /// Compares the loaded crawl's internal pages against a baseline crawl, keyed by
 /// URL, producing one entry per page that was added, removed, or changed.
 pub(super) fn build_change_entries(
-    current: &[PageRecord],
-    baseline: &[PageRecord],
+    current: &[Arc<PageRecord>],
+    baseline: &[Arc<PageRecord>],
     layout_changes: &HashMap<String, PageLayoutChange>,
 ) -> Vec<ChangeEntry> {
     let current_by_url: HashMap<&str, &PageRecord> = current
         .iter()
         .filter(|p| p.is_internal)
-        .map(|p| (p.url.as_str(), p))
+        .map(|p| (p.url.as_str(), p.as_ref()))
         .collect();
     let baseline_by_url: HashMap<&str, &PageRecord> = baseline
         .iter()
         .filter(|p| p.is_internal)
-        .map(|p| (p.url.as_str(), p))
+        .map(|p| (p.url.as_str(), p.as_ref()))
         .collect();
 
     let mut entries = Vec::new();
@@ -1373,7 +1418,7 @@ pub(super) fn build_change_entries(
 /// them changed since the baseline. Pages without a template (a crawl whose
 /// grouping has not run) are left out.
 pub(super) fn build_layout_template_rows(
-    pages: &[PageRecord],
+    pages: &[Arc<PageRecord>],
     change_entries: &[ChangeEntry],
 ) -> Vec<FlatRow> {
     let changes_by_url: HashMap<&str, &PageLayoutChange> = change_entries
@@ -1511,7 +1556,7 @@ fn describe_changes(before: &PageRecord, after: &PageRecord) -> Vec<String> {
     out
 }
 
-pub(super) fn build_issues_rows(pages: &[PageRecord]) -> Vec<FlatRow> {
+pub(super) fn build_issues_rows(pages: &[Arc<PageRecord>]) -> Vec<FlatRow> {
     build_issues_entries(pages)
         .into_iter()
         .enumerate()
@@ -1559,7 +1604,10 @@ pub(super) fn is_inline_image(src: &str) -> bool {
 
 /// One row per unique image source across the given pages, carrying how many
 /// `img` tags point at it and which pages those are.
-pub(super) fn build_image_aggregates(page_indices: &[usize], pages: &[PageRecord]) -> Vec<FlatRow> {
+pub(super) fn build_image_aggregates(
+    page_indices: &[usize],
+    pages: &[Arc<PageRecord>],
+) -> Vec<FlatRow> {
     // What the post-crawl resource pass found for each image URL. The images
     // themselves are recorded on the pages that reference them and carry no
     // status or size of their own.
@@ -1631,7 +1679,7 @@ pub(super) fn build_image_aggregates(page_indices: &[usize], pages: &[PageRecord
 }
 
 pub(super) fn build_directory_aggregates(
-    pages: &[PageRecord],
+    pages: &[Arc<PageRecord>],
     root_origin: Option<&str>,
 ) -> Vec<FlatRow> {
     let Some(origin) = root_origin else {
@@ -1732,7 +1780,7 @@ mod tests {
             page("https://a.test/2", Some("")),
             page("https://a.test/3", None),
         ];
-        let entries = build_issues_entries(&pages);
+        let entries = build_issues_entries(&shared(pages));
         assert_eq!(count_for(&entries, "Missing H1"), 3);
         assert_eq!(count_for(&entries, "Duplicate H1"), 0);
     }
@@ -1744,7 +1792,7 @@ mod tests {
             page("https://a.test/2", Some("Same Heading")),
             page("https://a.test/3", Some("Unique Heading")),
         ];
-        let entries = build_issues_entries(&pages);
+        let entries = build_issues_entries(&shared(pages));
         assert_eq!(count_for(&entries, "Duplicate H1"), 2);
         assert_eq!(count_for(&entries, "Missing H1"), 0);
     }
@@ -1763,7 +1811,7 @@ mod tests {
         changed.status = Some(200);
         let current = vec![changed, page("https://a.test/new", Some("Heading"))];
 
-        let entries = build_change_entries(&current, &baseline, &HashMap::new());
+        let entries = build_change_entries(&shared(current), &shared(baseline), &HashMap::new());
 
         assert_eq!(
             change_for(&entries, "https://a.test/new").unwrap().kind,
@@ -1782,7 +1830,9 @@ mod tests {
     fn change_entries_skip_unchanged_pages() {
         let baseline = vec![page("https://a.test/keep", Some("Heading"))];
         let current = vec![page("https://a.test/keep", Some("Heading"))];
-        assert!(build_change_entries(&current, &baseline, &HashMap::new()).is_empty());
+        assert!(
+            build_change_entries(&shared(current), &shared(baseline), &HashMap::new()).is_empty()
+        );
     }
 
     fn layout_change(summary: &str) -> PageLayoutChange {
@@ -1803,7 +1853,7 @@ mod tests {
         )]
         .into_iter()
         .collect();
-        let entries = build_change_entries(&current, &baseline, &layout_changes);
+        let entries = build_change_entries(&shared(current), &shared(baseline), &layout_changes);
         let entry = change_for(&entries, "https://a.test/keep").expect("a changed entry");
         assert_eq!(entry.kind, ChangeKind::Changed);
         assert_eq!(entry.detail_text(), "layout: h1.title restyled");
@@ -1861,13 +1911,14 @@ mod tests {
                 layout: Some(layout_change("p.price restyled")),
             })
             .collect();
-        let rows: Vec<LayoutTemplateRow> = build_layout_template_rows(&pages, &change_entries)
-            .into_iter()
-            .filter_map(|row| match row {
-                FlatRow::LayoutTemplate(template) => Some(*template),
-                _ => None,
-            })
-            .collect();
+        let rows: Vec<LayoutTemplateRow> =
+            build_layout_template_rows(&shared(pages), &change_entries)
+                .into_iter()
+                .filter_map(|row| match row {
+                    FlatRow::LayoutTemplate(template) => Some(*template),
+                    _ => None,
+                })
+                .collect();
         assert_eq!(rows.len(), 2, "pages without a layout are left out");
         let product = &rows[0];
         assert_eq!(product.name, "Product");
@@ -1957,7 +2008,7 @@ mod overview_denominator_tests {
         second.images = vec![image_without_alt("/one.png")];
         let pages = vec![offender, second, document("https://a.test/clean")];
 
-        let entries = build_issues_entries(&pages);
+        let entries = build_issues_entries(&shared(pages));
         let alt = entry(&entries, "Images Missing Alt Attribute");
         assert_eq!(alt.count, 3, "three images, not two pages");
         assert!((alt.pct - 100.0).abs() < 0.01, "pct was {}", alt.pct);
@@ -1989,7 +2040,7 @@ mod overview_denominator_tests {
             ..Default::default()
         }));
 
-        for entry in build_issues_entries(&pages) {
+        for entry in build_issues_entries(&shared(pages.clone())) {
             assert!(entry.pct <= 100.0, "{} reported {}%", entry.name, entry.pct);
         }
     }
@@ -2014,7 +2065,7 @@ mod overview_denominator_tests {
         let mut pages = vec![crawled];
         pages.extend(orphans);
 
-        let entries = build_issues_entries(&pages);
+        let entries = build_issues_entries(&shared(pages.clone()));
         let orphaned = entry(&entries, "Sitemap URLs Not Crawled");
         assert_eq!(orphaned.count, 8);
         assert!(
@@ -2037,7 +2088,7 @@ mod overview_denominator_tests {
         noindex.compute_indexability();
         let pages = vec![eligible, noindex];
 
-        let entries = build_issues_entries(&pages);
+        let entries = build_issues_entries(&shared(pages.clone()));
         let body = entry(&entries, "Missing <body> Tag");
         assert_eq!(body.count, 1, "the noindex page is not a content issue");
         assert!((body.pct - 100.0).abs() < 0.01, "pct was {}", body.pct);
@@ -2121,7 +2172,7 @@ mod filter_derived_rule_tests {
         };
         redirected.compute_indexability();
 
-        let entries = build_issues_entries(&[offender, redirected]);
+        let entries = build_issues_entries(&shared([offender, redirected]));
         assert!(!entries.is_empty(), "the fixture triggered no rules at all");
 
         let unreachable: Vec<&str> = entries
@@ -2169,7 +2220,7 @@ mod filter_derived_rule_tests {
         present.compute_indexability();
         let pages = vec![absent, present];
 
-        let entries = build_issues_entries(&pages);
+        let entries = build_issues_entries(&shared(pages.clone()));
         let rule = entries
             .iter()
             .find(|entry| entry.name == "Missing Canonical Tag")
@@ -2218,7 +2269,7 @@ mod filter_derived_rule_tests {
         };
         canonicalised.compute_indexability();
 
-        let entries = build_issues_entries(&[noindex, header_noindex, canonicalised]);
+        let entries = build_issues_entries(&shared([noindex, header_noindex, canonicalised]));
         assert_eq!(
             entries
                 .iter()
@@ -2256,7 +2307,7 @@ mod filter_derived_rule_tests {
             word_count: Some(500),
             ..Default::default()
         };
-        let entries = build_issues_entries(&[clean]);
+        let entries = build_issues_entries(&shared([clean]));
         assert!(
             !entries.iter().any(|e| e.name == "Missing H2"),
             "a zero count must not produce a row"

@@ -48,6 +48,7 @@ fn linked_paths() -> Vec<String> {
         "/short-all",
         "/multiple-all",
         "/title-eq-h1",
+        "/html-entity",
         "/exact-dup-a",
         "/exact-dup-b",
         "/near-dup-a",
@@ -311,6 +312,19 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                 "Meta description for the page whose title equals its h1 heading exactly.",
                 "Distinct H2 For Title Equals H1 Page",
                 "body for title equals h1 page",
+            ),
+        ),
+        // Escaped twice in the source, so once decoded the text still shows
+        // `&amp;` and `&#39;`, as the browser and search results would.
+        "/html-entity" => (
+            ok,
+            no_headers,
+            plain(
+                "Cables &amp;amp; Adapters For Every Device At Home",
+                "Cables &amp;amp; Adapters For Every Device",
+                "Cables, chargers &amp;amp; adapters for every device, with the brand&amp;#39;s own warranty.",
+                "Distinct H2 For The Entity Page",
+                "body for the html entity page",
             ),
         ),
         "/exact-dup-a" | "/exact-dup-b" => (
@@ -1252,6 +1266,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::UnderPixelWidth => both(&["/short-all"], &["/long-all"]),
         F::Multiple => both(&["/multiple-all"], &["/"]),
         F::SameAsH1 => both(&["/title-eq-h1"], &["/"]),
+        F::HtmlEntity => both(&["/html-entity"], &["/", "/title-eq-h1"]),
 
         // Content
         F::ExactDuplicates => both(&["/exact-dup-a", "/exact-dup-b"], &["/"]),

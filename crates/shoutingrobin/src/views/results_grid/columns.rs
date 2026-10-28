@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use gpui_kit::component::table::{Column, ColumnFixed};
 use gpui_kit::{SharedString, px};
@@ -13,7 +14,7 @@ const MAX_HREFLANG_COLUMNS: usize = 10;
 /// How many hreflang column pairs the loaded crawl needs: the largest number of
 /// tags any one page carries, so no page's tags are cut off unless a page
 /// exceeds the cap.
-pub(super) fn hreflang_column_count(pages: &[PageRecord]) -> usize {
+pub(super) fn hreflang_column_count(pages: &[Arc<PageRecord>]) -> usize {
     pages
         .iter()
         .map(|page| page.hreflang_tags.len())
@@ -408,7 +409,7 @@ pub(super) fn pixel_width_thresholds(tab: ResultTab) -> Option<(u32, u32)> {
 
 pub(super) fn build_occurrence_counts(
     tab: ResultTab,
-    pages: &[PageRecord],
+    pages: &[Arc<PageRecord>],
 ) -> HashMap<String, usize> {
     let Some(key) = primary_field_key(tab) else {
         return HashMap::new();

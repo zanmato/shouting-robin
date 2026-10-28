@@ -23,7 +23,8 @@ use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::results_grid::ssr_diff_label;
 use shoutingrobin_ui::{HtmlView, JsonView};
 
-/// One page's use of an image, for the Images tab's drill-down.
+/// One page's use of an image: the Images tab's drill-down, and how a resource
+/// row shows the pages that load it.
 #[derive(Clone, Debug)]
 pub struct ImageReference {
     pub page_url: String,
@@ -46,8 +47,24 @@ pub struct ImageDetails {
 /// selects an image source, which is not one page's property.
 #[derive(Clone, Debug)]
 pub enum DetailsSelection {
-    Page(Box<PageRecord>),
+    Page {
+        record: Box<PageRecord>,
+        /// The pages using this URL as an image. Inlinks only lists anchors,
+        /// so without these a broken image on Response Codes has no page to
+        /// fix it on.
+        references: Vec<ImageReference>,
+    },
     Image(Box<ImageDetails>),
+}
+
+impl DetailsSelection {
+    /// The pages that use the selection as an image.
+    fn references(&self) -> &[ImageReference] {
+        match self {
+            Self::Page { references, .. } => references,
+            Self::Image(image) => &image.references,
+        }
+    }
 }
 
 /// One pane of the details panel.
@@ -124,7 +141,7 @@ impl DetailsPanel {
 
     pub fn set_selected(&mut self, selection: Option<DetailsSelection>, cx: &mut Context<Self>) {
         let record = match &selection {
-            Some(DetailsSelection::Page(rec)) => Some(rec.as_ref()),
+            Some(DetailsSelection::Page { record, .. }) => Some(record.as_ref()),
             _ => None,
         };
         self.json_views = match record {
@@ -1573,7 +1590,7 @@ fn duplicate_row_sizes(row_count: usize) -> Rc<Vec<Size<Pixels>>> {
 /// which run against the panel rather than a captured record.
 fn selected_page(panel: &DetailsPanel) -> Option<&PageRecord> {
     match &panel.selected {
-        Some(DetailsSelection::Page(rec)) => Some(rec),
+        Some(DetailsSelection::Page { record, .. }) => Some(record),
         _ => None,
     }
 }
@@ -1745,11 +1762,15 @@ fn image_information_section(
 fn tabs_for(selection: &DetailsSelection, panel: &DetailsPanel) -> Vec<(DetailsTab, usize)> {
     let mut tabs = vec![(DetailsTab::Overview, 0)];
     match selection {
-        DetailsSelection::Page(rec) => {
+        DetailsSelection::Page {
+            record: rec,
+            references,
+        } => {
             for (tab, count) in [
                 (DetailsTab::NearDuplicates, rec.near_duplicate_urls.len()),
                 (DetailsTab::Images, rec.images.len()),
                 (DetailsTab::Inlinks, rec.backlinks.len()),
+                (DetailsTab::References, references.len()),
                 (DetailsTab::Outlinks, rec.outlinks.len()),
             ] {
                 if count > 0 {
@@ -1889,11 +1910,11 @@ impl Render for DetailsPanel {
         };
 
         let selected_url = SharedString::from(match &selection {
-            DetailsSelection::Page(rec) => rec.url.clone(),
+            DetailsSelection::Page { record: rec, .. } => rec.url.clone(),
             DetailsSelection::Image(image) => image.src.clone(),
         });
         let header = match &selection {
-            DetailsSelection::Page(rec) => header_block(rec, order, muted, border),
+            DetailsSelection::Page { record: rec, .. } => header_block(rec, order, muted, border),
             DetailsSelection::Image(image) => image_header_block(image, order, muted, border),
         };
 
@@ -1901,7 +1922,7 @@ impl Render for DetailsPanel {
         // panel around them never scrolls, so there is only ever one scrollable
         // region under the pointer.
         let pane = match (&selection, active) {
-            (DetailsSelection::Page(rec), DetailsTab::NearDuplicates) => {
+            (DetailsSelection::Page { record: rec, .. }, DetailsTab::NearDuplicates) => {
                 let mono = cx.theme().mono_font_family.clone();
                 list_pane(
                     "near-duplicates",
@@ -1942,14 +1963,14 @@ impl Render for DetailsPanel {
                     },
                 )
             }
-            (DetailsSelection::Page(rec), DetailsTab::Images) => div()
+            (DetailsSelection::Page { record: rec, .. }, DetailsTab::Images) => div()
                 .id("details-images")
                 .flex_1()
                 .min_h(px(0.))
                 .overflow_y_scrollbar()
                 .child(images_section(rec, order, muted, fg, border, cx))
                 .into_any_element(),
-            (DetailsSelection::Page(rec), DetailsTab::Inlinks) => list_pane(
+            (DetailsSelection::Page { record: rec, .. }, DetailsTab::Inlinks) => list_pane(
                 "inlinks",
                 &panel,
                 &self.inlinks_scroll,
@@ -1990,7 +2011,7 @@ impl Render for DetailsPanel {
                         .collect()
                 },
             ),
-            (DetailsSelection::Page(rec), DetailsTab::Outlinks) => list_pane(
+            (DetailsSelection::Page { record: rec, .. }, DetailsTab::Outlinks) => list_pane(
                 "outlinks",
                 &panel,
                 &self.outlinks_scroll,
@@ -2034,18 +2055,18 @@ impl Render for DetailsPanel {
                         .collect()
                 },
             ),
-            (DetailsSelection::Image(image), DetailsTab::References) => list_pane(
+            (selection, DetailsTab::References) => list_pane(
                 "image-references",
                 &panel,
                 &self.image_references_scroll,
-                link_row_sizes(image.references.len()),
+                link_row_sizes(selection.references().len()),
                 move |this, range, cx| {
-                    let Some(DetailsSelection::Image(image)) = &this.selected else {
+                    let Some(selection) = &this.selected else {
                         return Vec::new();
                     };
                     let first = range.start;
-                    image
-                        .references
+                    selection
+                        .references()
                         .get(range)
                         .unwrap_or_default()
                         .iter()
@@ -2083,7 +2104,7 @@ impl Render for DetailsPanel {
             ),
             // Every page tab that is not a list. Also the fallback, so a
             // tab that does not apply to this selection lands somewhere real.
-            (DetailsSelection::Page(rec), _) => div()
+            (DetailsSelection::Page { record: rec, .. }, _) => div()
                 .id("details-overview")
                 .flex_1()
                 .min_h(px(0.))

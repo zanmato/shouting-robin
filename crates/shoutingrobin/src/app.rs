@@ -8,6 +8,7 @@ use gpui_kit::component::{
     h_flex,
     menu::AppMenuBar,
     notification::{Notification, NotificationType},
+    tooltip::Tooltip,
     v_flex,
 };
 use gpui_kit::prelude::FluentBuilder as _;
@@ -19,7 +20,9 @@ use gpui_kit::{
 use shoutingrobin_ui::{Tab, TabBar};
 
 use crate::ui::resizable::{ResizableState, h_resizable, resizable_panel};
+use crate::ui::tag::{compact_count, group_digits};
 
+use crate::crawl::event::PageRecord;
 use crate::crawl::{CrawlEngine, CrawlEvent, RenderMode};
 use crate::settings::view::SettingsView;
 use crate::update_manager::{UpdateManager, UpdateState};
@@ -50,6 +53,27 @@ const SEGMENT_TROUGH_PADDING: gpui_kit::Pixels = px(3.);
 /// so the row keeps its height and the layout below it doesn't shift.
 const SEGMENT_PADDING_Y: gpui_kit::Pixels = px(2.);
 
+/// One tag for the crawl-finished notification, so a newer crawl's replaces an
+/// older one's and bringing the window forward can take it away.
+const CRAWL_FINISHED_NOTIFICATION_TAG: &str = "crawl-finished";
+
+/// The crawl that is running, and whether the grid is showing it.
+struct LiveCrawl {
+    crawl_id: i64,
+    root_url: String,
+    view: LiveView,
+}
+
+enum LiveView {
+    Shown,
+    /// Another crawl is on screen. Streamed pages are only stored, and the
+    /// crawl is read back from the database when it is picked again.
+    Hidden,
+    /// Being read back from the database to go on screen again. Pages streamed
+    /// meanwhile wait here, since the read may or may not have included them.
+    Reloading(Vec<PageRecord>),
+}
+
 pub struct ShoutingRobinApp {
     focus_handle: FocusHandle,
     crawl_bar: Entity<CrawlBar>,
@@ -66,6 +90,10 @@ pub struct ShoutingRobinApp {
     active_render_mode: RenderMode,
     issue_filter: IssueFilter,
     tabbar_scroll_handle: ScrollHandle,
+    live_crawl: Option<LiveCrawl>,
+    /// The crawl the grid shows or is loading. A load that lands after
+    /// another crawl was picked is dropped rather than replacing it.
+    crawl_on_screen: Option<i64>,
     _cancel: Option<Arc<AtomicBool>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -216,11 +244,27 @@ impl ShoutingRobinApp {
                     let root_url = root_url.clone();
                     let results_grid = sidebar_results_grid.clone();
                     let crawl_bar = sidebar_crawl_bar.clone();
+                    this.crawl_on_screen = Some(crawl_id);
+                    if let Some(live) = &mut this.live_crawl {
+                        live.view = if live.crawl_id == crawl_id {
+                            LiveView::Reloading(Vec::new())
+                        } else {
+                            LiveView::Hidden
+                        };
+                    }
                     // Set before the spawn, so the frame that paints while the
                     // two crawls are read out of the database is already
                     // showing the spinner rather than the crawl being replaced.
                     results_grid.update(cx, |grid, cx| grid.set_loading(true, cx));
-                    Self::load_crawl_into_grid(pool, crawl_id, root_url, results_grid, crawl_bar, cx);
+                    Self::load_crawl_into_grid(
+                        pool,
+                        crawl_id,
+                        root_url,
+                        cx.weak_entity(),
+                        results_grid,
+                        crawl_bar,
+                        cx,
+                    );
                 }
                 CrawlsSidebarEvent::Deleted {
                     crawl_id,
@@ -241,6 +285,7 @@ impl ShoutingRobinApp {
                             if let Some(app) = this.upgrade() {
                                 app.update(cx, |app, cx| {
                                     if was_selected {
+                                        app.crawl_on_screen = None;
                                         app.crawl_bar.update(cx, |bar, cx| {
                                             bar.has_results = false;
                                             cx.notify();
@@ -259,6 +304,22 @@ impl ShoutingRobinApp {
 
         let focus_handle = cx.focus_handle();
         window.focus(&focus_handle, cx);
+
+        subscriptions.push(cx.observe_window_activation(window, |_, window, cx| {
+            if window.is_window_active() {
+                cx.dismiss_system_notification(CRAWL_FINISHED_NOTIFICATION_TAG);
+            }
+        }));
+        let window_handle = window.window_handle();
+        cx.on_system_notification_response(move |response, cx| {
+            if response.tag != CRAWL_FINISHED_NOTIFICATION_TAG {
+                return;
+            }
+            cx.activate(true);
+            if let Err(error) = window_handle.update(cx, |_, window, _| window.activate_window()) {
+                tracing::error!(%error, "could not bring the window forward");
+            }
+        });
 
         if let Some(update_manager) = UpdateManager::try_global(cx) {
             let update_state = update_manager.state.clone();
@@ -300,6 +361,8 @@ impl ShoutingRobinApp {
             active_render_mode: RenderMode::Chrome,
             issue_filter: IssueFilter::All,
             tabbar_scroll_handle: ScrollHandle::default(),
+            live_crawl: None,
+            crawl_on_screen: None,
             _cancel: None,
             _subscriptions: subscriptions,
         };
@@ -455,6 +518,8 @@ impl ShoutingRobinApp {
         // in flight, and two crawls writing at once would interleave in the grid.
         // A no-op when nothing is running.
         self.stop_crawl(cx);
+        self.live_crawl = None;
+        self.crawl_on_screen = None;
         self.results_grid.update(cx, |grid, cx| grid.clear(cx));
         self.crawl_bar.update(cx, |bar, cx| {
             bar.has_results = false;
@@ -465,6 +530,43 @@ impl ShoutingRobinApp {
             status.reset();
             cx.notify();
         });
+    }
+
+    /// Streamed pages go into the grid only while it shows the running crawl.
+    /// They are in the database either way, which is where the crawl is read
+    /// back from when it is picked again.
+    fn receive_streamed(&mut self, records: Vec<PageRecord>, cx: &mut Context<Self>) {
+        match self.live_crawl.as_mut().map(|live| &mut live.view) {
+            Some(LiveView::Hidden) => {}
+            Some(LiveView::Reloading(waiting)) => waiting.extend(records),
+            Some(LiveView::Shown) | None => {
+                self.results_grid
+                    .update(cx, |grid, cx| grid.push_many(records, cx));
+                self.crawl_bar.update(cx, |bar, cx| {
+                    if !bar.has_results {
+                        bar.has_results = true;
+                        cx.notify();
+                    }
+                });
+            }
+        }
+    }
+
+    /// Puts the running crawl back to streaming into the grid once it has been
+    /// read back from the database, adding the pages that arrived during the
+    /// read and were not part of it.
+    fn resume_live_crawl(&mut self, crawl_id: i64, cx: &mut Context<Self>) {
+        let Some(live) = self
+            .live_crawl
+            .as_mut()
+            .filter(|live| live.crawl_id == crawl_id)
+        else {
+            return;
+        };
+        if let LiveView::Reloading(waiting) = std::mem::replace(&mut live.view, LiveView::Shown) {
+            self.results_grid
+                .update(cx, |grid, cx| grid.push_unseen(waiting, cx));
+        }
     }
 
     fn stop_crawl(&mut self, cx: &mut Context<Self>) {
@@ -491,6 +593,7 @@ impl ShoutingRobinApp {
         pool: sqlx::SqlitePool,
         crawl_id: i64,
         root_url: String,
+        app: WeakEntity<Self>,
         results_grid: Entity<ResultsGrid>,
         crawl_bar: Entity<CrawlBar>,
         cx: &mut App,
@@ -554,16 +657,31 @@ impl ShoutingRobinApp {
                 })
                 .await;
 
-            cx.update(|cx| {
-                results_grid.update(cx, |g, cx| {
-                    g.load_prepared(prepared, &root_url, cx);
-                    g.set_layout_context(layout_context, cx);
-                });
-                crawl_bar.update(cx, |bar, cx| {
-                    bar.has_results = true;
-                    cx.notify();
-                });
+            let installed = cx.update(|cx| {
+                let Some(app) = app.upgrade() else {
+                    return false;
+                };
+                app.update(cx, |app, cx| {
+                    // Another crawl was picked while this one was read; its
+                    // own load puts it on screen.
+                    if app.crawl_on_screen != Some(crawl_id) {
+                        return false;
+                    }
+                    results_grid.update(cx, |g, cx| {
+                        g.load_prepared(prepared, &root_url, cx);
+                        g.set_layout_context(layout_context, cx);
+                    });
+                    crawl_bar.update(cx, |bar, cx| {
+                        bar.has_results = true;
+                        cx.notify();
+                    });
+                    app.resume_live_crawl(crawl_id, cx);
+                    true
+                })
             });
+            if !installed {
+                return;
+            }
 
             // Comparing layouts reads every page's from both crawls, so the
             // crawl goes on screen first and the result follows.
@@ -914,18 +1032,8 @@ impl ShoutingRobinApp {
                     let pages_pushed = records.iter().filter(|r| r.is_page).count() as u64;
                     let resources_pushed = records.len() as u64 - pages_pushed;
                     cx.update(|cx| {
-                        results_grid.update(cx, |g, cx| {
-                            g.push_many(records, cx);
-                        });
                         if let Some(this) = this.upgrade() {
-                            this.update(cx, |app, cx| {
-                                app.crawl_bar.update(cx, |bar, cx| {
-                                    if !bar.has_results {
-                                        bar.has_results = true;
-                                        cx.notify();
-                                    }
-                                });
-                            });
+                            this.update(cx, |app, cx| app.receive_streamed(records, cx));
                         }
                         status_bar.update(cx, |s, cx| {
                             s.pages = s.pages.saturating_add(pages_pushed);
@@ -962,6 +1070,12 @@ impl ShoutingRobinApp {
                 });
                 if let Some(this) = this.upgrade() {
                     this.update(cx, |this, cx| {
+                        this.live_crawl = Some(LiveCrawl {
+                            crawl_id,
+                            root_url: root_url.clone(),
+                            view: LiveView::Shown,
+                        });
+                        this.crawl_on_screen = Some(crawl_id);
                         this.load_crawl_history(cx);
                         this.sidebar.update(cx, |sidebar, cx| {
                             sidebar.set_selected_id(crawl_id, cx);
@@ -972,18 +1086,8 @@ impl ShoutingRobinApp {
             CrawlEvent::Page(boxed_record) => {
                 let record = *boxed_record;
                 let is_page = record.is_page;
-                results_grid.update(cx, |g, cx| {
-                    g.push(record, cx);
-                });
                 if let Some(this) = this.upgrade() {
-                    this.update(cx, |app, cx| {
-                        app.crawl_bar.update(cx, |bar, cx| {
-                            if !bar.has_results {
-                                bar.has_results = true;
-                                cx.notify();
-                            }
-                        });
-                    });
+                    this.update(cx, |app, cx| app.receive_streamed(vec![record], cx));
                 }
                 status_bar.update(cx, |s, cx| {
                     if is_page {
@@ -1003,6 +1107,33 @@ impl ShoutingRobinApp {
             }
             CrawlEvent::Finished { crawl_id, total } => {
                 tracing::info!(total, "crawl finished");
+                // Only when the window is behind another: in front, the
+                // status bar already says so.
+                let live = this.upgrade().and_then(|this| {
+                    this.update(cx, |this, _| {
+                        this.live_crawl.take_if(|live| live.crawl_id == crawl_id)
+                    })
+                });
+                if cx.active_window().is_none() {
+                    let site = live
+                        .as_ref()
+                        .and_then(|live| url::Url::parse(&live.root_url).ok())
+                        .and_then(|url| url.host_str().map(str::to_owned))
+                        .unwrap_or_default();
+                    let status = status_bar.read(cx);
+                    cx.show_system_notification(gpui_kit::SystemNotification {
+                        tag: CRAWL_FINISHED_NOTIFICATION_TAG.into(),
+                        title: format!("Crawl of {site} finished").into(),
+                        body: format!(
+                            "{} pages, {} resources, {} errors",
+                            group_digits(status.pages as usize),
+                            group_digits(status.resources as usize),
+                            group_digits(status.errors as usize),
+                        )
+                        .into(),
+                        actions: Vec::new(),
+                    });
+                }
                 status_bar.update(cx, |s, cx| {
                     s.running = false;
                     cx.notify();
@@ -1014,12 +1145,18 @@ impl ShoutingRobinApp {
                             cx.notify();
                         });
                         this.load_crawl_history(cx);
-                        if let Some(root_url) = this.results_grid.read(cx).root_url(cx) {
+                        // Read back with what the post-crawl passes wrote, but
+                        // only onto the grid showing it: another crawl may be
+                        // on screen by now.
+                        if let Some(live) = live
+                            && this.crawl_on_screen == Some(crawl_id)
+                        {
                             let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
                             Self::load_crawl_into_grid(
                                 pool,
                                 crawl_id,
-                                root_url,
+                                live.root_url,
+                                cx.weak_entity(),
                                 this.results_grid.clone(),
                                 this.crawl_bar.clone(),
                                 cx,
@@ -1194,7 +1331,7 @@ impl Render for ShoutingRobinApp {
             }))
             .track_scroll(&self.tabbar_scroll_handle);
 
-        let tab_badges = self.results_grid.update(cx, |grid, cx| grid.tab_badges(cx));
+        let tab_badges = self.results_grid.read(cx).tab_badges(cx);
 
         for tab in &visible_tabs {
             let tab = *tab;
@@ -1210,14 +1347,14 @@ impl Render for ShoutingRobinApp {
                 );
             }
             if let Some(counts) = tab_badges.get(&tab) {
-                let (badge_count, tone) = if counts.errors > 0 {
-                    (counts.errors, crate::ui::tag::Tone::Err)
+                let (badge_count, tone, counted) = if counts.errors > 0 {
+                    (counts.errors, crate::ui::tag::Tone::Err, "errors")
                 } else if counts.warnings > 0 {
-                    (counts.warnings, crate::ui::tag::Tone::Warn)
+                    (counts.warnings, crate::ui::tag::Tone::Warn, "warnings")
                 } else if matches!(tab, ResultTab::Ecommerce) {
-                    (counts.total, crate::ui::tag::Tone::Accent)
+                    (counts.total, crate::ui::tag::Tone::Accent, "rows")
                 } else {
-                    (counts.total, crate::ui::tag::Tone::Neutral)
+                    (counts.total, crate::ui::tag::Tone::Neutral, "rows")
                 };
                 if badge_count > 0 {
                     // The suffix is a sibling of the padded label, so the label's
@@ -1225,11 +1362,26 @@ impl Render for ShoutingRobinApp {
                     // some of that back and spend it on the right instead, so the
                     // badge isn't flush against the next tab.
                     t = t.suffix(
-                        div().flex().items_center().ml(px(-4.)).pr_2().child(
-                            crate::ui::tag::tone_tag(tone, cx)
-                                .rounded_full()
-                                .child(SharedString::from(badge_count.to_string())),
-                        ),
+                        div()
+                            .id(SharedString::from(format!("tab-count-{tab:?}")))
+                            .flex()
+                            .items_center()
+                            .ml(px(-4.))
+                            .pr_2()
+                            .child(
+                                crate::ui::tag::tone_tag(tone, cx)
+                                    .rounded_full()
+                                    .child(SharedString::from(compact_count(badge_count))),
+                            )
+                            .when(badge_count >= 1_000, |badge| {
+                                let exact = SharedString::from(format!(
+                                    "{} {counted}",
+                                    group_digits(badge_count)
+                                ));
+                                badge.tooltip(move |window, cx| {
+                                    Tooltip::new(exact.clone()).build(window, cx)
+                                })
+                            }),
                     );
                 }
             }
@@ -1255,9 +1407,7 @@ impl Render for ShoutingRobinApp {
         // both long.
         let mut filter_left = h_flex().items_center().gap_2().flex_1().min_w_0();
 
-        let active_filter_counts = self
-            .results_grid
-            .update(cx, |grid, cx| grid.active_filter_counts(cx));
+        let active_filter_counts = self.results_grid.read(cx).active_filter_counts(cx);
 
         if show_issue_filter {
             // Hand-rolled rather than a segmented `TabBar`, so each filter can
@@ -1300,8 +1450,12 @@ impl Render for ShoutingRobinApp {
                         el.child(
                             crate::ui::tag::tone_tag(filter.tone(), cx)
                                 .rounded_full()
-                                .child(SharedString::from(count.to_string())),
+                                .child(SharedString::from(compact_count(count))),
                         )
+                    })
+                    .when(count >= 1_000, |el| {
+                        let exact = SharedString::from(format!("{} rows", group_digits(count)));
+                        el.tooltip(move |window, cx| Tooltip::new(exact.clone()).build(window, cx))
                     })
                     .on_click(cx.listener(move |this, _event, _window, cx| {
                         this.issue_filter = filter;
@@ -1353,9 +1507,7 @@ impl Render for ShoutingRobinApp {
                     // The line rarely fits beside the filters, so the truncated
                     // form is the affordance and the tooltip is the text.
                     .child(div().min_w_0().truncate().child(note.clone()))
-                    .tooltip(move |window, cx| {
-                        gpui_kit::component::tooltip::Tooltip::new(note.clone()).build(window, cx)
-                    }),
+                    .tooltip(move |window, cx| Tooltip::new(note.clone()).build(window, cx)),
             );
         }
 

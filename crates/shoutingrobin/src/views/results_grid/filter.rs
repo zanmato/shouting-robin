@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 use crate::crawl::engine::is_same_domain;
 use crate::crawl::event::{
@@ -16,8 +17,10 @@ use super::columns::{
 use super::data_build::{
     build_issues_entries, build_rows_for_tab, change_entry_matches, issue_entry_matches,
 };
+#[cfg(test)]
+use super::types::shared;
 use super::types::{
-    ChangeEntry, FlatRow, ImageAggregateRow, IssueFilter, TabCounts, TabFilterCounts,
+    ChangeEntry, FlatRow, ImageAggregateRow, IssueEntry, IssueFilter, TabCounts, TabFilterCounts,
     flat_row_page_index, tab_is_flattened,
 };
 
@@ -55,6 +58,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::UnderPixelWidth,
             IssueFilter::Multiple,
             IssueFilter::SameAsH1,
+            IssueFilter::HtmlEntity,
         ],
         ResultTab::MetaDesc => &[
             IssueFilter::All,
@@ -65,6 +69,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::OverPixelWidth,
             IssueFilter::UnderPixelWidth,
             IssueFilter::Multiple,
+            IssueFilter::HtmlEntity,
         ],
         ResultTab::H1 => &[
             IssueFilter::All,
@@ -72,6 +77,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::Duplicate,
             IssueFilter::OverLength,
             IssueFilter::Multiple,
+            IssueFilter::HtmlEntity,
         ],
         ResultTab::H2 => &[
             IssueFilter::All,
@@ -247,8 +253,9 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
 /// counts), so the filter-coverage test can assert filter behavior end-to-end.
 #[cfg(test)]
 pub fn matching_urls(tab: ResultTab, filter: IssueFilter, pages: &[PageRecord]) -> Vec<String> {
-    let occurrence_counts = super::columns::build_occurrence_counts(tab, pages);
-    filter_for_tab(tab, filter, pages, &occurrence_counts)
+    let pages = shared(pages.iter().cloned());
+    let occurrence_counts = super::columns::build_occurrence_counts(tab, &pages);
+    filter_for_tab(tab, filter, &pages, &occurrence_counts)
         .into_iter()
         .map(|idx| pages[idx].url.clone())
         .collect()
@@ -264,7 +271,7 @@ pub fn tab_filter_counts_for_test(
     pages: &[PageRecord],
     root_origin: Option<&str>,
 ) -> TabFilterCounts {
-    compute_tab_filter_counts(tab, pages, &[], root_origin)
+    compute_tab_filter_counts(tab, &shared(pages.iter().cloned()), &[], root_origin)
 }
 
 /// Counts every sub-filter for a tab and derives the tab badge from the same
@@ -274,7 +281,7 @@ pub fn tab_filter_counts_for_test(
 /// flattened tabs. Errors take precedence over warnings when a row matches both.
 pub(super) fn compute_tab_filter_counts(
     tab: ResultTab,
-    pages: &[PageRecord],
+    pages: &[Arc<PageRecord>],
     change_entries: &[ChangeEntry],
     root_origin: Option<&str>,
 ) -> TabFilterCounts {
@@ -285,12 +292,7 @@ pub(super) fn compute_tab_filter_counts(
     // overlapping partitions of the same entry set, so the tone union dedups by
     // entry index rather than summing (which double-counts).
     if tab == ResultTab::Overview {
-        let entries = build_issues_entries(pages);
-        return counts_from_sets(filters, entries.len(), |filter| {
-            (0..entries.len())
-                .filter(|&i| issue_entry_matches(&entries[i], filter))
-                .collect()
-        });
+        return overview_counts(&build_issues_entries(pages));
     }
     if tab == ResultTab::Changes {
         return counts_from_sets(filters, change_entries.len(), |filter| {
@@ -329,6 +331,188 @@ pub(super) fn compute_tab_filter_counts(
     }
 }
 
+/// The Overview tab's counts, from issue entries already built.
+pub(super) fn overview_counts(entries: &[IssueEntry]) -> TabFilterCounts {
+    counts_from_sets(
+        filters_for_tab(ResultTab::Overview),
+        entries.len(),
+        |filter| {
+            (0..entries.len())
+                .filter(|&i| issue_entry_matches(&entries[i], filter))
+                .collect()
+        },
+    )
+}
+
+/// Whether a filter's verdict on a page depends on other pages: values shared
+/// with them, their status codes, or where their redirects lead. Every other
+/// filter of a page-listing tab reads the page alone, so its matches stay valid
+/// as a crawl adds pages, and only the new pages need looking at.
+///
+/// A filter added to `filter_for_tab` that consults the page set rather than
+/// `pages[idx]` belongs here, or streamed counts go stale.
+/// `streamed_counts_match_a_full_count` checks the ones listed.
+fn reads_other_pages(filter: IssueFilter) -> bool {
+    matches!(
+        filter,
+        IssueFilter::Duplicate
+            | IssueFilter::ExactDuplicates
+            | IssueFilter::ImageOver100Kb
+            | IssueFilter::ImageBroken
+            | IssueFilter::RedirectChain
+            | IssueFilter::RedirectLoop
+            | IssueFilter::CanonicalTargetNotIndexable
+            | IssueFilter::LinkBroken
+            | IssueFilter::LinkRedirected
+    )
+}
+
+/// The page-listing tabs' rows and per-page filter matches, carried from one
+/// counting pass to the next while a crawl streams in. Pages are only ever
+/// appended within one crawl, so a pass looks at the pages that arrived since
+/// the last one and reruns only the filters that read other pages.
+#[derive(Default)]
+pub(super) struct CountsProgress {
+    pages_seen: usize,
+    tabs: HashMap<ResultTab, PageTabMatches>,
+}
+
+#[derive(Default)]
+struct PageTabMatches {
+    rows: Vec<usize>,
+    /// In `filters_for_tab` order, leaving out `All` and the filters that read
+    /// other pages.
+    per_page: Vec<(IssueFilter, Vec<usize>)>,
+}
+
+/// Every tab's counts. The page-listing tabs carry their per-page matches in
+/// `progress`; the flattened tabs aggregate across pages and are counted whole.
+pub(super) fn count_every_tab(
+    pages: &[Arc<PageRecord>],
+    change_entries: &[ChangeEntry],
+    issue_entries: &[IssueEntry],
+    root_origin: Option<&str>,
+    progress: &mut CountsProgress,
+) -> HashMap<ResultTab, TabFilterCounts> {
+    if progress.pages_seen > pages.len() {
+        *progress = CountsProgress::default();
+    }
+    let seen = progress.pages_seen;
+    let mut counts = HashMap::with_capacity(ResultTab::ALL.len());
+    for &tab in ResultTab::ALL {
+        let tab_counts = if tab == ResultTab::Overview {
+            overview_counts(issue_entries)
+        } else if tab_is_flattened(tab) {
+            compute_tab_filter_counts(tab, pages, change_entries, root_origin)
+        } else {
+            page_tab_counts(tab, pages, seen, progress.tabs.entry(tab).or_default())
+        };
+        counts.insert(tab, tab_counts);
+    }
+    progress.pages_seen = pages.len();
+    counts
+}
+
+fn page_tab_counts(
+    tab: ResultTab,
+    pages: &[Arc<PageRecord>],
+    seen: usize,
+    matches: &mut PageTabMatches,
+) -> TabFilterCounts {
+    let filters = filters_for_tab(tab);
+    let new_pages = pages.get(seen..).unwrap_or_default();
+    // A per-page filter's verdict on the new pages is the same whether it
+    // looks at them alone or among the rest, and no per-page filter reads
+    // occurrence counts, so none are built for them.
+    let no_occurrences = HashMap::new();
+    let found_among_new = |filter: IssueFilter| {
+        filter_for_tab(tab, filter, new_pages, &no_occurrences)
+            .into_iter()
+            .map(|index| index + seen)
+    };
+
+    if seen == 0 {
+        matches.rows.clear();
+        matches.per_page = filters
+            .iter()
+            .filter(|&&filter| filter != IssueFilter::All && !reads_other_pages(filter))
+            .map(|&filter| (filter, Vec::new()))
+            .collect();
+    }
+    matches.rows.extend(found_among_new(IssueFilter::All));
+    for (filter, found) in &mut matches.per_page {
+        found.extend(found_among_new(*filter));
+    }
+
+    let occurrence_counts = if filters.contains(&IssueFilter::Duplicate) {
+        build_occurrence_counts(tab, pages)
+    } else {
+        HashMap::new()
+    };
+    let across_pages: Vec<(IssueFilter, Vec<usize>)> = filters
+        .iter()
+        .filter(|&&filter| reads_other_pages(filter))
+        .map(|&filter| {
+            (
+                filter,
+                filter_for_tab(tab, filter, pages, &occurrence_counts),
+            )
+        })
+        .collect();
+
+    let matching = |filter: IssueFilter| -> &[usize] {
+        matches
+            .per_page
+            .iter()
+            .chain(across_pages.iter())
+            .find(|(candidate, _)| *candidate == filter)
+            .map(|(_, found)| found.as_slice())
+            .unwrap_or_default()
+    };
+    tally_pages(filters, matches.rows.len(), pages.len(), matching)
+}
+
+/// `counts_from_sets` for page-listing tabs, where a row is a page index and
+/// each filter's matches are already distinct. Flags per page rather than hash
+/// sets, since every count pass would otherwise hash the whole crawl again.
+fn tally_pages<'a>(
+    filters: &[IssueFilter],
+    total: usize,
+    page_count: usize,
+    matching: impl Fn(IssueFilter) -> &'a [usize],
+) -> TabFilterCounts {
+    const ERROR: u8 = 1;
+    const WARNING: u8 = 2;
+    let mut tones = vec![0u8; page_count];
+    let mut filter_counts = Vec::with_capacity(filters.len());
+    for &filter in filters {
+        if filter == IssueFilter::All {
+            filter_counts.push((filter, total));
+            continue;
+        }
+        let found = matching(filter);
+        filter_counts.push((filter, found.len()));
+        let flag = match filter.tone() {
+            Tone::Err => ERROR,
+            Tone::Warn => WARNING,
+            _ => continue,
+        };
+        for &index in found {
+            if let Some(tone) = tones.get_mut(index) {
+                *tone |= flag;
+            }
+        }
+    }
+    TabFilterCounts {
+        filter_counts,
+        badge: TabCounts {
+            total,
+            errors: tones.iter().filter(|&&tone| tone & ERROR != 0).count(),
+            warnings: tones.iter().filter(|&&tone| tone == WARNING).count(),
+        },
+    }
+}
+
 /// Whether a flat row survives a sub-filter, applying the same page gate and
 /// per-row predicate the display path uses. Directory aggregates have no page,
 /// so they skip the gate and are matched on depth directly, mirroring
@@ -337,7 +521,7 @@ fn row_matches_filter(
     row: &FlatRow,
     filter: IssueFilter,
     allowed_pages: &HashSet<usize>,
-    pages: &[PageRecord],
+    pages: &[Arc<PageRecord>],
 ) -> bool {
     match flat_row_page_index(row) {
         Some(page_index) => {
@@ -512,7 +696,7 @@ pub(super) const IMAGE_SIZE_LIMIT_BYTES: u64 = 100_000;
 /// What the post-crawl resource pass found for each checked URL, as a map, so a
 /// page's images resolve in constant time. Scanning the page set per image made
 /// the image rules quadratic in the crawl size.
-fn checked_resources(pages: &[PageRecord]) -> HashMap<&str, (Option<u16>, u64)> {
+fn checked_resources(pages: &[Arc<PageRecord>]) -> HashMap<&str, (Option<u16>, u64)> {
     pages
         .iter()
         .filter(|page| page.is_resource)
@@ -531,6 +715,43 @@ fn page_has_image_matching(
         checked
             .get(image.src.as_str())
             .is_some_and(|&(status, size)| matches(status, size))
+    })
+}
+
+/// True when text shows an HTML entity rather than the character it stands
+/// for: a named one (`&amp;`), or a decimal (`&#39;`) or hex (`&#x27;`) one.
+///
+/// The text has already been decoded once, as a browser and a search engine
+/// decode it, so an entity still in it is what they display: the site escaped
+/// it twice, usually because the stored text already held `&amp;`. A bare `&`,
+/// as in "R&D", is not an entity, and a name needs two characters so "AT&T;"
+/// is not one either.
+pub(super) fn contains_html_entity(text: &str) -> bool {
+    let bytes = text.as_bytes();
+    bytes.iter().enumerate().any(|(start, &byte)| {
+        if byte != b'&' {
+            return false;
+        }
+        let rest = bytes.get(start + 1..).unwrap_or_default();
+        let (body_len, valid) = match rest {
+            [b'#', b'x' | b'X', tail @ ..] => {
+                let digits = tail.iter().take_while(|b| b.is_ascii_hexdigit()).count();
+                (2 + digits, digits > 0)
+            }
+            [b'#', tail @ ..] => {
+                let digits = tail.iter().take_while(|b| b.is_ascii_digit()).count();
+                (1 + digits, digits > 0)
+            }
+            [first, tail @ ..] if first.is_ascii_alphabetic() => {
+                let more = tail
+                    .iter()
+                    .take_while(|b| b.is_ascii_alphanumeric())
+                    .count();
+                (1 + more, more > 0)
+            }
+            _ => (0, false),
+        };
+        valid && rest.get(body_len) == Some(&b';')
     })
 }
 
@@ -582,6 +803,7 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
             | IssueFilter::UnderPixelWidth
             | IssueFilter::Multiple
             | IssueFilter::SameAsH1
+            | IssueFilter::HtmlEntity
             | IssueFilter::NonSequential
             | IssueFilter::MissingBodyTag
             | IssueFilter::MissingCanonical
@@ -609,7 +831,7 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
 pub(super) fn filter_for_tab(
     tab: ResultTab,
     issue_filter: IssueFilter,
-    pages: &[PageRecord],
+    pages: &[Arc<PageRecord>],
     occurrence_counts: &HashMap<String, usize>,
 ) -> Vec<usize> {
     let mut indices: Vec<usize> = match tab {
@@ -756,6 +978,7 @@ pub(super) fn filter_for_tab(
                         .h1
                         .as_deref()
                         .is_some_and(|h1| val == h1 && !val.is_empty()),
+                    IssueFilter::HtmlEntity => contains_html_entity(val),
                     _ => true,
                 }
             });
@@ -1051,7 +1274,12 @@ pub(super) fn filter_for_tab(
             IssueFilter::CanonicalTargetNotIndexable => {
                 let by_url: HashMap<String, &PageRecord> = pages
                     .iter()
-                    .map(|p| (normalize_url(&p.url).unwrap_or_else(|| p.url.clone()), p))
+                    .map(|p| {
+                        (
+                            normalize_url(&p.url).unwrap_or_else(|| p.url.clone()),
+                            p.as_ref(),
+                        )
+                    })
                     .collect();
                 indices.retain(|&idx| {
                     let page = &pages[idx];
@@ -1315,7 +1543,7 @@ pub(super) fn filter_for_tab(
 
 /// The status code of every crawled URL, keyed by URL, so a link's destination
 /// resolves in constant time.
-fn status_by_url(pages: &[PageRecord]) -> HashMap<&str, u16> {
+fn status_by_url(pages: &[Arc<PageRecord>]) -> HashMap<&str, u16> {
     pages
         .iter()
         .filter_map(|page| page.status.map(|status| (page.url.as_str(), status)))
@@ -1332,19 +1560,21 @@ fn link_matches_filter(
     filter: IssueFilter,
     status_by_url: &HashMap<&str, u16>,
 ) -> bool {
-    let dst_is_external = !is_same_domain(&page.url, &link.dst_url);
-    let rel_nofollow = link
-        .rel
-        .as_deref()
-        .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
-    let dst_status = status_by_url.get(link.dst_url.as_str()).copied();
+    // Each fact is worked out only for the filter that asks for it: telling
+    // an external link apart parses both URLs, and a crawl has hundreds of
+    // thousands of links.
+    let dst_is_external = || !is_same_domain(&page.url, &link.dst_url);
+    let dst_status = || status_by_url.get(link.dst_url.as_str()).copied();
 
     match filter {
-        IssueFilter::LinkExternal => dst_is_external,
-        IssueFilter::LinkNofollow => rel_nofollow,
-        IssueFilter::LinkNoAnchorText => !dst_is_external && link_lacks_anchor_text(link),
-        IssueFilter::LinkBroken => dst_status.is_some_and(|c| c >= 400),
-        IssueFilter::LinkRedirected => dst_status.is_some_and(|c| (300..400).contains(&c)),
+        IssueFilter::LinkExternal => dst_is_external(),
+        IssueFilter::LinkNofollow => link
+            .rel
+            .as_deref()
+            .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow")),
+        IssueFilter::LinkNoAnchorText => link_lacks_anchor_text(link) && !dst_is_external(),
+        IssueFilter::LinkBroken => dst_status().is_some_and(|c| c >= 400),
+        IssueFilter::LinkRedirected => dst_status().is_some_and(|c| (300..400).contains(&c)),
         _ => true,
     }
 }
@@ -1475,6 +1705,157 @@ mod counting_tests {
         }
     }
 
+    const HOST: &str = "https://a.test";
+
+    /// A crawl in the order a streamed one arrives: each page links to, and
+    /// shares titles, hashes and images with, pages and resources that only
+    /// turn up batches later. Those later rows change verdicts on rows already
+    /// counted: a link starts pointing at a 404, a redirect joins a chain or a
+    /// loop, a canonical target turns out not to be indexable.
+    fn streamed_crawl() -> Vec<PageRecord> {
+        let mut pages = Vec::new();
+        for index in 0..48usize {
+            let url = format!("{HOST}/page-{index}");
+            let mut page = PageRecord {
+                url: url.clone(),
+                status: Some(200),
+                content_type: Some("text/html".into()),
+                is_internal: true,
+                is_page: true,
+                title: Some(format!("Shared title number {}", index % 5)),
+                meta_description: (index % 3 != 0).then(|| format!("Meta {}", index % 4)),
+                h1: Some(format!("Heading {}", index % 6)),
+                h2: (index % 2 == 0).then(|| "The same subheading".into()),
+                content_hash: Some(format!("hash-{}", index % 7)),
+                canonical: match index % 9 {
+                    0 => Some(format!("{HOST}/page-{}", index + 22)),
+                    1 => Some(url.clone()),
+                    _ => None,
+                },
+                robots: (index % 11 == 0).then(|| "noindex".into()),
+                word_count: Some((index * 37 % 600) as u32),
+                headers: if index % 4 == 0 {
+                    Vec::new()
+                } else {
+                    vec![("strict-transport-security".into(), "max-age=1".into())]
+                },
+                images: vec![ImageRef {
+                    src: format!("{HOST}/image-{}.png", index % 8),
+                    alt: (index % 3 != 0).then(|| "An image".into()),
+                    width: Some(10),
+                    height: (index % 2 == 0).then_some(10),
+                    has_alt_attr: index % 5 != 0,
+                }],
+                outlinks: vec![
+                    Outlink {
+                        dst_url: format!("{HOST}/page-{}", (index + 13) % 48),
+                        anchor: (index % 4 != 0).then(|| "Next".into()),
+                        rel: (index % 6 == 0).then(|| "nofollow".into()),
+                        csr_only: false,
+                    },
+                    Outlink {
+                        dst_url: format!("{HOST}/gone-{}", index % 5),
+                        anchor: Some("Gone".into()),
+                        rel: None,
+                        csr_only: false,
+                    },
+                    Outlink {
+                        dst_url: format!("{HOST}/moved-{}", index % 3),
+                        anchor: Some("Moved".into()),
+                        rel: None,
+                        csr_only: false,
+                    },
+                    Outlink {
+                        dst_url: "https://elsewhere.test/".into(),
+                        anchor: None,
+                        rel: None,
+                        csr_only: false,
+                    },
+                ],
+                in_sitemap: Some(index % 3 == 0),
+                ..Default::default()
+            };
+            page.compute_indexability();
+            pages.push(page);
+
+            if index % 6 == 5 {
+                let batch = index / 6;
+                pages.push(PageRecord {
+                    status: Some(404),
+                    ..internal_page(&format!("{HOST}/gone-{}", batch % 5))
+                });
+                pages.push(PageRecord {
+                    status: Some(301),
+                    redirect_url: Some(format!("{HOST}/moved-{}", (batch + 1) % 3)),
+                    ..internal_page(&format!("{HOST}/moved-{}", batch % 3))
+                });
+                pages.push(PageRecord {
+                    url: format!("{HOST}/image-{}.png", batch % 8),
+                    status: Some(if batch % 2 == 0 { 404 } else { 200 }),
+                    content_type: Some("image/png".into()),
+                    size_bytes: 150_000,
+                    is_internal: true,
+                    is_resource: true,
+                    ..Default::default()
+                });
+            }
+        }
+        pages
+    }
+
+    /// The streamed counts carry per-page matches from pass to pass, so they
+    /// drift from a full count the moment a filter that reads other pages is
+    /// treated as one that does not.
+    #[test]
+    fn streamed_counts_match_a_full_count() {
+        let pages = shared(streamed_crawl());
+        let mut progress = CountsProgress::default();
+        let mut ends: Vec<usize> = (7..pages.len()).step_by(7).collect();
+        ends.push(pages.len());
+        for end in ends {
+            let prefix = &pages[..end];
+            let issue_entries = build_issues_entries(prefix);
+            let streamed = count_every_tab(prefix, &[], &issue_entries, Some(HOST), &mut progress);
+            for &tab in ResultTab::ALL {
+                let full = compute_tab_filter_counts(tab, prefix, &[], Some(HOST));
+                let counted = streamed.get(&tab).expect("every tab is counted");
+                assert_eq!(
+                    counted.filter_counts, full.filter_counts,
+                    "{tab:?} after {end} rows"
+                );
+                assert_eq!(
+                    (
+                        counted.badge.total,
+                        counted.badge.errors,
+                        counted.badge.warnings
+                    ),
+                    (full.badge.total, full.badge.errors, full.badge.warnings),
+                    "{tab:?} badge after {end} rows"
+                );
+            }
+        }
+
+        // Without these the comparison above proves nothing about them.
+        for (tab, filter) in [
+            (ResultTab::PageTitles, IssueFilter::Duplicate),
+            (ResultTab::Content, IssueFilter::ExactDuplicates),
+            (ResultTab::ResponseCodes, IssueFilter::RedirectChain),
+            (ResultTab::ResponseCodes, IssueFilter::RedirectLoop),
+            (
+                ResultTab::Canonicals,
+                IssueFilter::CanonicalTargetNotIndexable,
+            ),
+            (ResultTab::Links, IssueFilter::LinkBroken),
+            (ResultTab::Links, IssueFilter::LinkRedirected),
+        ] {
+            let full = compute_tab_filter_counts(tab, &pages, &[], Some(HOST));
+            assert!(
+                count_of(&full, filter) > 0,
+                "the fixture never trips {tab:?} {filter:?}"
+            );
+        }
+    }
+
     /// The H2 tab's Non-Sequential filter reads the analyzer's answer, and like
     /// every other content issue it skips a page that is canonicalised
     /// elsewhere: the outline of a page that is not in the index is not a
@@ -1521,7 +1902,13 @@ mod counting_tests {
             })
             .collect();
 
-        let rows = build_rows_for_tab(ResultTab::Images, &[0, 1, 2], &pages, &[], None);
+        let rows = build_rows_for_tab(
+            ResultTab::Images,
+            &[0, 1, 2],
+            &shared(pages.clone()),
+            &[],
+            None,
+        );
         assert_eq!(rows.len(), 1, "one row for the one fetchable source");
         let FlatRow::ImageAggregate(logo) = &rows[0] else {
             panic!("expected an image aggregate, got {:?}", rows[0]);
@@ -1531,7 +1918,7 @@ mod counting_tests {
         assert_eq!(logo.pages, vec![0, 1, 2]);
         assert!(logo.missing_alt_text);
 
-        let counts = compute_tab_filter_counts(ResultTab::Images, &pages, &[], None);
+        let counts = compute_tab_filter_counts(ResultTab::Images, &shared(pages), &[], None);
         assert_eq!(count_of(&counts, IssueFilter::All), 1);
         assert_eq!(count_of(&counts, IssueFilter::MissingAltText), 1);
         assert_eq!(count_of(&counts, IssueFilter::MissingAltAttribute), 0);
@@ -1561,7 +1948,7 @@ mod counting_tests {
             resource("https://a.test/fine.png", Some(200), 4_000),
         ];
 
-        let rows = build_rows_for_tab(ResultTab::Images, &[0], &pages, &[], None);
+        let rows = build_rows_for_tab(ResultTab::Images, &[0], &shared(pages.clone()), &[], None);
         let sizes: Vec<(String, Option<u16>, u64)> = rows
             .iter()
             .filter_map(|row| match row {
@@ -1580,7 +1967,8 @@ mod counting_tests {
             ]
         );
 
-        let counts = compute_tab_filter_counts(ResultTab::Images, &pages, &[], None);
+        let counts =
+            compute_tab_filter_counts(ResultTab::Images, &shared(pages.clone()), &[], None);
         assert_eq!(count_of(&counts, IssueFilter::All), 3);
         assert_eq!(count_of(&counts, IssueFilter::ImageOver100Kb), 1);
         assert_eq!(count_of(&counts, IssueFilter::ImageBroken), 1);
@@ -1614,7 +2002,7 @@ mod counting_tests {
         ];
         let pages = vec![page];
 
-        let counts = compute_tab_filter_counts(ResultTab::Images, &pages, &[], None);
+        let counts = compute_tab_filter_counts(ResultTab::Images, &shared(pages), &[], None);
         assert_eq!(count_of(&counts, IssueFilter::All), 2);
         assert_eq!(count_of(&counts, IssueFilter::MissingAltAttribute), 1);
         assert_eq!(count_of(&counts, IssueFilter::MissingSizeAttributes), 1);
@@ -1644,7 +2032,7 @@ mod counting_tests {
             },
         ];
 
-        let counts = compute_tab_filter_counts(ResultTab::ResponseCodes, &pages, &[], None);
+        let counts = compute_tab_filter_counts(ResultTab::ResponseCodes, &shared(pages), &[], None);
         assert_eq!(counts.badge.total, 3);
         assert_eq!(count_of(&counts, IssueFilter::Status4xx), 1);
         assert_eq!(count_of(&counts, IssueFilter::Status5xx), 1);
@@ -1676,7 +2064,7 @@ mod counting_tests {
         broken.status = Some(404);
         let pages = vec![source, broken];
 
-        let counts = compute_tab_filter_counts(ResultTab::Links, &pages, &[], None);
+        let counts = compute_tab_filter_counts(ResultTab::Links, &shared(pages), &[], None);
         // Only the source page has outlinks, so the tab holds one row.
         assert_eq!(counts.badge.total, 1);
         assert_eq!(count_of(&counts, IssueFilter::LinkBroken), 1);
@@ -1724,7 +2112,8 @@ mod counting_tests {
             internal_page("https://a.test/blog/two"),
         ];
 
-        let counts = compute_tab_filter_counts(ResultTab::SiteStructure, &pages, &[], Some(origin));
+        let counts =
+            compute_tab_filter_counts(ResultTab::SiteStructure, &shared(pages), &[], Some(origin));
         assert!(
             counts.badge.total > 0,
             "expected directory rows to be counted"
@@ -1747,7 +2136,7 @@ mod counting_tests {
         missing_meta.meta_description = None;
         let pages = vec![missing_title, missing_meta];
 
-        let counts = compute_tab_filter_counts(ResultTab::Overview, &pages, &[], None);
+        let counts = compute_tab_filter_counts(ResultTab::Overview, &shared(pages), &[], None);
         assert_eq!(count_of(&counts, IssueFilter::All), counts.badge.total);
         assert!(
             counts.badge.errors <= counts.badge.total,
@@ -1861,6 +2250,38 @@ mod length_threshold_tests {
 }
 
 #[cfg(test)]
+mod html_entity_tests {
+    use super::*;
+
+    #[test]
+    fn entities_left_after_decoding_are_found() {
+        for text in [
+            "Kabels voor tv &amp; mobiel",
+            "550 pagina&#39;s",
+            "camera&#x27;s",
+            "camera&#X27;s",
+            "ends with &nbsp;",
+        ] {
+            assert!(contains_html_entity(text), "{text}");
+        }
+    }
+
+    #[test]
+    fn plain_ampersands_are_not_entities() {
+        for text in [
+            "Tv & mobiel",
+            "R&D and AT&T; done",
+            "a & b; c",
+            "&#; &#x; &;",
+            "trailing &amp",
+            "",
+        ] {
+            assert!(!contains_html_entity(text), "{text}");
+        }
+    }
+}
+
+#[cfg(test)]
 mod low_content_tests {
     use super::*;
     use crate::crawl::event::PageRecord;
@@ -1901,7 +2322,7 @@ mod low_content_tests {
             page_with_words("https://a.test/fat", 400),
         ];
         let rows = matching_urls(ResultTab::Content, IssueFilter::LowContent, &pages);
-        let entries = build_issues_entries(&pages);
+        let entries = build_issues_entries(&shared(pages));
         let entry = entries
             .iter()
             .find(|e| e.name == "Low Content Pages")

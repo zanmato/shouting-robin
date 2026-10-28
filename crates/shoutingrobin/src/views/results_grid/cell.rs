@@ -9,6 +9,8 @@ use crate::views::ResultTab;
 
 use super::columns::{char_length, field_value, header_value, primary_field_key};
 use super::data_build::dir_format_size;
+#[cfg(test)]
+use super::types::shared;
 use super::types::{FlatRow, ImageAggregateRow};
 
 /// What a cell shows when there is no value: nothing at all.
@@ -897,7 +899,10 @@ mod hreflang_pivot_tests {
                 ("fr", "https://a.test/fr/"),
             ]),
         ];
-        assert_eq!(super::super::columns::hreflang_column_count(&pages), 3);
+        assert_eq!(
+            super::super::columns::hreflang_column_count(&shared(pages)),
+            3
+        );
         assert_eq!(super::super::columns::hreflang_column_count(&[]), 0);
 
         let many: Vec<(String, String)> = (0..25)
@@ -907,7 +912,10 @@ mod hreflang_pivot_tests {
             hreflang_tags: many,
             ..Default::default()
         };
-        assert_eq!(super::super::columns::hreflang_column_count(&[wide]), 10);
+        assert_eq!(
+            super::super::columns::hreflang_column_count(&shared([wide])),
+            10
+        );
     }
 }
 

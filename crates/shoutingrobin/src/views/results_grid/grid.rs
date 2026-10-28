@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use gpui_kit::component::{
     ActiveTheme, Sizable as _, Size,
@@ -7,29 +9,33 @@ use gpui_kit::component::{
 };
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, EventEmitter, IntoElement, ParentElement, Render,
-    SharedString, Styled, Subscription, Window, div,
+    SharedString, Styled, Subscription, Task, Window, div,
 };
 
 use crate::crawl::event::PageRecord;
 use crate::views::ResultTab;
 use crate::views::details_panel::DetailsSelection;
 
-use super::data_build::{build_change_entries, overview_issue_target};
+use super::data_build::overview_issue_target;
 use super::delegate::{
-    CrawlSnapshot, ResultsDelegate, baseline_issue_counts, compute_all_tab_filter_counts,
-    root_origin_of,
+    CountedCrawl, CountsJob, CrawlSnapshot, ResultsDelegate, baseline_issue_counts,
 };
-use super::types::{FlatRow, IssueFilter, ResultsGridEvent, TabCounts, TabFilterCounts};
+use super::types::{FlatRow, IssueFilter, ResultsGridEvent, TabCounts};
+
+/// The least time between the starts of two counting passes. A pass over a
+/// large crawl takes about this long anyway; on a small one, pages arriving
+/// every few hundred milliseconds would otherwise keep a thread counting.
+const COUNTS_INTERVAL: Duration = Duration::from_secs(1);
 
 /// A crawl with its aggregates already built. Opening a crawl from history used
 /// to do this work on the foreground thread, where it froze the window for
 /// seconds on a few thousand pages: every tab's filter counts is a pass over
 /// the page set per filter, and the baseline's issue counts another.
 pub struct PreparedCrawl {
-    pages: Vec<PageRecord>,
-    baseline: Option<(Vec<PageRecord>, i64)>,
+    pages: Vec<Arc<PageRecord>>,
+    baseline: Option<(Vec<Arc<PageRecord>>, i64)>,
     baseline_issue_counts: HashMap<String, (usize, f32)>,
-    tab_filter_counts: HashMap<ResultTab, TabFilterCounts>,
+    counted: CountedCrawl,
 }
 
 impl PreparedCrawl {
@@ -40,17 +46,21 @@ impl PreparedCrawl {
         baseline: Option<(Vec<PageRecord>, i64)>,
         root_url: &str,
     ) -> Self {
-        let change_entries = match &baseline {
-            Some((baseline_pages, _)) => {
-                build_change_entries(&pages, baseline_pages, &HashMap::new())
-            }
-            None => Vec::new(),
-        };
-        let tab_filter_counts = compute_all_tab_filter_counts(
-            &pages,
-            &change_entries,
-            root_origin_of(root_url).as_deref(),
-        );
+        let pages: Vec<Arc<PageRecord>> = pages.into_iter().map(Arc::new).collect();
+        let baseline = baseline.map(|(baseline_pages, started_at)| {
+            (
+                baseline_pages.into_iter().map(Arc::new).collect::<Vec<_>>(),
+                started_at,
+            )
+        });
+        let counted = CountsJob::for_crawl(
+            pages.clone(),
+            baseline
+                .as_ref()
+                .map(|(baseline_pages, _)| baseline_pages.clone()),
+            root_url,
+        )
+        .run();
         let baseline_issue_counts = match &baseline {
             Some((baseline_pages, _)) => baseline_issue_counts(baseline_pages),
             None => HashMap::new(),
@@ -59,7 +69,7 @@ impl PreparedCrawl {
             pages,
             baseline,
             baseline_issue_counts,
-            tab_filter_counts,
+            counted,
         }
     }
 }
@@ -68,6 +78,9 @@ pub struct ResultsGrid {
     state: Entity<TableState<ResultsDelegate>>,
     loading: bool,
     layout: LayoutContext,
+    /// The counting pass in flight, or waiting out `COUNTS_INTERVAL`.
+    counts_task: Option<Task<()>>,
+    counts_started_at: Option<Instant>,
     _subscription: Subscription,
 }
 
@@ -85,7 +98,8 @@ pub struct LayoutContext {
 
 impl ResultsGrid {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let state = cx.new(|cx| TableState::new(ResultsDelegate::new(), window, cx));
+        let state =
+            cx.new(|cx| TableState::new(ResultsDelegate::new().count_in_background(), window, cx));
         let sub = cx.subscribe(&state, |this, _state, event: &TableEvent, cx| {
             if let TableEvent::SelectRow(row_ix) = event {
                 let delegate = this.state.read(cx).delegate();
@@ -104,6 +118,8 @@ impl ResultsGrid {
             state,
             loading: false,
             layout: LayoutContext::default(),
+            counts_task: None,
+            counts_started_at: None,
             _subscription: sub,
         }
     }
@@ -120,44 +136,97 @@ impl ResultsGrid {
         cx.notify();
     }
 
-    pub fn push(&mut self, record: PageRecord, cx: &mut Context<Self>) {
+    /// Applies a change to the rows, then brings the counts up to date in the
+    /// background.
+    fn update_rows(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut ResultsDelegate)) {
         self.state.update(cx, |state, cx| {
-            state.delegate_mut().push(record);
+            change(state.delegate_mut());
             state.refresh(cx);
         });
         cx.notify();
+        self.refresh_counts(cx);
+    }
+
+    /// Starts a counting pass when the counts are behind and none is running.
+    /// A running pass starts the next one when it lands, which then counts the
+    /// pages streamed in meanwhile. Until a pass lands, the tabs keep showing
+    /// the counts before it.
+    fn refresh_counts(&mut self, cx: &mut Context<Self>) {
+        if self.counts_task.is_some() || self.state.read(cx).delegate().counts_are_current() {
+            return;
+        }
+        let wait = self
+            .counts_started_at
+            .map(|started_at| COUNTS_INTERVAL.saturating_sub(started_at.elapsed()))
+            .unwrap_or_default();
+        self.counts_task = Some(cx.spawn(async move |this, cx| {
+            if !wait.is_zero() {
+                cx.background_executor().timer(wait).await;
+            }
+            // Taken after the wait, so it counts the pages that arrived during it.
+            let job = this.update(cx, |grid, cx| {
+                grid.counts_started_at = Some(Instant::now());
+                let job = grid
+                    .state
+                    .update(cx, |state, _| state.delegate_mut().counts_job());
+                if job.is_none() {
+                    grid.counts_task = None;
+                }
+                job
+            });
+            let job = match job {
+                Ok(Some(job)) => job,
+                Ok(None) => return,
+                Err(error) => {
+                    tracing::error!(%error, "the results grid went away before counting");
+                    return;
+                }
+            };
+            let counted = cx.background_spawn(async move { job.run() }).await;
+            if let Err(error) = this.update(cx, |grid, cx| {
+                grid.counts_task = None;
+                grid.state.update(cx, |state, cx| {
+                    state.delegate_mut().finish_counts(counted);
+                    state.refresh(cx);
+                });
+                cx.notify();
+                grid.refresh_counts(cx);
+            }) {
+                tracing::error!(%error, "the results grid went away while counting");
+            }
+        }));
     }
 
     pub fn push_many(&mut self, records: Vec<PageRecord>, cx: &mut Context<Self>) {
-        self.state.update(cx, |state, cx| {
-            state.delegate_mut().push_many(records);
-            state.refresh(cx);
-        });
-        cx.notify();
+        self.update_rows(cx, |delegate| delegate.push_many(records));
     }
 
-    /// Swaps a prepared crawl in, and leaves the loading state. The primed
-    /// counts go in last: every other step invalidates them.
+    /// Adds the streamed records the grid does not hold yet. A crawl read back
+    /// from the database while it runs may already hold pages that were still
+    /// on their way to the grid when the read began.
+    pub fn push_unseen(&mut self, records: Vec<PageRecord>, cx: &mut Context<Self>) {
+        let unseen = self.state.read(cx).delegate().without_held(records);
+        self.push_many(unseen, cx);
+    }
+
+    /// Swaps a prepared crawl in, and leaves the loading state.
     pub fn load_prepared(
         &mut self,
         prepared: PreparedCrawl,
         root_url: &str,
         cx: &mut Context<Self>,
     ) {
-        self.state.update(cx, |state, cx| {
-            let delegate = state.delegate_mut();
+        self.loading = false;
+        self.update_rows(cx, |delegate| {
             delegate.clear();
             delegate.set_root_url(root_url);
             delegate.apply_loaded_crawl(
                 prepared.pages,
                 prepared.baseline,
                 prepared.baseline_issue_counts,
+                prepared.counted,
             );
-            delegate.prime_counts(prepared.tab_filter_counts);
-            state.refresh(cx);
         });
-        self.loading = false;
-        cx.notify();
     }
 
     pub fn layout_context(&self) -> &LayoutContext {
@@ -182,11 +251,7 @@ impl ResultsGrid {
             return;
         }
         self.layout.note = None;
-        self.state.update(cx, |state, cx| {
-            state.delegate_mut().set_layout_changes(layout_changes);
-            state.refresh(cx);
-        });
-        cx.notify();
+        self.update_rows(cx, |delegate| delegate.set_layout_changes(layout_changes));
     }
 
     pub fn has_layouts(&self, cx: &App) -> bool {
@@ -195,35 +260,25 @@ impl ResultsGrid {
 
     pub fn clear(&mut self, cx: &mut Context<Self>) {
         self.layout = LayoutContext::default();
-        self.state.update(cx, |state, cx| {
-            state.delegate_mut().clear();
-            state.refresh(cx);
-        });
-        cx.notify();
+        self.update_rows(cx, |delegate| delegate.clear());
     }
 
     pub fn switch_tab(&mut self, tab: ResultTab, cx: &mut Context<Self>) {
-        self.state.update(cx, |state, cx| {
-            state.delegate_mut().switch_tab(tab);
-            state.refresh(cx);
-        });
-        cx.notify();
+        self.update_rows(cx, |delegate| delegate.switch_tab(tab));
     }
 
     pub fn set_issue_filter(&mut self, filter: IssueFilter, cx: &mut Context<Self>) {
-        self.state.update(cx, |state, cx| {
-            state.delegate_mut().set_issue_filter(filter);
-            state.refresh(cx);
-        });
-        cx.notify();
+        self.update_rows(cx, |delegate| delegate.set_issue_filter(filter));
     }
 
     pub fn set_root_url(&mut self, root_url: &str, cx: &mut Context<Self>) {
-        self.state.update(cx, |state, cx| {
-            state.delegate_mut().set_root_url(root_url);
-            state.refresh(cx);
-        });
-        cx.notify();
+        self.update_rows(cx, |delegate| delegate.set_root_url(root_url));
+    }
+
+    #[cfg(test)]
+    pub(super) fn scroll_to_row_for_bench(&mut self, row_ix: usize, cx: &mut Context<Self>) {
+        self.state
+            .update(cx, |state, cx| state.scroll_to_row(row_ix, cx));
     }
 
     pub fn has_baseline(&self, cx: &App) -> bool {
@@ -242,30 +297,30 @@ impl ResultsGrid {
         self.state.read(cx).delegate().filtered_count()
     }
 
-    /// Per-tab badge counts. Goes through `state.update` so the delegate's lazy
-    /// counts cache can fill on first access.
-    pub fn tab_badges(&self, cx: &mut App) -> HashMap<ResultTab, TabCounts> {
-        self.state.update(cx, |state, _cx| {
-            state
-                .delegate_mut()
-                .tab_filter_counts()
-                .iter()
-                .map(|(&tab, counts)| (tab, counts.badge.clone()))
-                .collect()
-        })
+    /// Per-tab badge counts, from the latest counting pass.
+    pub fn tab_badges(&self, cx: &App) -> HashMap<ResultTab, TabCounts> {
+        self.state
+            .read(cx)
+            .delegate()
+            .displayed_counts()
+            .map(|counts| {
+                counts
+                    .iter()
+                    .map(|(&tab, counts)| (tab, counts.badge.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
-    /// The sub-filter counts for the active tab, in `filters_for_tab` order.
-    pub fn active_filter_counts(&self, cx: &mut App) -> Vec<(IssueFilter, usize)> {
-        self.state.update(cx, |state, _cx| {
-            let tab = state.delegate().active_tab;
-            state
-                .delegate_mut()
-                .tab_filter_counts()
-                .get(&tab)
-                .map(|counts| counts.filter_counts.clone())
-                .unwrap_or_default()
-        })
+    /// The sub-filter counts for the active tab, in `filters_for_tab` order,
+    /// from the latest counting pass.
+    pub fn active_filter_counts(&self, cx: &App) -> Vec<(IssueFilter, usize)> {
+        let delegate = self.state.read(cx).delegate();
+        delegate
+            .displayed_counts()
+            .and_then(|counts| counts.get(&delegate.active_tab))
+            .map(|counts| counts.filter_counts.clone())
+            .unwrap_or_default()
     }
 
     #[allow(dead_code)]
@@ -413,8 +468,8 @@ mod tests {
         lazy.set_baseline(baseline_pages, started_at);
         let expected = lazy.tab_filter_counts().clone();
 
-        assert_eq!(prepared.tab_filter_counts.len(), expected.len());
-        for (tab, counts) in &prepared.tab_filter_counts {
+        assert_eq!(prepared.counted.counts().len(), expected.len());
+        for (tab, counts) in prepared.counted.counts() {
             let want = expected.get(tab).expect("every tab is counted");
             assert_eq!(counts.filter_counts, want.filter_counts, "{tab:?}");
             assert_eq!(counts.badge.total, want.badge.total, "{tab:?}");

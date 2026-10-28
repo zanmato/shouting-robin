@@ -344,7 +344,13 @@ fn run_scenario(scenario: Scenario, cx: &mut BenchAppContext) {
     });
     window.update(|_, cx| {
         panel.update(cx, |panel, cx| {
-            panel.set_selected(Some(DetailsSelection::Page(Box::new(pages[0].clone()))), cx);
+            panel.set_selected(
+                Some(DetailsSelection::Page {
+                    record: Box::new(pages[0].clone()),
+                    references: Vec::new(),
+                }),
+                cx,
+            );
             panel.active_tab = scenario.tab;
             cx.notify();
         });
@@ -392,7 +398,13 @@ fn run_scenario(scenario: Scenario, cx: &mut BenchAppContext) {
             }
             Frame::SwitchPage => {
                 let page = pages[frame_index % pages.len()].clone();
-                panel.set_selected(Some(DetailsSelection::Page(Box::new(page))), cx);
+                panel.set_selected(
+                    Some(DetailsSelection::Page {
+                        record: Box::new(page),
+                        references: Vec::new(),
+                    }),
+                    cx,
+                );
             }
         }
         cx.notify();
