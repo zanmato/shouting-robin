@@ -2,6 +2,41 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3] - 2026-10-28
+
+### Features
+
+- Flagged page titles, meta descriptions and H1s that contain HTML
+  entities such as `&amp;`
+- Listed the pages that reference an image or other resource, in a
+  Referenced by tab
+- Notified you through the system when a crawl finishes while the app is
+  in the background
+- Shortened large counts in tab badges, filters and the crawl history
+  (1.2k, 39k, 1.2M), with the exact count on hover
+- Showed each step while a crawl loads, with a progress bar
+- Attributed sitemap URLs to the child sitemap that lists them, in place
+  of the sitemap index
+- Identified crawls as Shouting Robin in the user agent
+- Played a motion demo on the website in place of the Overview screenshot
+
+### Performance
+
+- Counted tabs and filters in the background, so large crawls stay
+  responsive while pages stream in
+- Cached the Changes tab entries, so large comparisons no longer freeze
+  the app
+- Read a page's backlinks when it is selected in place of loading every
+  backlink with the crawl, so crawls open faster
+
+### Fixes
+
+- Read robots.txt from the site root when a crawl starts in a folder
+- Kept a running crawl from updating a previous crawl you switched to,
+  and from comparing against the wrong baseline
+- Kept the advanced settings closed when a crawl stops
+- Showed backlinks in the details panel while a crawl is still running
+
 ## [0.2.2] - 2026-10-23
 
 ### Features
