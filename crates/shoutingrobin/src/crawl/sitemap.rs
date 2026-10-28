@@ -63,23 +63,17 @@ pub async fn fetch_sitemap_urls(
     let mut visited: HashSet<String> = HashSet::new();
 
     for sitemap_url in sitemap_urls {
-        expand_sitemap(
-            client,
-            sitemap_url,
-            sitemap_url,
-            max_depth,
-            &mut visited,
-            &mut results,
-        )
-        .await;
+        expand_sitemap(client, sitemap_url, max_depth, &mut visited, &mut results).await;
     }
 
     results
 }
 
+/// Records each URL under the sitemap file that lists it, not the index that
+/// led there: with an index of several files, the file is where a bad entry
+/// has to be fixed.
 async fn expand_sitemap(
     client: &reqwest::Client,
-    root_sitemap: &str,
     url: &str,
     depth_left: usize,
     visited: &mut HashSet<String>,
@@ -98,7 +92,6 @@ async fn expand_sitemap(
         for child in child_sitemaps {
             Box::pin(expand_sitemap(
                 client,
-                root_sitemap,
                 &child,
                 depth_left.saturating_sub(1),
                 visited,
@@ -118,7 +111,7 @@ async fn expand_sitemap(
             let page_url = crate::crawl::url_norm::normalize_url(&entry.loc)
                 .unwrap_or_else(|| entry.loc.trim().to_string());
             results.push(SitemapUrl {
-                sitemap_url: root_sitemap.to_string(),
+                sitemap_url: url.to_string(),
                 page_url,
                 lastmod: entry.lastmod,
                 hreflang: entry.hreflang,
@@ -423,6 +416,77 @@ mod tests {
         let html = "<html><body>Hello</body></html>";
         assert!(parse_urlset(html).is_none());
         assert!(parse_sitemap_index(html).is_none());
+    }
+
+    /// Serves `/index.xml` naming two child sitemaps, and the children.
+    fn spawn_sitemap_server() -> u16 {
+        use std::io::{BufRead as _, BufReader, Write as _};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("address").port();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(mut stream) = stream else { continue };
+                let mut request_line = String::new();
+                if BufReader::new(&stream)
+                    .read_line(&mut request_line)
+                    .is_err()
+                {
+                    continue;
+                }
+                let path = request_line.split_whitespace().nth(1).unwrap_or("/");
+                let base = format!("http://127.0.0.1:{port}");
+                let body = match path {
+                    "/index.xml" => format!(
+                        "<sitemapindex xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\
+                         <sitemap><loc>{base}/products.xml</loc></sitemap>\
+                         <sitemap><loc>{base}/pages.xml</loc></sitemap></sitemapindex>"
+                    ),
+                    "/products.xml" => format!(
+                        "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\
+                         <url><loc>{base}/product</loc></url></urlset>"
+                    ),
+                    "/pages.xml" => format!(
+                        "<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\
+                         <url><loc>{base}/about</loc></url></urlset>"
+                    ),
+                    _ => String::new(),
+                };
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                if let Err(error) = stream.write_all(response.as_bytes()) {
+                    eprintln!("sitemap test server: {error}");
+                }
+            }
+        });
+        port
+    }
+
+    #[test]
+    fn a_url_is_attributed_to_the_child_sitemap_that_lists_it() {
+        let port = spawn_sitemap_server();
+        let base = format!("http://127.0.0.1:{port}");
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let entries = runtime.block_on(fetch_sitemap_urls(
+            &reqwest::Client::new(),
+            &[format!("{base}/index.xml")],
+            3,
+        ));
+        let attributed: Vec<(String, String)> = entries
+            .into_iter()
+            .map(|entry| (entry.page_url, entry.sitemap_url))
+            .collect();
+        assert_eq!(
+            attributed,
+            vec![
+                (format!("{base}/product"), format!("{base}/products.xml")),
+                (format!("{base}/about"), format!("{base}/pages.xml")),
+            ]
+        );
     }
 
     #[test]
