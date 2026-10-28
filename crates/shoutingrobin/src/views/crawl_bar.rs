@@ -281,7 +281,7 @@ impl CrawlBar {
         }
         let config = self.build_config(cx);
         self.default_mode = mode;
-        self.running = true;
+        self.mark_running();
         cx.emit(CrawlBarEvent::Start { url, mode, config });
         cx.notify();
     }
@@ -329,8 +329,16 @@ impl CrawlBar {
         self.block_images = config.block_images;
         self.capture_layout = config.layout_capture.is_enabled();
         self.scroll_for_layout = config.layout_capture.scrolls();
-        self.running = true;
+        self.mark_running();
         cx.notify();
+    }
+
+    /// The advanced settings are hidden while a crawl runs. Closing them here
+    /// keeps a panel left open at Start from reappearing when the crawl ends,
+    /// long after it was last seen.
+    fn mark_running(&mut self) {
+        self.running = true;
+        self.advanced_open = false;
     }
 
     fn on_stop(&mut self, _: &gpui_kit::ClickEvent, _: &mut Window, cx: &mut Context<Self>) {
