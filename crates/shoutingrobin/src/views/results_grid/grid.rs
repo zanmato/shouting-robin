@@ -4,15 +4,18 @@ use std::time::{Duration, Instant};
 
 use gpui_kit::component::{
     ActiveTheme, Sizable as _, Size,
+    progress::Progress,
     spinner::Spinner,
     table::{DataTable, TableEvent, TableState},
 };
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext, Context, Entity, EventEmitter, IntoElement, ParentElement, Render,
     SharedString, Styled, Subscription, Task, Window, div,
 };
 
 use crate::crawl::event::PageRecord;
+use crate::storage::LoadStep;
 use crate::views::ResultTab;
 use crate::views::details_panel::DetailsSelection;
 
@@ -74,9 +77,51 @@ impl PreparedCrawl {
     }
 }
 
+/// What opening a crawl is busy with, for the loading screen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoadingStage {
+    Reading(LoadStep),
+    ReadingBaseline,
+    Counting,
+}
+
+impl LoadingStage {
+    const ALL: [LoadingStage; 6] = [
+        LoadingStage::Reading(LoadStep::Links),
+        LoadingStage::Reading(LoadStep::PageDetails),
+        LoadingStage::Reading(LoadStep::Inlinks),
+        LoadingStage::Reading(LoadStep::Pages),
+        LoadingStage::ReadingBaseline,
+        LoadingStage::Counting,
+    ];
+
+    fn label(self) -> &'static str {
+        match self {
+            LoadingStage::Reading(LoadStep::Links) => "Reading links",
+            LoadingStage::Reading(LoadStep::PageDetails) => {
+                "Reading images, structured data and other page details"
+            }
+            LoadingStage::Reading(LoadStep::Inlinks) => "Counting inlinks",
+            LoadingStage::Reading(LoadStep::Pages) => "Reading pages",
+            LoadingStage::ReadingBaseline => "Reading the previous crawl to compare with",
+            LoadingStage::Counting => "Counting issues",
+        }
+    }
+
+    /// How far along the load is, as a percentage of its steps done.
+    fn percent_done(self) -> f32 {
+        let position = Self::ALL
+            .iter()
+            .position(|stage| *stage == self)
+            .unwrap_or_default();
+        position as f32 * 100. / Self::ALL.len() as f32
+    }
+}
+
 pub struct ResultsGrid {
     state: Entity<TableState<ResultsDelegate>>,
     loading: bool,
+    loading_stage: Option<LoadingStage>,
     layout: LayoutContext,
     /// The counting pass in flight, or waiting out `COUNTS_INTERVAL`.
     counts_task: Option<Task<()>>,
@@ -117,6 +162,7 @@ impl ResultsGrid {
         Self {
             state,
             loading: false,
+            loading_stage: None,
             layout: LayoutContext::default(),
             counts_task: None,
             counts_started_at: None,
@@ -133,6 +179,18 @@ impl ResultsGrid {
             return;
         }
         self.loading = loading;
+        self.loading_stage = None;
+        cx.notify();
+    }
+
+    /// Names the step a load has reached. Ignored unless the loading screen
+    /// is up: the reload at the end of a live crawl keeps the streamed rows on
+    /// screen rather than replacing them with a spinner.
+    pub fn set_loading_stage(&mut self, stage: LoadingStage, cx: &mut Context<Self>) {
+        if !self.loading || self.loading_stage == Some(stage) {
+            return;
+        }
+        self.loading_stage = Some(stage);
         cx.notify();
     }
 
@@ -217,6 +275,7 @@ impl ResultsGrid {
         cx: &mut Context<Self>,
     ) {
         self.loading = false;
+        self.loading_stage = None;
         self.update_rows(cx, |delegate| {
             delegate.clear();
             delegate.set_root_url(root_url);
@@ -400,7 +459,19 @@ impl Render for ResultsGrid {
                 .gap_3()
                 .text_color(cx.theme().muted_foreground)
                 .child(Spinner::new().with_size(Size::Large))
-                .child(div().text_sm().child("Loading crawl…"))
+                .child(
+                    div().text_sm().child(
+                        self.loading_stage
+                            .map_or("Loading crawl…", LoadingStage::label),
+                    ),
+                )
+                .when_some(self.loading_stage, |el, stage| {
+                    el.child(
+                        Progress::new("crawl-loading-progress")
+                            .w(gpui_kit::px(240.))
+                            .value(stage.percent_done()),
+                    )
+                })
                 .into_any_element()
         } else {
             DataTable::new(&self.state)

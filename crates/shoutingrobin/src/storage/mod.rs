@@ -961,32 +961,32 @@ pub async fn update_hreflang_issues(
     Ok(())
 }
 
-pub async fn load_backlinks_for_crawl(
+/// The links pointing at one URL in a crawl, in the order they were found.
+/// Read when a page is selected rather than with the crawl: every page's list
+/// together runs to hundreds of thousands of rows, and only the selected
+/// page's is ever shown. External targets are included, since the page that
+/// holds an external link is the only way to find where a broken one has to
+/// be fixed.
+pub async fn load_backlinks_for_page(
     pool: &SqlitePool,
     crawl_id: i64,
-) -> Result<std::collections::HashMap<String, Vec<crate::crawl::event::Backlink>>, sqlx::Error> {
-    // External targets are included: the page that holds an external link is
-    // the only way to find where a broken one has to be fixed.
-    let rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>)>(
-        "SELECT dst_url, src_url, anchor, rel FROM links WHERE crawl_id = ?",
+    url: &str,
+) -> Result<Vec<crate::crawl::event::Backlink>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
+        "SELECT src_url, anchor, rel FROM links WHERE crawl_id = ? AND dst_url = ? ORDER BY id",
     )
     .bind(crawl_id)
+    .bind(url)
     .fetch_all(pool)
     .await?;
-
-    let mut backlinks: std::collections::HashMap<String, Vec<crate::crawl::event::Backlink>> =
-        std::collections::HashMap::new();
-    for (dst_url, src_url, anchor, rel) in rows {
-        backlinks
-            .entry(dst_url)
-            .or_default()
-            .push(crate::crawl::event::Backlink {
-                source_url: src_url,
-                anchor,
-                rel,
-            });
-    }
-    Ok(backlinks)
+    Ok(rows
+        .into_iter()
+        .map(|(source_url, anchor, rel)| crate::crawl::event::Backlink {
+            source_url,
+            anchor,
+            rel,
+        })
+        .collect())
 }
 
 #[derive(Debug, Clone)]
@@ -1141,11 +1141,32 @@ pub async fn find_previous_crawl(
     Ok(row.map(crawl_row))
 }
 
+/// The parts of reading a crawl back, in the order they run, so a loading
+/// screen can say what it is waiting for.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoadStep {
+    Links,
+    PageDetails,
+    Inlinks,
+    Pages,
+}
+
 pub async fn load_pages_for_crawl(
     pool: &SqlitePool,
     crawl_id: i64,
     root_url: &str,
 ) -> Result<Vec<PageRecord>, sqlx::Error> {
+    load_pages_for_crawl_reporting(pool, crawl_id, root_url, |_| {}).await
+}
+
+/// [`load_pages_for_crawl`], calling `report` as each step begins.
+pub async fn load_pages_for_crawl_reporting(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    root_url: &str,
+    mut report: impl FnMut(LoadStep),
+) -> Result<Vec<PageRecord>, sqlx::Error> {
+    report(LoadStep::Links);
     let outlink_rows = sqlx::query_as::<_, (String, String, Option<String>, Option<String>, i64)>(
         r#"
         SELECT src_url, dst_url, anchor, rel, csr_only
@@ -1157,6 +1178,7 @@ pub async fn load_pages_for_crawl(
     .fetch_all(pool)
     .await?;
 
+    report(LoadStep::PageDetails);
     let perf_rows =
         sqlx::query_as::<_, (String, Option<i64>, Option<i64>, Option<f64>, Option<i64>)>(
             r#"
@@ -1387,6 +1409,7 @@ pub async fn load_pages_for_crawl(
         );
     }
 
+    report(LoadStep::Inlinks);
     let inlink_rows = sqlx::query_as::<_, (String, i64, i64, i64, i64)>(
         r#"
         SELECT dst_url,
@@ -1413,8 +1436,6 @@ pub async fn load_pages_for_crawl(
         })
         .collect();
 
-    let mut backlinks = load_backlinks_for_crawl(pool, crawl_id).await?;
-
     let mut outlinks_by_url: std::collections::HashMap<String, Vec<Outlink>> =
         std::collections::HashMap::new();
     for (src_url, dst_url, anchor, rel, csr_only) in outlink_rows {
@@ -1435,6 +1456,7 @@ pub async fn load_pages_for_crawl(
     // One pass over `pages`, keyed by URL: several aligned scans joined by row
     // position put another page's title on a URL the moment one of them grew a
     // WHERE clause.
+    report(LoadStep::Pages);
     let page_rows = sqlx::query(
         r#"
         SELECT url, status, title, size_bytes, content_type, meta_description, h1, h2,
@@ -1577,7 +1599,8 @@ pub async fn load_pages_for_crawl(
             blocked_by_robots: blocked_by_robots.map(|b| b != 0),
             h2_non_sequential: h2_non_sequential.map(|b| b != 0),
             link_score: row.try_get("link_score")?,
-            backlinks: backlinks.remove(&url).unwrap_or_default(),
+            // Read per page on selection, see `load_backlinks_for_page`.
+            backlinks: Vec::new(),
             url,
             layout,
             ..Default::default()
@@ -1688,4 +1711,158 @@ pub async fn load_sitemap_orphans(
             lastmod,
         })
         .collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn config() -> crate::crawl::CrawlConfig {
+        crate::crawl::CrawlConfig {
+            max_pages: 0,
+            max_concurrent: 1,
+            delay_ms: 0,
+            timeout_seconds: 10,
+            respect_robots_txt: false,
+            follow_sitemaps: false,
+            block_images: false,
+            near_duplicate_threshold: 90,
+            content_selector: String::new(),
+            user_agent: None,
+            extra_headers: Vec::new(),
+            include_patterns: Vec::new(),
+            exclude_patterns: Vec::new(),
+            crawl_subdomains: false,
+            list_mode: false,
+            seed_urls: Vec::new(),
+            check_resources: false,
+            layout_capture: crate::crawl::LayoutCapture::Off,
+        }
+    }
+
+    async fn test_pool() -> SqlitePool {
+        let pool = SqlitePool::connect_lazy("sqlite::memory:").expect("pool");
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
+        )
+        .execute(&pool)
+        .await
+        .expect("migrations table");
+        run_migrations(&pool).await.expect("migrations");
+        pool
+    }
+
+    fn link(dst_url: &str, anchor: &str) -> crate::crawl::event::Outlink {
+        crate::crawl::event::Outlink {
+            dst_url: dst_url.into(),
+            anchor: Some(anchor.into()),
+            rel: None,
+            csr_only: false,
+        }
+    }
+
+    /// The details panel reads one page's backlinks when it is selected, so
+    /// they have to be that page's and in the order the links were found.
+    #[test]
+    fn a_page_reads_only_its_own_backlinks() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let backlinks = runtime.block_on(async {
+            let pool = test_pool().await;
+            let crawl_id = create_crawl(&pool, "https://a.test/", "http", &config())
+                .await
+                .expect("crawl");
+            for (url, outlinks) in [
+                (
+                    "https://a.test/one",
+                    vec![
+                        link("https://a.test/target", "First"),
+                        link("https://a.test/other", "Other"),
+                    ],
+                ),
+                (
+                    "https://a.test/two",
+                    vec![link("https://a.test/target", "Second")],
+                ),
+            ] {
+                insert_page(
+                    &pool,
+                    crawl_id,
+                    &PageRecord {
+                        url: url.into(),
+                        status: Some(200),
+                        is_page: true,
+                        outlinks,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("page");
+            }
+            load_backlinks_for_page(&pool, crawl_id, "https://a.test/target")
+                .await
+                .expect("backlinks")
+        });
+        let found: Vec<(&str, Option<&str>)> = backlinks
+            .iter()
+            .map(|backlink| (backlink.source_url.as_str(), backlink.anchor.as_deref()))
+            .collect();
+        assert_eq!(
+            found,
+            vec![
+                ("https://a.test/one", Some("First")),
+                ("https://a.test/two", Some("Second")),
+            ]
+        );
+    }
+
+    /// The loading screen names each step as it starts, so the steps have to
+    /// be reported in the order they run and the crawl still has to come back
+    /// whole.
+    #[test]
+    fn a_load_reports_its_steps_in_order() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (steps, pages) = runtime.block_on(async {
+            let pool = test_pool().await;
+            let root = "https://a.test/";
+            let crawl_id = create_crawl(&pool, root, "http", &config())
+                .await
+                .expect("crawl");
+            insert_page(
+                &pool,
+                crawl_id,
+                &PageRecord {
+                    url: root.into(),
+                    status: Some(200),
+                    is_page: true,
+                    is_internal: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("page");
+
+            let mut steps = Vec::new();
+            let pages =
+                load_pages_for_crawl_reporting(&pool, crawl_id, root, |step| steps.push(step))
+                    .await
+                    .expect("load");
+            (steps, pages)
+        });
+        assert_eq!(
+            steps,
+            vec![
+                LoadStep::Links,
+                LoadStep::PageDetails,
+                LoadStep::Inlinks,
+                LoadStep::Pages
+            ]
+        );
+        assert_eq!(pages.len(), 1);
+    }
 }

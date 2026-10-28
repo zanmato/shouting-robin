@@ -32,7 +32,9 @@ use crate::views::{
     crawls_sidebar::CrawlsSidebarEvent,
     details_panel::DetailsPanelEvent,
     layout_view::LayoutView,
-    results_grid::{IssueFilter, LayoutContext, PreparedCrawl, ResultsGridEvent, filters_for_tab},
+    results_grid::{
+        IssueFilter, LayoutContext, LoadingStage, PreparedCrawl, ResultsGridEvent, filters_for_tab,
+    },
 };
 
 actions!(shoutingrobin_app, [Quit, OpenSettings]);
@@ -120,8 +122,9 @@ impl ShoutingRobinApp {
             move |this, _grid, event: &ResultsGridEvent, cx| match event {
                 ResultsGridEvent::Selected(row_ix) => {
                     let selection = results_for_grid.read(cx).selection_at(*row_ix, cx);
+                    let crawl_id = this.crawl_on_screen;
                     details_for_grid.update(cx, |panel, cx| {
-                        panel.set_selected(selection, cx);
+                        panel.set_selected(selection, crawl_id, cx);
                     });
                 }
                 ResultsGridEvent::OverviewDrillDown { tab, filter } => {
@@ -599,7 +602,42 @@ impl ShoutingRobinApp {
         cx: &mut App,
     ) {
         cx.spawn(async move |cx| {
-            let pages = crate::storage::load_pages_for_crawl(&pool, crawl_id, &root_url).await;
+            // Reading and decoding a large crawl takes seconds, so it runs off
+            // the foreground thread and names each step as it starts.
+            let (steps, step_updates) = flume::unbounded::<LoadingStage>();
+            cx.spawn({
+                let results_grid = results_grid.clone();
+                async move |cx| {
+                    while let Ok(stage) = step_updates.recv_async().await {
+                        cx.update(|cx| {
+                            results_grid.update(cx, |grid, cx| grid.set_loading_stage(stage, cx));
+                        });
+                    }
+                }
+            })
+            .detach();
+            let report = move |stage: LoadingStage| {
+                if steps.send(stage).is_err() {
+                    tracing::debug!(?stage, "nothing is showing the load's progress");
+                }
+            };
+
+            let pages = cx
+                .background_spawn({
+                    let pool = pool.clone();
+                    let root_url = root_url.clone();
+                    let report = report.clone();
+                    async move {
+                        crate::storage::load_pages_for_crawl_reporting(
+                            &pool,
+                            crawl_id,
+                            &root_url,
+                            |step| report(LoadingStage::Reading(step)),
+                        )
+                        .await
+                    }
+                })
+                .await;
             let pages = match pages {
                 Ok(pages) => pages,
                 Err(e) => {
@@ -621,19 +659,31 @@ impl ShoutingRobinApp {
                     }
                 };
             let baseline = match &previous {
-                Some(previous) => match crate::storage::load_pages_for_crawl(
-                    &pool,
-                    previous.id,
-                    &previous.root_url,
-                )
-                .await
-                {
-                    Ok(baseline_pages) => Some((baseline_pages, previous.started_at)),
-                    Err(e) => {
-                        tracing::error!(error=%e, "failed to load baseline pages");
-                        None
+                Some(previous) => {
+                    report(LoadingStage::ReadingBaseline);
+                    let loaded = cx
+                        .background_spawn({
+                            let pool = pool.clone();
+                            let previous_id = previous.id;
+                            let previous_root = previous.root_url.clone();
+                            async move {
+                                crate::storage::load_pages_for_crawl(
+                                    &pool,
+                                    previous_id,
+                                    &previous_root,
+                                )
+                                .await
+                            }
+                        })
+                        .await;
+                    match loaded {
+                        Ok(baseline_pages) => Some((baseline_pages, previous.started_at)),
+                        Err(e) => {
+                            tracing::error!(error=%e, "failed to load baseline pages");
+                            None
+                        }
                     }
-                },
+                }
                 None => None,
             };
             let layout_capture = match crate::storage::load_crawl_config(&pool, crawl_id).await {
@@ -650,6 +700,7 @@ impl ShoutingRobinApp {
 
             // Both crawls move into the task and back out, so nothing is
             // copied to get them there.
+            report(LoadingStage::Counting);
             let prepared = cx
                 .background_spawn({
                     let root_url = root_url.clone();

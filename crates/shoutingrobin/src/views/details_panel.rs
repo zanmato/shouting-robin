@@ -9,9 +9,9 @@ use gpui_kit::component::{
     scroll::ScrollableElement as _, tooltip::Tooltip, v_virtual_list,
 };
 use gpui_kit::{
-    AnyElement, App, ClipboardItem, Context, Entity, EventEmitter, Hsla, InteractiveElement,
-    IntoElement, ParentElement, Pixels, Render, SharedString, Size, StatefulInteractiveElement,
-    Styled, Window, div, prelude::FluentBuilder, px,
+    AnyElement, App, AppContext as _, ClipboardItem, Context, Entity, EventEmitter, Hsla,
+    InteractiveElement, IntoElement, ParentElement, Pixels, Render, SharedString, Size,
+    StatefulInteractiveElement, Styled, Task, Window, div, prelude::FluentBuilder, px,
 };
 
 use crate::a11y_rules::rule_description;
@@ -117,6 +117,9 @@ pub struct DetailsPanel {
     /// Web Vitals are measured in a browser, so for an HTTP crawl those two
     /// sections can only ever be a column of dashes.
     render_mode: RenderMode,
+    /// Reads the selected page's backlinks. Replaced, and so cancelled, by the
+    /// next selection.
+    backlinks_load: Option<Task<()>>,
 }
 
 impl DetailsPanel {
@@ -127,6 +130,7 @@ impl DetailsPanel {
             json_views: Vec::new(),
             html_views: Vec::new(),
             inlinks_scroll: VirtualListScrollHandle::new(),
+            backlinks_load: None,
             outlinks_scroll: VirtualListScrollHandle::new(),
             duplicates_scroll: VirtualListScrollHandle::new(),
             image_references_scroll: VirtualListScrollHandle::new(),
@@ -139,7 +143,51 @@ impl DetailsPanel {
         cx.notify();
     }
 
-    pub fn set_selected(&mut self, selection: Option<DetailsSelection>, cx: &mut Context<Self>) {
+    fn load_backlinks(&self, crawl_id: i64, url: String, cx: &mut Context<Self>) -> Task<()> {
+        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        cx.spawn(async move |panel, cx| {
+            let loaded = cx
+                .background_spawn({
+                    let url = url.clone();
+                    async move { crate::storage::load_backlinks_for_page(&pool, crawl_id, &url).await }
+                })
+                .await;
+            let backlinks = match loaded {
+                Ok(backlinks) => backlinks,
+                Err(error) => {
+                    tracing::error!(%error, %url, "failed to read the page's backlinks");
+                    return;
+                }
+            };
+            let filled = panel.update(cx, |panel, cx| {
+                if let Some(DetailsSelection::Page { record, .. }) = &mut panel.selected
+                    && record.url == url
+                {
+                    record.backlinks = backlinks;
+                    cx.notify();
+                }
+            });
+            if let Err(error) = filled {
+                tracing::debug!(%error, "the details panel closed before its backlinks arrived");
+            }
+        })
+    }
+
+    /// Shows `selection`, a row of crawl `crawl_id`. A page's backlinks are
+    /// not loaded with the crawl, so they are read for it here; without a
+    /// crawl the record's own list is shown.
+    pub fn set_selected(
+        &mut self,
+        selection: Option<DetailsSelection>,
+        crawl_id: Option<i64>,
+        cx: &mut Context<Self>,
+    ) {
+        self.backlinks_load = match (&selection, crawl_id) {
+            (Some(DetailsSelection::Page { record, .. }), Some(crawl_id)) => {
+                Some(self.load_backlinks(crawl_id, record.url.clone(), cx))
+            }
+            _ => None,
+        };
         let record = match &selection {
             Some(DetailsSelection::Page { record, .. }) => Some(record.as_ref()),
             _ => None,
@@ -1242,7 +1290,7 @@ fn link_metrics_section(
         .child(row(
             order,
             "Backlinks",
-            SharedString::from(rec.backlinks.len().to_string()),
+            SharedString::from(backlink_count(rec).to_string()),
             muted,
         ))
         .child(row(
@@ -1588,6 +1636,12 @@ fn duplicate_row_sizes(row_count: usize) -> Rc<Vec<Size<Pixels>>> {
 /// The page a link or reference section is describing, or `None` when the
 /// selection is not a page. Used inside the virtual lists' render closures,
 /// which run against the panel rather than a captured record.
+/// How many links point at the page. Counted with the crawl, so the tab and
+/// the figure are right before the list itself has been read.
+fn backlink_count(rec: &PageRecord) -> usize {
+    (rec.inlinks_count as usize).max(rec.backlinks.len())
+}
+
 fn selected_page(panel: &DetailsPanel) -> Option<&PageRecord> {
     match &panel.selected {
         Some(DetailsSelection::Page { record, .. }) => Some(record),
@@ -1769,7 +1823,7 @@ fn tabs_for(selection: &DetailsSelection, panel: &DetailsPanel) -> Vec<(DetailsT
             for (tab, count) in [
                 (DetailsTab::NearDuplicates, rec.near_duplicate_urls.len()),
                 (DetailsTab::Images, rec.images.len()),
-                (DetailsTab::Inlinks, rec.backlinks.len()),
+                (DetailsTab::Inlinks, backlink_count(rec)),
                 (DetailsTab::References, references.len()),
                 (DetailsTab::Outlinks, rec.outlinks.len()),
             ] {

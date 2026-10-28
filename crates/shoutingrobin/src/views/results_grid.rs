@@ -15,7 +15,7 @@ pub use delegate::export_every_tab;
 pub use filter::filters_for_tab;
 #[cfg(test)]
 pub use filter::{matching_urls, tab_filter_counts_for_test};
-pub use grid::{LayoutContext, PreparedCrawl, ResultsGrid};
+pub use grid::{LayoutContext, LoadingStage, PreparedCrawl, ResultsGrid};
 #[cfg(test)]
 pub(crate) use types::tab_is_flattened;
 pub use types::{IssueFilter, ResultsGridEvent};

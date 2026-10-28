@@ -349,6 +349,7 @@ fn run_scenario(scenario: Scenario, cx: &mut BenchAppContext) {
                     record: Box::new(pages[0].clone()),
                     references: Vec::new(),
                 }),
+                None,
                 cx,
             );
             panel.active_tab = scenario.tab;
@@ -403,6 +404,7 @@ fn run_scenario(scenario: Scenario, cx: &mut BenchAppContext) {
                         record: Box::new(page),
                         references: Vec::new(),
                     }),
+                    None,
                     cx,
                 );
             }
