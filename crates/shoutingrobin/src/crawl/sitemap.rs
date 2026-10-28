@@ -17,20 +17,41 @@ pub struct SitemapUrl {
 
 pub async fn discover_sitemaps(client: &reqwest::Client, root_url: &str) -> Vec<String> {
     let mut sitemap_urls = Vec::new();
+    let Some(origin) = origin_of(root_url) else {
+        return sitemap_urls;
+    };
 
-    if let Ok(robots_sitemaps) = fetch_robots_sitemaps(client, root_url).await {
-        sitemap_urls.extend(robots_sitemaps);
+    // robots.txt only ever lives at the origin, so a crawl started at a
+    // language folder (`/nl`) must not look for it under that folder.
+    match fetch_url(client, &format!("{origin}/robots.txt")).await {
+        Ok(body) => sitemap_urls.extend(sitemaps_in_robots(&body)),
+        Err(error) => tracing::warn!(%error, "failed to fetch robots.txt"),
     }
 
-    let base = root_url.trim_end_matches('/');
-    for probe in &["/sitemap.xml", "/sitemap_index.xml"] {
-        let url = format!("{base}{probe}");
-        if !sitemap_urls.contains(&url) {
-            sitemap_urls.push(url);
+    // The conventional places, at the origin and, for a crawl started at a
+    // folder, under that folder too: a language folder can carry its own.
+    let folder = root_url.trim_end_matches('/');
+    let mut bases = vec![origin.as_str()];
+    if folder != origin {
+        bases.push(folder);
+    }
+    for base in bases {
+        for probe in ["/sitemap.xml", "/sitemap_index.xml"] {
+            let url = format!("{base}{probe}");
+            if !sitemap_urls.contains(&url) {
+                sitemap_urls.push(url);
+            }
         }
     }
 
     sitemap_urls
+}
+
+/// `scheme://host[:port]`, without a trailing slash.
+fn origin_of(url: &str) -> Option<String> {
+    let parsed = url::Url::parse(url).ok()?;
+    parsed.host_str()?;
+    Some(parsed.origin().ascii_serialization())
 }
 
 pub async fn fetch_sitemap_urls(
@@ -106,30 +127,17 @@ async fn expand_sitemap(
     }
 }
 
-async fn fetch_robots_sitemaps(
-    client: &reqwest::Client,
-    root_url: &str,
-) -> Result<Vec<String>, reqwest::Error> {
-    let base = root_url.trim_end_matches('/');
-    let robots_url = format!("{base}/robots.txt");
-    let body = fetch_url(client, &robots_url).await?;
-
-    let mut sitemaps = Vec::new();
-    for line in body.lines() {
-        let line = line.trim();
-        if let Some(url) = line.strip_prefix("Sitemap:") {
-            let url = url.trim().to_string();
-            if !url.is_empty() {
-                sitemaps.push(url);
-            }
-        } else if let Some(url) = line.strip_prefix("sitemap:") {
-            let url = url.trim().to_string();
-            if !url.is_empty() {
-                sitemaps.push(url);
-            }
-        }
-    }
-    Ok(sitemaps)
+/// The `Sitemap:` lines of a robots.txt. Field names are case-insensitive
+/// (RFC 9309), so `SITEMAP:` counts as much as `Sitemap:`.
+fn sitemaps_in_robots(body: &str) -> Vec<String> {
+    body.lines()
+        .filter_map(|line| {
+            let (field, value) = line.trim().split_once(':')?;
+            let value = value.trim();
+            (field.trim().eq_ignore_ascii_case("sitemap") && !value.is_empty())
+                .then(|| value.to_string())
+        })
+        .collect()
 }
 
 async fn fetch_url(client: &reqwest::Client, url: &str) -> Result<String, reqwest::Error> {
@@ -419,19 +427,29 @@ mod tests {
 
     #[test]
     fn extracts_robots_sitemaps() {
-        let robots = "User-agent: *\nDisallow: /admin/\n\nSitemap: https://example.com/sitemap.xml\nSitemap: https://example.com/sitemap-2.xml\n";
-        let mut sitemaps = Vec::new();
-        for line in robots.lines() {
-            let line = line.trim();
-            if let Some(url) = line.strip_prefix("Sitemap:") {
-                let url = url.trim().to_string();
-                if !url.is_empty() {
-                    sitemaps.push(url);
-                }
-            }
-        }
-        assert_eq!(sitemaps.len(), 2);
-        assert_eq!(sitemaps[0], "https://example.com/sitemap.xml");
+        let robots = "User-agent: *\nDisallow: /admin/\n\nSitemap: https://example.com/sitemap.xml\n  SITEMAP:https://example.com/sitemap-2.xml\nsitemap: \n";
+        assert_eq!(
+            sitemaps_in_robots(robots),
+            vec![
+                "https://example.com/sitemap.xml".to_string(),
+                "https://example.com/sitemap-2.xml".to_string(),
+            ]
+        );
+    }
+
+    /// A crawl started at a language folder still has its robots.txt and
+    /// conventional sitemaps at the origin.
+    #[test]
+    fn the_origin_of_a_folder_root_is_its_scheme_and_host() {
+        assert_eq!(
+            origin_of("https://www.debatterijpro.nl/nl").as_deref(),
+            Some("https://www.debatterijpro.nl")
+        );
+        assert_eq!(
+            origin_of("http://localhost:8080/sv/").as_deref(),
+            Some("http://localhost:8080")
+        );
+        assert_eq!(origin_of("not a url"), None);
     }
 
     #[test]
