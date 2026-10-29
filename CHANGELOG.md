@@ -37,6 +37,8 @@ All notable changes to this project will be documented in this file.
   other files, which have no page to describe
 - Gave Filter by This Value and Exclude This Value icons in a cell's context
   menu
+- Filled most of the loading bar with the reads when a crawl's counts are
+  stored, since restoring them takes a moment
 
 ## [0.2.3] - 2026-10-28
 

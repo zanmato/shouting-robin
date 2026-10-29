@@ -635,6 +635,7 @@ impl ShoutingRobinApp {
             // Reading and decoding a large crawl takes seconds, so it runs off
             // the foreground thread and counts off each read as it finishes.
             let with_baseline = previous.is_some();
+            let counts_stored = stored.is_some() && (!with_baseline || baseline_stored.is_some());
             let total = crate::storage::LoadStep::COUNT * if with_baseline { 2 } else { 1 };
             let (progress, progress_updates) = flume::unbounded::<LoadProgress>();
             cx.spawn({
@@ -648,6 +649,7 @@ impl ShoutingRobinApp {
                                     finished,
                                     total,
                                     with_baseline,
+                                    counts_stored,
                                 },
                                 cx,
                             )
@@ -661,9 +663,10 @@ impl ShoutingRobinApp {
                                     finished,
                                     total,
                                     with_baseline,
+                                    counts_stored,
                                 }
                             }
-                            LoadProgress::Counting => LoadingStage::Counting,
+                            LoadProgress::Counting => LoadingStage::Counting { counts_stored },
                         };
                         cx.update(|cx| {
                             results_grid.update(cx, |grid, cx| grid.set_loading_stage(stage, cx));

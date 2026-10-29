@@ -96,8 +96,11 @@ pub enum LoadingStage {
         finished: usize,
         total: usize,
         with_baseline: bool,
+        counts_stored: bool,
     },
-    Counting,
+    Counting {
+        counts_stored: bool,
+    },
 }
 
 impl LoadingStage {
@@ -108,19 +111,27 @@ impl LoadingStage {
                 ..
             } => "Reading the crawl and the previous one to compare with",
             LoadingStage::Reading { .. } => "Reading the crawl",
-            LoadingStage::Counting => "Counting issues",
+            LoadingStage::Counting { .. } => "Counting issues",
         }
     }
 
     /// How far along the load is. On a large crawl counting takes about as
-    /// long as all the reads together, so the reads fill the first half.
+    /// long as all the reads together, but restoring stored counts takes a
+    /// few percent of that, so then the reads fill nearly all of the bar.
     fn percent_done(self) -> f32 {
         match self {
             LoadingStage::Reading {
-                finished, total, ..
-            } => finished as f32 * 50. / total.max(1) as f32,
-            LoadingStage::Counting => 50.,
+                finished,
+                total,
+                counts_stored,
+                ..
+            } => finished as f32 * Self::reads_share(counts_stored) / total.max(1) as f32,
+            LoadingStage::Counting { counts_stored } => Self::reads_share(counts_stored),
         }
+    }
+
+    fn reads_share(counts_stored: bool) -> f32 {
+        if counts_stored { 95. } else { 50. }
     }
 }
 
