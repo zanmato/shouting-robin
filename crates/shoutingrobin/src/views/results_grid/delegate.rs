@@ -15,6 +15,7 @@ use gpui_kit::{
 use crate::a11y_rules::rule_description;
 use crate::crawl::event::PageRecord;
 use crate::crawl::layout::PageLayoutChange;
+use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, tone_tag, tone_text_color};
 use crate::views::ResultTab;
 use crate::views::details_panel::{DetailsSelection, ImageDetails, ImageReference};
@@ -1374,13 +1375,14 @@ impl TableDelegate for ResultsDelegate {
             });
         let text = cell.as_ref().map(|(_, text)| text.clone());
         let has_text = text.is_some();
-        let filter_item = |label: &'static str, exclude: bool| {
+        let filter_item = |label: &'static str, icon: Icon, exclude: bool| {
             let action = cell.clone().map(|(column, value)| FilterByValue {
                 column,
                 value,
                 exclude,
             });
             PopupMenuItem::new(label)
+                .icon(icon)
                 .disabled(action.is_none())
                 .on_click(move |_event, window, cx| {
                     if let Some(action) = &action {
@@ -1399,8 +1401,8 @@ impl TableDelegate for ResultsDelegate {
                 }),
         )
         .separator()
-        .item(filter_item("Filter by This Value", false))
-        .item(filter_item("Exclude This Value", true))
+        .item(filter_item("Filter by This Value", Icon::Filter, false))
+        .item(filter_item("Exclude This Value", Icon::FilterX, true))
     }
 
     fn render_td(
