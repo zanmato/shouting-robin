@@ -566,6 +566,9 @@ pub(super) fn is_mono_column(key: &str) -> bool {
                 | "redirect_url"
                 | "dir_path"
                 | "change_url"
+                | "ecom_price"
+                | "ecom_sku"
+                | "ecom_gtin"
         )
 }
 
