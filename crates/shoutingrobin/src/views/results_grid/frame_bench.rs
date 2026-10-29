@@ -224,6 +224,59 @@ fn results_grid_costs() {
     }
 }
 
+/// What a row filter costs on each tab: the rebuild a sub-filter click
+/// already pays, then the same rebuild narrowed by a search and by a
+/// condition, which is what each change in the filter bar triggers.
+#[test]
+#[ignore = "needs GRID_BENCH_DB and a release build"]
+fn results_grid_row_filter_costs() {
+    use super::row_filter::{FilterCondition, FilterOperator, RowFilter};
+    let Some(crawl) = load_crawl() else {
+        return;
+    };
+    let search = RowFilter {
+        search: std::env::var("GRID_BENCH_SEARCH").unwrap_or_else(|_| "blog".into()),
+        ..Default::default()
+    };
+    let condition = RowFilter {
+        conditions: vec![FilterCondition {
+            column: "address".into(),
+            operator: FilterOperator::Contains,
+            value: "blog".into(),
+        }],
+        ..Default::default()
+    };
+    let mut delegate = ResultsDelegate::new().count_in_background();
+    delegate.set_root_url(&crawl.root_url);
+    delegate.push_many(crawl.pages);
+    eprintln!(
+        "\n  {:<16} {:>10} {:>10} {:>10} {:>9} {:>9}",
+        "tab", "rebuild", "search", "condition", "rows", "kept"
+    );
+    for &tab in ResultTab::ALL {
+        delegate.switch_tab(tab);
+        let timed = |delegate: &mut ResultsDelegate, filter: &RowFilter| {
+            let started = Instant::now();
+            delegate.set_row_filter(tab, filter.clone());
+            started.elapsed()
+        };
+        let rebuild = timed(&mut delegate, &RowFilter::default());
+        let searched = timed(&mut delegate, &search);
+        let kept = delegate.filtered_count();
+        let conditioned = timed(&mut delegate, &condition);
+        delegate.set_row_filter(tab, RowFilter::default());
+        eprintln!(
+            "  {:<16} {:>7.1} ms {:>7.1} ms {:>7.1} ms {:>9} {:>9}",
+            format!("{tab:?}"),
+            milliseconds(rebuild),
+            milliseconds(searched),
+            milliseconds(conditioned),
+            delegate.rows_before_row_filter(),
+            kept
+        );
+    }
+}
+
 /// The grid as the app hosts it: every render of the app root asks the grid
 /// for its tab badges, the active tab's sub-filter counts, whether there are
 /// layouts and the row count, so a frame pays for those too.

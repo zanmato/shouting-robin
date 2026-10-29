@@ -1,6 +1,7 @@
 pub mod crawl_bar;
 pub mod crawls_sidebar;
 pub mod details_panel;
+pub mod filter_bar;
 pub mod layout_view;
 pub mod results_grid;
 pub mod status_bar;

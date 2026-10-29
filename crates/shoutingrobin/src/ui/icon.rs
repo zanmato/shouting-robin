@@ -111,7 +111,7 @@ impl Icon {
             FileSearch => "file-search",
             List => "list",
             Ban => "ban",
-            Filter => "filter",
+            Filter => "funnel",
             Lock => "lock",
             Unlock => "unlock",
             ExternalLink => "external-link",

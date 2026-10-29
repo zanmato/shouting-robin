@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::sync::{Arc, atomic::AtomicBool};
 
 use flume::Receiver;
 use gpui_kit::component::{
-    ActiveTheme, Icon as UiIcon, Sizable as _, TitleBar, WindowExt,
+    ActiveTheme, Icon as UiIcon, Selectable as _, Sizable as _, TitleBar, WindowExt,
     button::Button,
     global_state::GlobalState,
     h_flex,
@@ -31,10 +32,11 @@ use crate::views::{
     crawl_bar::CrawlBarEvent,
     crawls_sidebar::CrawlsSidebarEvent,
     details_panel::DetailsPanelEvent,
+    filter_bar::{CloseRowFilter, FilterBar, FilterBarEvent, FilterByValue, FindInResults},
     layout_view::LayoutView,
     results_grid::{
-        BaselineInput, FILTER_VERSION, IssueFilter, LayoutContext, LoadingStage, PreparedCrawl,
-        ResultsGridEvent, StoredCounts, filters_for_tab,
+        BaselineInput, FILTER_VERSION, FilterOperator, IssueFilter, LayoutContext, LoadingStage,
+        PreparedCrawl, ResultsGridEvent, RowFilter, StoredCounts, filters_for_tab,
     },
 };
 
@@ -46,7 +48,7 @@ pub(crate) const PANEL_RADIUS: gpui_kit::Pixels = px(8.);
 
 /// Gutter between the cards and the window edges. Half of it sits on each side
 /// of the split, so the gap between the two cards is the same as the outer one.
-const PANEL_GAP: gpui_kit::Pixels = px(6.);
+pub(crate) const PANEL_GAP: gpui_kit::Pixels = px(6.);
 
 /// Padding inside a segmented trough, around its segments.
 const SEGMENT_TROUGH_PADDING: gpui_kit::Pixels = px(3.);
@@ -104,6 +106,8 @@ pub struct ShoutingRobinApp {
     /// The crawl the grid shows or is loading. A load that lands after
     /// another crawl was picked is dropped rather than replacing it.
     crawl_on_screen: Option<i64>,
+    /// The filter bar of each tab that has one open.
+    row_filter_bars: HashMap<ResultTab, (Entity<FilterBar>, Subscription)>,
     _cancel: Option<Arc<AtomicBool>>,
     _subscriptions: Vec<Subscription>,
 }
@@ -374,6 +378,7 @@ impl ShoutingRobinApp {
             tabbar_scroll_handle: ScrollHandle::default(),
             live_crawl: None,
             crawl_on_screen: None,
+            row_filter_bars: HashMap::new(),
             _cancel: None,
             _subscriptions: subscriptions,
         };
@@ -1271,6 +1276,88 @@ impl ShoutingRobinApp {
         });
     }
 
+    /// The open tab's filter bar, opened when it has none.
+    fn open_row_filter(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<FilterBar> {
+        let tab = self.active_tab;
+        if let Some((bar, _)) = self.row_filter_bars.get(&tab) {
+            return bar.clone();
+        }
+        let grid = self.results_grid.clone();
+        let bar = cx.new(|cx| FilterBar::new(grid, window, cx));
+        let subscription = cx.subscribe_in(
+            &bar,
+            window,
+            move |this, _, event: &FilterBarEvent, window, cx| match event {
+                FilterBarEvent::Changed(filter) => {
+                    let filter = filter.clone();
+                    this.results_grid
+                        .update(cx, |grid, cx| grid.set_row_filter(tab, filter, cx));
+                }
+                FilterBarEvent::Close => this.close_row_filter(tab, window, cx),
+            },
+        );
+        self.row_filter_bars
+            .insert(tab, (bar.clone(), subscription));
+        cx.notify();
+        bar
+    }
+
+    /// Closing a bar also clears it, so no tab is ever narrowed by a filter
+    /// that is out of sight.
+    fn close_row_filter(&mut self, tab: ResultTab, window: &mut Window, cx: &mut Context<Self>) {
+        if self.row_filter_bars.remove(&tab).is_none() {
+            return;
+        }
+        self.results_grid.update(cx, |grid, cx| {
+            grid.set_row_filter(tab, RowFilter::default(), cx);
+        });
+        window.focus(&self.focus_handle, cx);
+        cx.notify();
+    }
+
+    fn on_find_in_results(
+        &mut self,
+        _: &FindInResults,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let bar = self.open_row_filter(window, cx);
+        bar.update(cx, |bar, cx| bar.focus_search(window, cx));
+    }
+
+    fn on_close_row_filter(
+        &mut self,
+        _: &CloseRowFilter,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.close_row_filter(self.active_tab, window, cx);
+    }
+
+    /// An empty cell has no value to equal, so it filters on being empty.
+    fn on_filter_by_value(
+        &mut self,
+        action: &FilterByValue,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let empty = action.value.trim().is_empty();
+        let operator = match (empty, action.exclude) {
+            (true, false) => FilterOperator::IsEmpty,
+            (true, true) => FilterOperator::IsNotEmpty,
+            (false, false) => FilterOperator::Equals,
+            (false, true) => FilterOperator::NotEquals,
+        };
+        let bar = self.open_row_filter(window, cx);
+        bar.update(cx, |bar, cx| {
+            bar.add_condition(Some(&action.column), operator, &action.value, window, cx);
+        });
+    }
+
     fn on_quit(&mut self, _: &Quit, _window: &mut Window, cx: &mut Context<Self>) {
         cx.quit();
     }
@@ -1642,6 +1729,14 @@ impl Render for ShoutingRobinApp {
 
         filter_bar = filter_bar.child(filter_left);
 
+        let row_filter_bar = self
+            .row_filter_bars
+            .get(&self.active_tab)
+            .map(|(bar, _)| bar.clone());
+        if let Some(bar) = &row_filter_bar {
+            bar.update(cx, |bar, cx| bar.sync_columns(window, cx));
+        }
+
         if has_results && self.active_tab == ResultTab::Overview {
             filter_bar = filter_bar.child(
                 Button::new("export-pdf")
@@ -1655,7 +1750,30 @@ impl Render for ShoutingRobinApp {
             );
         }
 
+        let row_filter_open = self.row_filter_bars.contains_key(&self.active_tab);
         if has_results {
+            filter_bar = filter_bar.child(
+                Button::new("toggle-row-filter")
+                    .xsmall()
+                    .outline()
+                    .flex_shrink_0()
+                    .selected(row_filter_open)
+                    .icon(UiIcon::from(crate::ui::icon::Icon::Filter))
+                    .label("Filter")
+                    .tooltip(if cfg!(target_os = "macos") {
+                        "Search and Filter Rows (⌘F)"
+                    } else {
+                        "Search and Filter Rows (Ctrl+F)"
+                    })
+                    .on_click(cx.listener(move |this, _, window, cx| {
+                        if row_filter_open {
+                            this.close_row_filter(this.active_tab, window, cx);
+                        } else {
+                            let bar = this.open_row_filter(window, cx);
+                            bar.update(cx, |bar, cx| bar.focus_search(window, cx));
+                        }
+                    })),
+            );
             filter_bar = filter_bar
                 .child(
                     Button::new("export-csv")
@@ -1688,6 +1806,9 @@ impl Render for ShoutingRobinApp {
             .text_color(fg)
             .on_action(cx.listener(Self::on_quit))
             .on_action(cx.listener(Self::on_settings))
+            .on_action(cx.listener(Self::on_find_in_results))
+            .on_action(cx.listener(Self::on_close_row_filter))
+            .on_action(cx.listener(Self::on_filter_by_value))
             .child(crate::ui::selectable_text::end_released_selection_drag())
             .child(
                 TitleBar::new().child(
@@ -1774,6 +1895,7 @@ impl Render for ShoutingRobinApp {
                                             // letting it square the top corners.
                                             .child(div().p(PANEL_GAP).min_w_0().child(tab_bar))
                                             .child(filter_bar)
+                                            .children(row_filter_bar)
                                             .child(
                                                 div()
                                                     .flex()
@@ -1879,6 +2001,7 @@ fn init_keys(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         gpui_kit::KeyBinding::new("ctrl-,", OpenSettings, None),
     ]);
+    cx.bind_keys(crate::views::filter_bar::key_bindings());
 }
 
 /// A finished crawl's stored counts under the current [`FILTER_VERSION`].

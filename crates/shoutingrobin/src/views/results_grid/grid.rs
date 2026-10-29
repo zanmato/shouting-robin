@@ -22,6 +22,7 @@ use super::data_build::overview_issue_target;
 use super::delegate::{
     Baseline, CountedCrawl, CountsJob, CrawlSnapshot, ResultsDelegate, StoredCounts,
 };
+use super::row_filter::RowFilter;
 use super::types::{FlatRow, IssueFilter, ResultsGridEvent, TabCounts};
 
 /// The least time between the starts of two counting passes. A pass over a
@@ -357,6 +358,21 @@ impl ResultsGrid {
         self.state.read(cx).delegate().filtered_count()
     }
 
+    /// How many rows the tab and its sub-filter give before the row filter
+    /// narrows them.
+    pub fn rows_before_row_filter(&self, cx: &App) -> usize {
+        self.state.read(cx).delegate().rows_before_row_filter()
+    }
+
+    pub fn set_row_filter(&mut self, tab: ResultTab, filter: RowFilter, cx: &mut Context<Self>) {
+        self.update_rows(cx, |delegate| delegate.set_row_filter(tab, filter));
+    }
+
+    /// The open tab's columns as keys and names, for the filter bar.
+    pub fn columns(&self, cx: &App) -> Vec<(SharedString, SharedString)> {
+        self.state.read(cx).delegate().column_keys_and_names()
+    }
+
     /// Per-tab badge counts, from the latest counting pass.
     pub fn tab_badges(&self, cx: &App) -> HashMap<ResultTab, TabCounts> {
         self.state
@@ -409,8 +425,10 @@ impl ResultsGrid {
             .map(|s| s.to_owned())
     }
 
+    /// Whether the open tab has rows, before the row filter narrows them, so
+    /// a search that matches nothing keeps the export buttons.
     pub fn has_results(&self, cx: &App) -> bool {
-        self.state.read(cx).delegate().filtered_count() > 0
+        self.state.read(cx).delegate().rows_before_row_filter() > 0
     }
 
     #[cfg(feature = "screenshots")]

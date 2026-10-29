@@ -6,6 +6,7 @@ mod filter;
 #[cfg(test)]
 mod frame_bench;
 mod grid;
+mod row_filter;
 mod types;
 
 pub use cell::ssr_diff_label;
@@ -17,6 +18,7 @@ pub use filter::{FILTER_VERSION, filters_for_tab};
 #[cfg(test)]
 pub use filter::{matching_urls, tab_filter_counts_for_test};
 pub use grid::{BaselineInput, LayoutContext, LoadingStage, PreparedCrawl, ResultsGrid};
+pub use row_filter::{FilterCondition, FilterJoin, FilterOperator, RowFilter};
 #[cfg(test)]
 pub(crate) use types::tab_is_flattened;
 pub use types::{IssueFilter, ResultsGridEvent};

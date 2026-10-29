@@ -582,7 +582,7 @@ pub(super) fn compare_numeric(a: &str, b: &str) -> std::cmp::Ordering {
     }
 }
 
-fn parse_numeric(s: &str) -> Option<f64> {
+pub(super) fn parse_numeric(s: &str) -> Option<f64> {
     if let Ok(v) = s.parse::<f64>() {
         return Some(v);
     }

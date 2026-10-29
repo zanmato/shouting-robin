@@ -18,6 +18,7 @@ use crate::crawl::layout::PageLayoutChange;
 use crate::ui::tag::{Tone, tone_tag, tone_text_color};
 use crate::views::ResultTab;
 use crate::views::details_panel::{DetailsSelection, ImageDetails, ImageReference};
+use crate::views::filter_bar::FilterByValue;
 
 use super::cell::{
     cell_text, flat_cell_text, image_aggregate_cell_text, render_cell_tag, url_to_path,
@@ -35,6 +36,7 @@ use super::filter::{
     BASELINE_TABS, CountsProgress, count_baseline_tabs, count_every_tab, filter_for_tab,
     flat_row_matches_filter, image_aggregate_matches_filter,
 };
+use super::row_filter::RowFilter;
 use super::types::{
     ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, IssueType, TabFilterCounts,
     flat_row_page_index, tab_is_flattened,
@@ -360,6 +362,11 @@ pub struct ResultsDelegate {
     /// The cell under the last right click, as row and column. The table
     /// only tells the context menu the row.
     right_clicked_cell: Option<(usize, usize)>,
+    /// Each tab's search and conditions, kept while other tabs are open.
+    row_filters: HashMap<ResultTab, RowFilter>,
+    /// How many rows the tab and sub-filter give before the row filter
+    /// narrows them.
+    rows_before_row_filter: usize,
 }
 
 /// The loaded crawl, detached from the grid.
@@ -445,6 +452,8 @@ impl ResultsDelegate {
             change_entries: std::cell::OnceCell::new(),
             layout_changes: HashMap::new(),
             right_clicked_cell: None,
+            row_filters: HashMap::new(),
+            rows_before_row_filter: 0,
         }
     }
 
@@ -576,6 +585,7 @@ impl ResultsDelegate {
             });
             if self.active_tab == ResultTab::Overview {
                 self.rebuild_flat_rows();
+                self.apply_row_filter();
             }
         }
     }
@@ -757,6 +767,7 @@ impl ResultsDelegate {
         self.set_pages(Vec::new());
         self.filtered_indices.clear();
         self.flat_rows.clear();
+        self.rows_before_row_filter = 0;
         self.occurrence_counts.clear();
         self.root_origin = None;
         self.root_url = None;
@@ -964,6 +975,75 @@ impl ResultsDelegate {
             &self.occurrence_counts,
         );
         self.rebuild_flat_rows();
+        self.apply_row_filter();
+    }
+
+    /// Narrows the tab's rows to those its row filter keeps.
+    fn apply_row_filter(&mut self) {
+        self.rows_before_row_filter = self.filtered_count();
+        let keys: Vec<SharedString> = self
+            .columns
+            .iter()
+            .map(|column| column.key.clone())
+            .collect();
+        let Some(filter) = self
+            .row_filters
+            .get(&self.active_tab)
+            .and_then(|filter| filter.compile(&keys))
+        else {
+            return;
+        };
+        if tab_is_flattened(self.active_tab) {
+            let rows = std::mem::take(&mut self.flat_rows);
+            let kept = rows
+                .into_iter()
+                .filter(|row| filter.matches(|key| self.flat_row_cell_text(row, key)))
+                .collect();
+            self.flat_rows = kept;
+        } else {
+            let indices = std::mem::take(&mut self.filtered_indices);
+            let kept = indices
+                .into_iter()
+                .filter(|&index| {
+                    self.all_pages.get(index).is_some_and(|record| {
+                        filter.matches(|key| {
+                            cell_text(
+                                record,
+                                key,
+                                &self.occurrence_counts,
+                                self.active_tab,
+                                self.root_origin.as_deref(),
+                            )
+                        })
+                    })
+                })
+                .collect();
+            self.filtered_indices = kept;
+        }
+    }
+
+    /// Replaces a tab's row filter. Only the open tab's rows change.
+    pub fn set_row_filter(&mut self, tab: ResultTab, filter: RowFilter) {
+        if filter == RowFilter::default() {
+            self.row_filters.remove(&tab);
+        } else {
+            self.row_filters.insert(tab, filter);
+        }
+        if tab == self.active_tab {
+            self.rebuild_filter();
+        }
+    }
+
+    /// How many rows the tab shows before its row filter narrows them.
+    pub fn rows_before_row_filter(&self) -> usize {
+        self.rows_before_row_filter
+    }
+
+    pub fn column_keys_and_names(&self) -> Vec<(SharedString, SharedString)> {
+        self.columns
+            .iter()
+            .map(|column| (column.key.clone(), column.name.clone()))
+            .collect()
     }
 
     fn rebuild_flat_rows(&mut self) {
@@ -1281,13 +1361,33 @@ impl TableDelegate for ResultsDelegate {
         _window: &mut Window,
         _cx: &mut Context<TableState<Self>>,
     ) -> PopupMenu {
-        let text = self
+        let cell = self
             .right_clicked_cell
             .take()
             .filter(|(row, _)| *row == row_ix)
             .and_then(|(_, col_ix)| self.columns.get(col_ix))
-            .map(|column| self.text_at(row_ix, column.key.as_ref()));
+            .map(|column| {
+                (
+                    column.key.clone(),
+                    self.text_at(row_ix, column.key.as_ref()),
+                )
+            });
+        let text = cell.as_ref().map(|(_, text)| text.clone());
         let has_text = text.is_some();
+        let filter_item = |label: &'static str, exclude: bool| {
+            let action = cell.clone().map(|(column, value)| FilterByValue {
+                column,
+                value,
+                exclude,
+            });
+            PopupMenuItem::new(label)
+                .disabled(action.is_none())
+                .on_click(move |_event, window, cx| {
+                    if let Some(action) = &action {
+                        window.dispatch_action(Box::new(action.clone()), cx);
+                    }
+                })
+        };
         menu.item(
             PopupMenuItem::new("Copy")
                 .icon(IconName::Copy)
@@ -1298,6 +1398,9 @@ impl TableDelegate for ResultsDelegate {
                     }
                 }),
         )
+        .separator()
+        .item(filter_item("Filter by This Value", false))
+        .item(filter_item("Exclude This Value", true))
     }
 
     fn render_td(
@@ -2446,5 +2549,119 @@ mod issue_entry_cache_tests {
 
         delegate.switch_tab(ResultTab::Internal);
         assert!(delegate.issue_entries().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod row_filter_tests {
+    use super::*;
+    use crate::crawl::event::{SdFormat, SdItem};
+    use crate::views::results_grid::{FilterCondition, FilterOperator};
+
+    fn page(path: &str, title: &str, status: u16) -> PageRecord {
+        PageRecord {
+            url: format!("https://a.test{path}"),
+            is_internal: true,
+            is_page: true,
+            status: Some(status),
+            title: Some(title.into()),
+            ..Default::default()
+        }
+    }
+
+    fn delegate() -> ResultsDelegate {
+        let mut delegate = ResultsDelegate::new();
+        delegate.set_root_url("https://a.test/");
+        delegate.replace_records(vec![
+            page("/blog/launch", "Launch", 200),
+            page("/shop/shoes", "Shoes", 200),
+            page("/old", "Gone", 404),
+        ]);
+        delegate
+    }
+
+    fn addresses(delegate: &ResultsDelegate) -> Vec<String> {
+        (0..delegate.filtered_count())
+            .map(|row| delegate.text_at(row, "address"))
+            .collect()
+    }
+
+    fn search(text: &str) -> RowFilter {
+        RowFilter {
+            search: text.into(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_search_narrows_the_rows_and_keeps_the_count_before_it() {
+        let mut delegate = delegate();
+        delegate.set_row_filter(ResultTab::Internal, search("SHOES"));
+        assert_eq!(addresses(&delegate), ["/shop/shoes"]);
+        assert_eq!(delegate.rows_before_row_filter(), 3);
+    }
+
+    #[test]
+    fn a_condition_compares_the_cell_the_grid_shows() {
+        let mut delegate = delegate();
+        delegate.set_row_filter(
+            ResultTab::Internal,
+            RowFilter {
+                conditions: vec![FilterCondition {
+                    column: "status_code".into(),
+                    operator: FilterOperator::Equals,
+                    value: "200".into(),
+                }],
+                ..Default::default()
+            },
+        );
+        assert_eq!(addresses(&delegate), ["/blog/launch", "/shop/shoes"]);
+    }
+
+    #[test]
+    fn each_tab_keeps_its_own_filter() {
+        let mut delegate = delegate();
+        delegate.set_row_filter(ResultTab::Internal, search("launch"));
+        delegate.switch_tab(ResultTab::ResponseCodes);
+        assert_eq!(delegate.filtered_count(), 3);
+        delegate.switch_tab(ResultTab::Internal);
+        assert_eq!(addresses(&delegate), ["/blog/launch"]);
+        delegate.set_row_filter(ResultTab::Internal, RowFilter::default());
+        assert_eq!(delegate.filtered_count(), 3);
+    }
+
+    #[test]
+    fn a_streamed_page_is_filtered_too() {
+        let mut delegate = delegate();
+        delegate.set_row_filter(ResultTab::Internal, search("blog"));
+        delegate.push(page("/blog/second", "Second", 200));
+        assert_eq!(addresses(&delegate), ["/blog/launch", "/blog/second"]);
+        assert_eq!(delegate.rows_before_row_filter(), 4);
+    }
+
+    #[test]
+    fn a_tab_of_items_is_filtered_by_item() {
+        let mut product = page("/shop/shoes", "Shoes", 200);
+        product.sd_items = vec![
+            SdItem {
+                format: SdFormat::JsonLd,
+                type_name: "Product".into(),
+                raw_json: String::new(),
+            },
+            SdItem {
+                format: SdFormat::Microdata,
+                type_name: "BreadcrumbList".into(),
+                raw_json: String::new(),
+            },
+        ]
+        .into();
+        let mut delegate = ResultsDelegate::new();
+        delegate.set_root_url("https://a.test/");
+        delegate.replace_records(vec![product, page("/old", "Gone", 404)]);
+        delegate.switch_tab(ResultTab::StructuredData);
+        assert_eq!(delegate.filtered_count(), 3);
+        delegate.set_row_filter(ResultTab::StructuredData, search("breadcrumb"));
+        assert_eq!(delegate.filtered_count(), 1);
+        assert_eq!(delegate.text_at(0, "sd_format"), "Microdata");
     }
 }
