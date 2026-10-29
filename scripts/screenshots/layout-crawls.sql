@@ -1,204 +1,204 @@
 -- Two Chrome crawls of test-site/shop/ with layout capture, the second after its theme change, written by scripts/screenshots/capture --record-layout.
-INSERT INTO crawls (id, root_url, started_at, finished_at, config_json, render_mode) VALUES (1, 'http://127.0.0.1:8000/shop/', 1792681164, 1792681171, '{"max_pages":0,"max_concurrent":5,"delay_ms":0,"timeout_seconds":30,"respect_robots_txt":true,"follow_sitemaps":true,"block_images":false,"near_duplicate_threshold":90,"content_selector":"","user_agent":null,"extra_headers":[],"include_patterns":[],"exclude_patterns":[],"crawl_subdomains":false,"list_mode":false,"seed_urls":[],"check_resources":true,"layout_capture":"loaded"}', 'chrome');
-INSERT INTO crawls (id, root_url, started_at, finished_at, config_json, render_mode) VALUES (2, 'http://127.0.0.1:8000/shop/', 1792681174, 1792681180, '{"max_pages":0,"max_concurrent":5,"delay_ms":0,"timeout_seconds":30,"respect_robots_txt":true,"follow_sitemaps":true,"block_images":false,"near_duplicate_threshold":90,"content_selector":"","user_agent":null,"extra_headers":[],"include_patterns":[],"exclude_patterns":[],"crawl_subdomains":false,"list_mode":false,"seed_urls":[],"check_resources":true,"layout_capture":"loaded"}', 'chrome');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (1, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (2, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (3, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'heading-order', 'moderate', '.footer-column:nth-child(1) > h3', '<h3 class="footer-column__title">Customer service</h3>');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (4, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (5, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (6, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (7, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (8, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (9, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (10, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (11, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (12, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (13, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (14, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'heading-order', 'moderate', '.footer-column:nth-child(1) > h3', '<h3 class="footer-column__title">Customer service</h3>');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (15, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO a11y_violations (id, crawl_id, page_url, rule, impact, target, html) VALUES (16, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'landmark-unique', 'moderate', '.main-nav', '<nav class="main-nav">');
-INSERT INTO ecommerce (id, crawl_id, page_url, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (1, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', NULL, 129.0, 'SEK', 'instock', 'CABLE-2M', NULL, NULL, 1, 0, 0);
-INSERT INTO ecommerce (id, crawl_id, page_url, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (2, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', NULL, 199.0, 'SEK', 'instock', 'CHARGER-20W', NULL, NULL, 1, 0, 0);
-INSERT INTO ecommerce (id, crawl_id, page_url, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (3, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', NULL, 990.0, 'SEK', 'instock', 'HEADPHONES-ANC', NULL, NULL, 1, 0, 0);
-INSERT INTO ecommerce (id, crawl_id, page_url, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (4, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', NULL, 379.0, 'SEK', 'instock', 'CHARGER-65W', NULL, NULL, 1, 0, 0);
-INSERT INTO ecommerce (id, crawl_id, page_url, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (5, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', NULL, 199.0, 'SEK', 'instock', 'CHARGER-20W', NULL, NULL, 1, 0, 0);
-INSERT INTO ecommerce (id, crawl_id, page_url, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (6, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', NULL, 379.0, 'SEK', 'instock', 'CHARGER-65W', NULL, NULL, 1, 0, 0);
-INSERT INTO ecommerce (id, crawl_id, page_url, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (7, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', NULL, 129.0, 'SEK', 'instock', 'CABLE-2M', NULL, NULL, 1, 0, 0);
-INSERT INTO ecommerce (id, crawl_id, page_url, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (8, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', NULL, 990.0, 'SEK', 'instock', 'HEADPHONES-ANC', NULL, NULL, 1, 0, 0);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (1, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (2, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/category.svg', '', 240, 160, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (3, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/category.svg', '', 240, 160, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (4, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/category.svg', '', 240, 160, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (5, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (6, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (7, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (8, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (9, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (10, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (11, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (12, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (13, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (14, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (15, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (16, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (17, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (18, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (19, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (20, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/img/banner.svg', '', 480, 240, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (21, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (22, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (23, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (24, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (25, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (26, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (27, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (28, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (29, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (30, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (31, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (32, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (33, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (34, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (35, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (36, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (37, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (38, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (39, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (40, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (41, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (42, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (43, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (44, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (45, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (46, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (47, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (48, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (49, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (50, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (51, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (52, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (53, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (54, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (55, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (56, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (57, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (58, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (59, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (60, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (61, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (62, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (63, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (64, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (65, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (66, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (67, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/banner.svg', '', 800, 240, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (68, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (69, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (70, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (71, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (72, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (73, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/banner.svg', 'Cables', 1200, 240, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (74, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (75, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (76, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (77, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (78, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (79, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (80, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (81, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (82, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (83, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (84, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (85, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (86, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (87, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (88, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (89, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/category.svg', '', 240, 160, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (90, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/category.svg', '', 240, 160, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (91, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/category.svg', '', 240, 160, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (92, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (93, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (94, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (95, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (96, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (97, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (98, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (99, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (100, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (101, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (102, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (103, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (104, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (105, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (106, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (107, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (108, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (109, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (110, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (111, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (112, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (113, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (114, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/banner.svg', '', 800, 240, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (115, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (116, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (117, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (118, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (119, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (120, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (121, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (122, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (123, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (124, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (125, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (126, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (127, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (128, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (129, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (130, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (131, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (132, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (133, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (134, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (135, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (136, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (137, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/banner.svg', 'Cables', 1200, 240, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (138, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (139, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (140, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (141, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (142, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (143, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (144, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (145, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (146, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (147, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (148, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/img/banner.svg', '', 480, 240, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (149, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (150, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (151, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (152, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (153, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (154, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (155, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (156, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Wireless Headphones ANC', 520, 520, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (157, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (158, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (159, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', '', 72, 72, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (160, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (161, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Cable 2 m', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (162, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (163, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (164, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (165, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (166, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (167, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (168, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (169, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (170, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (171, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'USB-C Charger 20W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (172, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'GaN Charger 65W', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (173, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/img/product.svg', 'Power Bank 10000 mAh', 200, 200, 1);
-INSERT INTO images (id, crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (174, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/img/logo.svg', 'Robin Electronics', 160, 40, 1);
+INSERT INTO crawls (id, root_url, started_at, finished_at, config_json, render_mode, page_count, document_count, unfetched_count) VALUES (1, 'http://127.0.0.1:8000/shop/', 1792681164, 1792681171, '{"max_pages":0,"max_concurrent":5,"delay_ms":0,"timeout_seconds":30,"respect_robots_txt":true,"follow_sitemaps":true,"block_images":false,"near_duplicate_threshold":90,"content_selector":"","user_agent":null,"extra_headers":[],"include_patterns":[],"exclude_patterns":[],"crawl_subdomains":false,"list_mode":false,"seed_urls":[],"check_resources":true,"layout_capture":"loaded"}', 'chrome', NULL, NULL, NULL);
+INSERT INTO crawls (id, root_url, started_at, finished_at, config_json, render_mode, page_count, document_count, unfetched_count) VALUES (2, 'http://127.0.0.1:8000/shop/', 1792681174, 1792681180, '{"max_pages":0,"max_concurrent":5,"delay_ms":0,"timeout_seconds":30,"respect_robots_txt":true,"follow_sitemaps":true,"block_images":false,"near_duplicate_threshold":90,"content_selector":"","user_agent":null,"extra_headers":[],"include_patterns":[],"exclude_patterns":[],"crawl_subdomains":false,"list_mode":false,"seed_urls":[],"check_resources":true,"layout_capture":"loaded"}', 'chrome', NULL, NULL, NULL);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (1, 1, 9, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (2, 1, 10, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (3, 1, 11, 90, 93, 96, 100);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (4, 1, 11, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (5, 1, 13, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (6, 1, 14, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (7, 1, 15, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (8, 1, 16, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (9, 1, 18, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (10, 1, 19, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (11, 1, 20, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (12, 1, 21, 89, 93, 95, 99);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (13, 2, 35, 91, 94, 97, 101);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (14, 2, 36, 92, 94, 98, 102);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (15, 2, 38, 91, 94, 97, 101);
+INSERT INTO a11y_violations (id, crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (16, 2, 40, 91, 94, 97, 101);
+INSERT INTO ecommerce (id, crawl_id, page_url_id, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (1, 1, 10, NULL, 129.0, 'SEK', 'instock', 'CABLE-2M', NULL, NULL, 1, 0, 0);
+INSERT INTO ecommerce (id, crawl_id, page_url_id, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (2, 1, 13, NULL, 199.0, 'SEK', 'instock', 'CHARGER-20W', NULL, NULL, 1, 0, 0);
+INSERT INTO ecommerce (id, crawl_id, page_url_id, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (3, 1, 14, NULL, 990.0, 'SEK', 'instock', 'HEADPHONES-ANC', NULL, NULL, 1, 0, 0);
+INSERT INTO ecommerce (id, crawl_id, page_url_id, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (4, 1, 19, NULL, 379.0, 'SEK', 'instock', 'CHARGER-65W', NULL, NULL, 1, 0, 0);
+INSERT INTO ecommerce (id, crawl_id, page_url_id, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (5, 2, 30, NULL, 199.0, 'SEK', 'instock', 'CHARGER-20W', NULL, NULL, 1, 0, 0);
+INSERT INTO ecommerce (id, crawl_id, page_url_id, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (6, 2, 31, NULL, 379.0, 'SEK', 'instock', 'CHARGER-65W', NULL, NULL, 1, 0, 0);
+INSERT INTO ecommerce (id, crawl_id, page_url_id, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (7, 2, 34, NULL, 129.0, 'SEK', 'instock', 'CABLE-2M', NULL, NULL, 1, 0, 0);
+INSERT INTO ecommerce (id, crawl_id, page_url_id, page_type, price, currency, availability, sku, gtin, brand, has_image, has_description, has_review_or_rating) VALUES (8, 2, 39, NULL, 990.0, 'SEK', 'instock', 'HEADPHONES-ANC', NULL, NULL, 1, 0, 0);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (1, 1, 1, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (2, 1, 1, 5, 87, 240, 160, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (3, 1, 1, 5, 87, 240, 160, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (4, 1, 1, 5, 87, 240, 160, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (5, 1, 1, 6, 60, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (6, 1, 1, 6, 64, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (7, 1, 1, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (8, 1, 1, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (9, 1, 1, 6, 62, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (10, 1, 9, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (11, 1, 10, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (12, 1, 10, 6, 58, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (13, 1, 10, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (14, 1, 10, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (15, 1, 10, 6, 64, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (16, 1, 10, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (17, 1, 10, 6, 60, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (18, 1, 10, 6, 62, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (19, 1, 11, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (20, 1, 11, 12, 87, 480, 240, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (21, 1, 13, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (22, 1, 13, 6, 60, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (23, 1, 13, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (24, 1, 13, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (25, 1, 13, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (26, 1, 13, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (27, 1, 13, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (28, 1, 13, 6, 62, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (29, 1, 13, 6, 64, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (30, 1, 13, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (31, 1, 14, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (32, 1, 14, 6, 61, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (33, 1, 14, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (34, 1, 14, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (35, 1, 14, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (36, 1, 14, 6, 64, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (37, 1, 14, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (38, 1, 14, 6, 62, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (39, 1, 14, 6, 60, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (40, 1, 15, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (41, 1, 15, 6, 62, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (42, 1, 15, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (43, 1, 15, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (44, 1, 15, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (45, 1, 15, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (46, 1, 15, 6, 60, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (47, 1, 15, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (48, 1, 15, 6, 64, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (49, 1, 16, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (50, 1, 16, 6, 60, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (51, 1, 16, 6, 64, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (52, 1, 16, 6, 62, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (53, 1, 16, 6, 60, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (54, 1, 16, 6, 64, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (55, 1, 16, 6, 62, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (56, 1, 16, 6, 60, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (57, 1, 16, 6, 64, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (58, 1, 16, 6, 62, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (59, 1, 18, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (60, 1, 19, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (61, 1, 19, 6, 64, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (62, 1, 19, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (63, 1, 19, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (64, 1, 19, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (65, 1, 19, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (66, 1, 19, 6, 87, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (67, 1, 19, 12, 87, 800, 240, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (68, 1, 19, 6, 60, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (69, 1, 19, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (70, 1, 19, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (71, 1, 19, 6, 62, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (72, 1, 20, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (73, 1, 20, 12, 46, 1200, 240, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (74, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (75, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (76, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (77, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (78, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (79, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (80, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (81, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (82, 1, 20, 6, 58, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (83, 1, 21, 4, 43, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (84, 1, 21, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (85, 1, 21, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (86, 1, 21, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (87, 1, 21, 6, 61, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (88, 2, 22, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (89, 2, 22, 25, 88, 240, 160, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (90, 2, 22, 25, 88, 240, 160, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (91, 2, 22, 25, 88, 240, 160, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (92, 2, 22, 27, 80, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (93, 2, 22, 27, 81, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (94, 2, 22, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (95, 2, 22, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (96, 2, 22, 27, 82, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (97, 2, 30, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (98, 2, 30, 27, 80, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (99, 2, 30, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (100, 2, 30, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (101, 2, 30, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (102, 2, 30, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (103, 2, 30, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (104, 2, 30, 27, 82, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (105, 2, 30, 27, 81, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (106, 2, 30, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (107, 2, 31, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (108, 2, 31, 27, 81, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (109, 2, 31, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (110, 2, 31, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (111, 2, 31, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (112, 2, 31, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (113, 2, 31, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (114, 2, 31, 32, 88, 800, 240, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (115, 2, 31, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (116, 2, 31, 27, 80, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (117, 2, 31, 27, 82, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (118, 2, 31, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (119, 2, 33, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (120, 2, 33, 27, 82, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (121, 2, 33, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (122, 2, 33, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (123, 2, 33, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (124, 2, 33, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (125, 2, 33, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (126, 2, 33, 27, 81, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (127, 2, 33, 27, 80, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (128, 2, 34, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (129, 2, 34, 27, 83, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (130, 2, 34, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (131, 2, 34, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (132, 2, 34, 27, 80, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (133, 2, 34, 27, 81, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (134, 2, 34, 27, 82, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (135, 2, 34, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (136, 2, 35, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (137, 2, 35, 32, 68, 1200, 240, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (138, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (139, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (140, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (141, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (142, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (143, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (144, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (145, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (146, 2, 35, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (147, 2, 36, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (148, 2, 36, 32, 88, 480, 240, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (149, 2, 37, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (150, 2, 38, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (151, 2, 38, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (152, 2, 38, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (153, 2, 38, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (154, 2, 38, 27, 86, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (155, 2, 39, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (156, 2, 39, 27, 86, 520, 520, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (157, 2, 39, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (158, 2, 39, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (159, 2, 39, 27, 88, 72, 72, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (160, 2, 39, 27, 80, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (161, 2, 39, 27, 83, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (162, 2, 39, 27, 82, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (163, 2, 39, 27, 81, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (164, 2, 40, 26, 65, 160, 40, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (165, 2, 40, 27, 80, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (166, 2, 40, 27, 81, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (167, 2, 40, 27, 82, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (168, 2, 40, 27, 80, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (169, 2, 40, 27, 81, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (170, 2, 40, 27, 82, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (171, 2, 40, 27, 80, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (172, 2, 40, 27, 81, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (173, 2, 40, 27, 82, 200, 200, 1);
+INSERT INTO images (id, crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (174, 2, 41, 26, 65, 160, 40, 1);
 INSERT INTO layout_keys (crawl_id, id, key) VALUES (1, 0, 'body.page');
 INSERT INTO layout_keys (crawl_id, id, key) VALUES (1, 1, 'header.site-header');
 INSERT INTO layout_keys (crawl_id, id, key) VALUES (1, 2, 'div.site-header__top');
@@ -514,384 +514,384 @@ INSERT INTO layout_templates (crawl_id, id, name, type_key, page_count) VALUES (
 INSERT INTO layout_templates (crawl_id, id, name, type_key, page_count) VALUES (2, 4, 'Layout 3', NULL, 1);
 INSERT INTO layout_templates (crawl_id, id, name, type_key, page_count) VALUES (2, 5, 'Layout 4', NULL, 1);
 INSERT INTO layout_templates (crawl_id, id, name, type_key, page_count) VALUES (2, 6, 'Layout 5', NULL, 1);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (1, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (2, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (3, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (4, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (5, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (6, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (7, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Shop chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (8, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (9, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (10, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (11, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (12, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (13, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (14, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (15, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (16, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (17, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (18, 1, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (19, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (20, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (21, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (22, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (23, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (24, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (25, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (26, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (27, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (28, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (29, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (30, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (31, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (32, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (33, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (34, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (35, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (36, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (37, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (38, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (39, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (40, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (41, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (42, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (43, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (44, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (45, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (46, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (47, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (48, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (49, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (50, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (51, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (52, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (53, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/about.html', 'About us', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (54, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (55, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (56, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (57, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (58, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (59, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (60, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (61, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (62, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (63, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (64, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (65, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (66, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (67, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (68, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (69, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (70, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (71, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (72, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (73, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (74, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (75, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (76, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (77, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (78, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (79, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (80, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (81, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (82, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (83, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (84, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (85, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (86, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (87, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (88, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (89, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (90, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (91, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (92, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (93, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (94, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (95, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (96, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (97, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (98, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (99, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (100, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (101, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (102, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (103, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (104, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (105, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (106, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (107, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (108, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (109, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (110, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (111, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (112, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (113, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (114, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (115, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (116, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (117, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (118, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (119, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (120, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (121, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (122, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/chargers.html', '1', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (123, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (124, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (125, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (126, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (127, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (128, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (129, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (130, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (131, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (132, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (133, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (134, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (135, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (136, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (137, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (138, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (139, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (140, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (141, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (142, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (143, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (144, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (145, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (146, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (147, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (148, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (149, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (150, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (151, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (152, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (153, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (154, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (155, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (156, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (157, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (158, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (159, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (160, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (161, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (162, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (163, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (164, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (165, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (166, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (167, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (168, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (169, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (170, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/cables.html', '1', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (171, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (172, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (173, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (174, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (175, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (176, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (177, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (178, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (179, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (180, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (181, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (182, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (183, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (184, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (185, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (186, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/headphones.html', '1', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (187, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (188, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (189, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (190, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (191, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (192, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (193, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (194, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (195, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (196, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Shop chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (197, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (198, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (199, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (200, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (201, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (202, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (203, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (204, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (205, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (206, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (207, 2, 'http://127.0.0.1:8000/shop/', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (208, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (209, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (210, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (211, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (212, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (213, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (214, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (215, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (216, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (217, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (218, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (219, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (220, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (221, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (222, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (223, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (224, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (225, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (226, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (227, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (228, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (229, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (230, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (231, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (232, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (233, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (234, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (235, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (236, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (237, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (238, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (239, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (240, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (241, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (242, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (243, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (244, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (245, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (246, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (247, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (248, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (249, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (250, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (251, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (252, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (253, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (254, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (255, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (256, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (257, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (258, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (259, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (260, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (261, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (262, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (263, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (264, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (265, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (266, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (267, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (268, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (269, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (270, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (271, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (272, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (273, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (274, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (275, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (276, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (277, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (278, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (279, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (280, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (281, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (282, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (283, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (284, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (285, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (286, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (287, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (288, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (289, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/category/cables.html', '1', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (290, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (291, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (292, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (293, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (294, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (295, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (296, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (297, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (298, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (299, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (300, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/about.html', 'About us', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (301, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (302, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (303, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (304, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (305, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (306, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (307, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (308, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (309, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (310, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (311, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (312, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (313, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (314, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (315, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (316, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (317, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (318, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (319, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (320, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (321, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (322, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (323, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (324, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (325, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (326, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC 990 kr 1290 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (327, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/category/headphones.html', '1', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (328, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (329, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (330, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (331, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (332, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (333, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (334, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (335, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (336, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (337, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (338, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (339, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'Wireless Headphones ANC', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (340, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (341, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'USB-C Cable 2 m 129 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (342, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (343, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (344, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (345, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (346, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (347, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (348, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (349, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (350, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (351, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (352, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (353, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (354, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (355, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (356, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (357, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (358, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (359, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (360, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (361, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'USB-C Charger 20W 199 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (362, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'GaN Charger 65W 379 kr 449 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (363, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'Power Bank 10000 mAh 349 kr', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (364, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/category/chargers.html', '1', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (365, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (366, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (367, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (368, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/', 'Robin Electronics', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (369, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/cart', 'Cart', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (370, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/category/chargers.html', 'Chargers', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (371, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/category/cables.html', 'Cables', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (372, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/category/headphones.html', 'Headphones', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (373, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (374, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/', 'Home', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (375, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (376, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/shipping.html', 'Shipping', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (377, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/returns.html', 'Returns', NULL, 'internal', 0);
-INSERT INTO links (id, crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (378, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'http://127.0.0.1:8000/shop/info/about.html', 'Our story', NULL, 'internal', 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (1, 1, 1, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (2, 1, 1, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (3, 1, 1, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (4, 1, 1, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (5, 1, 1, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (6, 1, 1, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (7, 1, 1, 16, 49, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (8, 1, 1, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (9, 1, 1, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (10, 1, 1, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (11, 1, 1, 13, 50, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (12, 1, 1, 19, 51, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (13, 1, 1, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (14, 1, 1, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (15, 1, 1, 15, 54, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (16, 1, 1, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (17, 1, 1, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (18, 1, 1, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (19, 1, 9, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (20, 1, 9, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (21, 1, 9, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (22, 1, 9, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (23, 1, 9, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (24, 1, 9, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (25, 1, 9, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (26, 1, 9, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (27, 1, 9, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (28, 1, 9, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (29, 1, 9, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (30, 1, 10, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (31, 1, 10, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (32, 1, 10, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (33, 1, 10, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (34, 1, 10, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (35, 1, 10, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (36, 1, 10, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (37, 1, 10, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (38, 1, 10, 10, 58, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (39, 1, 10, 19, 51, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (40, 1, 10, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (41, 1, 10, 13, 50, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (42, 1, 10, 15, 54, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (43, 1, 10, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (44, 1, 10, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (45, 1, 10, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (46, 1, 11, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (47, 1, 11, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (48, 1, 11, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (49, 1, 11, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (50, 1, 11, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (51, 1, 11, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (52, 1, 11, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (53, 1, 11, 11, 59, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (54, 1, 11, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (55, 1, 11, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (56, 1, 11, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (57, 1, 13, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (58, 1, 13, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (59, 1, 13, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (60, 1, 13, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (61, 1, 13, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (62, 1, 13, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (63, 1, 13, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (64, 1, 13, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (65, 1, 13, 13, 60, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (66, 1, 13, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (67, 1, 13, 15, 54, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (68, 1, 13, 19, 51, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (69, 1, 13, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (70, 1, 13, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (71, 1, 13, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (72, 1, 13, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (73, 1, 14, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (74, 1, 14, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (75, 1, 14, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (76, 1, 14, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (77, 1, 14, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (78, 1, 14, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (79, 1, 14, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (80, 1, 14, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (81, 1, 14, 14, 61, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (82, 1, 14, 19, 51, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (83, 1, 14, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (84, 1, 14, 15, 54, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (85, 1, 14, 13, 50, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (86, 1, 14, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (87, 1, 14, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (88, 1, 14, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (89, 1, 15, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (90, 1, 15, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (91, 1, 15, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (92, 1, 15, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (93, 1, 15, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (94, 1, 15, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (95, 1, 15, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (96, 1, 15, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (97, 1, 15, 15, 62, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (98, 1, 15, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (99, 1, 15, 13, 50, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (100, 1, 15, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (101, 1, 15, 19, 51, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (102, 1, 15, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (103, 1, 15, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (104, 1, 15, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (105, 1, 16, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (106, 1, 16, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (107, 1, 16, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (108, 1, 16, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (109, 1, 16, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (110, 1, 16, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (111, 1, 16, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (112, 1, 16, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (113, 1, 16, 13, 50, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (114, 1, 16, 19, 51, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (115, 1, 16, 15, 54, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (116, 1, 16, 13, 50, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (117, 1, 16, 19, 51, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (118, 1, 16, 15, 54, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (119, 1, 16, 13, 50, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (120, 1, 16, 19, 51, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (121, 1, 16, 15, 54, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (122, 1, 16, 16, 63, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (123, 1, 16, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (124, 1, 16, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (125, 1, 16, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (126, 1, 18, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (127, 1, 18, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (128, 1, 18, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (129, 1, 18, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (130, 1, 18, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (131, 1, 18, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (132, 1, 18, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (133, 1, 18, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (134, 1, 18, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (135, 1, 18, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (136, 1, 18, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (137, 1, 19, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (138, 1, 19, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (139, 1, 19, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (140, 1, 19, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (141, 1, 19, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (142, 1, 19, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (143, 1, 19, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (144, 1, 19, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (145, 1, 19, 19, 64, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (146, 1, 19, 13, 50, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (147, 1, 19, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (148, 1, 19, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (149, 1, 19, 15, 54, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (150, 1, 19, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (151, 1, 19, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (152, 1, 19, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (153, 1, 20, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (154, 1, 20, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (155, 1, 20, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (156, 1, 20, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (157, 1, 20, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (158, 1, 20, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (159, 1, 20, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (160, 1, 20, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (161, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (162, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (163, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (164, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (165, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (166, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (167, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (168, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (169, 1, 20, 10, 52, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (170, 1, 20, 20, 63, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (171, 1, 20, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (172, 1, 20, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (173, 1, 20, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (174, 1, 21, 1, 43, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (175, 1, 21, 17, 44, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (176, 1, 21, 16, 45, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (177, 1, 21, 20, 46, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (178, 1, 21, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (179, 1, 21, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (180, 1, 21, 1, 57, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (181, 1, 21, 21, 47, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (182, 1, 21, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (183, 1, 21, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (184, 1, 21, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (185, 1, 21, 14, 53, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (186, 1, 21, 21, 63, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (187, 1, 21, 18, 48, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (188, 1, 21, 9, 55, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (189, 1, 21, 11, 56, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (190, 2, 22, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (191, 2, 22, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (192, 2, 22, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (193, 2, 22, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (194, 2, 22, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (195, 2, 22, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (196, 2, 22, 40, 71, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (197, 2, 22, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (198, 2, 22, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (199, 2, 22, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (200, 2, 22, 30, 72, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (201, 2, 22, 31, 73, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (202, 2, 22, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (203, 2, 22, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (204, 2, 22, 33, 76, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (205, 2, 22, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (206, 2, 22, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (207, 2, 22, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (208, 2, 30, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (209, 2, 30, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (210, 2, 30, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (211, 2, 30, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (212, 2, 30, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (213, 2, 30, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (214, 2, 30, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (215, 2, 30, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (216, 2, 30, 30, 80, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (217, 2, 30, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (218, 2, 30, 33, 76, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (219, 2, 30, 31, 73, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (220, 2, 30, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (221, 2, 30, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (222, 2, 30, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (223, 2, 30, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (224, 2, 31, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (225, 2, 31, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (226, 2, 31, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (227, 2, 31, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (228, 2, 31, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (229, 2, 31, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (230, 2, 31, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (231, 2, 31, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (232, 2, 31, 31, 81, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (233, 2, 31, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (234, 2, 31, 30, 72, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (235, 2, 31, 33, 76, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (236, 2, 31, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (237, 2, 31, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (238, 2, 31, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (239, 2, 31, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (240, 2, 33, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (241, 2, 33, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (242, 2, 33, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (243, 2, 33, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (244, 2, 33, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (245, 2, 33, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (246, 2, 33, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (247, 2, 33, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (248, 2, 33, 33, 82, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (249, 2, 33, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (250, 2, 33, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (251, 2, 33, 31, 73, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (252, 2, 33, 30, 72, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (253, 2, 33, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (254, 2, 33, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (255, 2, 33, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (256, 2, 34, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (257, 2, 34, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (258, 2, 34, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (259, 2, 34, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (260, 2, 34, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (261, 2, 34, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (262, 2, 34, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (263, 2, 34, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (264, 2, 34, 34, 83, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (265, 2, 34, 30, 72, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (266, 2, 34, 31, 73, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (267, 2, 34, 33, 76, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (268, 2, 34, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (269, 2, 34, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (270, 2, 34, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (271, 2, 34, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (272, 2, 35, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (273, 2, 35, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (274, 2, 35, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (275, 2, 35, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (276, 2, 35, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (277, 2, 35, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (278, 2, 35, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (279, 2, 35, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (280, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (281, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (282, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (283, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (284, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (285, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (286, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (287, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (288, 2, 35, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (289, 2, 35, 35, 84, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (290, 2, 35, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (291, 2, 35, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (292, 2, 35, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (293, 2, 36, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (294, 2, 36, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (295, 2, 36, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (296, 2, 36, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (297, 2, 36, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (298, 2, 36, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (299, 2, 36, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (300, 2, 36, 36, 85, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (301, 2, 36, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (302, 2, 36, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (303, 2, 36, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (304, 2, 37, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (305, 2, 37, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (306, 2, 37, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (307, 2, 37, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (308, 2, 37, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (309, 2, 37, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (310, 2, 37, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (311, 2, 37, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (312, 2, 37, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (313, 2, 37, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (314, 2, 37, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (315, 2, 38, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (316, 2, 38, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (317, 2, 38, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (318, 2, 38, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (319, 2, 38, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (320, 2, 38, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (321, 2, 38, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (322, 2, 38, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (323, 2, 38, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (324, 2, 38, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (325, 2, 38, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (326, 2, 38, 39, 75, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (327, 2, 38, 38, 84, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (328, 2, 38, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (329, 2, 38, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (330, 2, 38, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (331, 2, 39, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (332, 2, 39, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (333, 2, 39, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (334, 2, 39, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (335, 2, 39, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (336, 2, 39, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (337, 2, 39, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (338, 2, 39, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (339, 2, 39, 39, 86, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (340, 2, 39, 30, 72, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (341, 2, 39, 34, 74, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (342, 2, 39, 33, 76, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (343, 2, 39, 31, 73, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (344, 2, 39, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (345, 2, 39, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (346, 2, 39, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (347, 2, 40, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (348, 2, 40, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (349, 2, 40, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (350, 2, 40, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (351, 2, 40, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (352, 2, 40, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (353, 2, 40, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (354, 2, 40, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (355, 2, 40, 30, 72, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (356, 2, 40, 31, 73, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (357, 2, 40, 33, 76, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (358, 2, 40, 30, 72, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (359, 2, 40, 31, 73, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (360, 2, 40, 33, 76, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (361, 2, 40, 30, 72, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (362, 2, 40, 31, 73, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (363, 2, 40, 33, 76, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (364, 2, 40, 40, 84, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (365, 2, 40, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (366, 2, 40, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (367, 2, 40, 36, 78, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (368, 2, 41, 22, 65, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (369, 2, 41, 42, 66, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (370, 2, 41, 40, 67, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (371, 2, 41, 35, 68, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (372, 2, 41, 38, 69, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (373, 2, 41, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (374, 2, 41, 22, 79, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (375, 2, 41, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (376, 2, 41, 41, 70, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (377, 2, 41, 37, 77, NULL, 1, 0);
+INSERT INTO links (id, crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (378, 2, 41, 36, 78, NULL, 1, 0);
 INSERT INTO page_layouts (crawl_id, url, layout, template_id, assigned_by) VALUES (1, 'http://127.0.0.1:8000/shop/', X'85514F481461147FEFFB666774F6FF38BBEE6EB9BB1A88870E5F9009E6418A96EAA448E8A1C3121979290F4A041173F05076680231A98890582437DC4024A8C31E2CD64EFDA3043D0CB4946DA0040B8997E2B98DCCEA521FEFFBFD797F669879F849FDE541A57FF05CDFD0C8E0294044E4C8E43A44C6253FA10B9149C814647E64481999C04D10200811745205998C0C55643EA07197ACD4D5AB6EB7DBEDF1FAFC81A0263554420F851B23D1D8BE5AB0BF299E48363713C4132D07000032082209F088B702985E280705984849BD88FA26D357253D836B28926903D3132C5D6462C205108BC54A6C5CAEF0A4A7C2E2463D005CA42AD023C1E205C961CC7A8759F63A0CE45C0E530867B01B0092300C002227FF9596675B6430CFB2A1F56836B4869666629EF5E459CF635FCAF4A62630D525B2A1014B1B1843715E2CA0B8262CCDD20D6D51CA0746F201916369439BE725D73CB7789E2DB8446D69689BAAA19D3434539D914C57993F904C6EF2321765DE55C9ACEEC9FCAFC792AA7BB2A1196E696FD190E90A434E6FA3D8F1D5C6D2DA68FBF6FA5555757BBCCAF6FE2B116CF0EBC16030540BC28D4A4451550225A244E11F67693AF57AAEF74CC4F6F1A1431F2FC7974FA436A66F7E69DA5AB1F35FAFF2F5DF77E73A23E9DB93CE79EAB735CDD99AE6898DFE5262F73BDBB640DB383EFC8E747B2CEE237E5A68E9488C5C919D7D3F57460F2F6C5D7843BA58EA7D457CB0909F1B7F581E75F67D3F62DE5BE7C50FCEDCF55B63ADC4F40D8BCF9EBC27AD4EB55D22EECE9D7E41DC397BA7FF657471499BFAD14E9EEDF93BCC8E9D722DA83A47FBBE3D3F1B3ED66CDFD9CFF73B76DF3F', 3, 'shape');
 INSERT INTO page_layouts (crawl_id, url, layout, template_id, assigned_by) VALUES (1, 'http://127.0.0.1:8000/shop/info/returns.html', X'63BCC6D5C5CEC8E754949A98925C549A9BE493595C62C8C0C8C8C8C8CCC8C4C6C1C8C8C4CCC2CFC8C8C8C4CAC6C8C8C4C2C8C4CEC824C0C8A40412626462636462E46264E2630029636563E7E0E4E2E6E6E6E65151555353D7D0D4D286201D5D6D19593979054545102127AFA4CCC0C0C0B08C91C14081816101B31A03C3045E862F82060C13184182224F18457E3089DC611159C6F88211A48681218AC120CBE01C2303838686C60C46860E26083D81054C1B7C63676060086078C7B58CD18181814181A1808181C160031B94F98007CC58C67880698DE814BE35A22F181F084D603CC01470802960099FDB045EB7298C6E36066B44231E0845B4301AA4186C6334A8317820D4C6D920A4D520A4E5A595A4D520E4D320F48DB541E805E30D418F1B8206D85950B4467405F303A10B8C0D6C206CD0C09600260DE07C54CE03210D5028C282918B8B8B5B4A5A4646965F4E58108204E505C5C4D925D8B9B84004BB04BB2428607081938BDC8EAD0F0C9580F1E5320DAFE4CBDD70757BBFA8F3B1ECAFDBC86AD7F17D0D3AB271D52510868949275CF73BA1B9D814C4EEEDB8E45DC6F55C16C4FEB14A99E7EABB9BAB41EC52E75DB6AAEEEBCF209B55D7DDA206A24176C0CCE39AA19107A21D3678ED06D156AB2786EF913C725268C66BB0F94CF83C820EAC839FEF0000', 5, 'shape');
 INSERT INTO page_layouts (crawl_id, url, layout, template_id, assigned_by) VALUES (1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', X'8D527D6C1445147F6FF6EB6E975EBB7BB7D21ED7EBB5C0795E11A76B3F68A9520B5C0821A668D4A689A64221628290DA6AA286EC1F35A948744D101B20061BBC3470081A434AF48F8B4153302655B4560B65039BB3D604343992CB2546337BB439B034CECE7BBF8F79F366B2199C907F2923BEF6DE1DCFF76CEFEDDFBD6DCBAE97FBA48EDE3D3DFDDBFB760022228744F420128E2F4506A2EB21875EE6092212AE0209923012B6CE239190C84856232D386C07E11496CA587A9A994844242823F141A18DE4F1CA8AA2284B56AC8C46A3AB1FA27C9DC11BFCC3F50D8D4D6B9A5B5A5AD6EAADB5B58FE88FAE6B7BAC7D7EAED737E81B9796570497DD954295E1AA4875354BE1AA9AE5000049041A0138C64501AC12C8AA142C6466C0C1408E042EF38124CE20AB01E882AF10E88B8C462230E30120E4180221A30A188671088D0934268891E48C111E001E87A3488715007801002C420F97DDE6EC64993574E1732CE03BC4457A2200402FEA85DA6010D8FDC0E6C6F82261798BC464499180FDE124B6B13BC25E00A067C4DBD45EE29224A6494AFFAC3AA5CFA0AD5998261D69D271DC97B04A120731D14A537AA7AD750E20EDA16791BE416D6D38646A71538B6F8E77C6A7316E6A396F4E6631EEB13C9627275BC8BE0378601EC7C451D111B63842CC11BA1D813AC23647984647682F4C531BE54D6D93A98D73A6F6279A5A1A0B7C93A9CD90427425E5AE5FA5AE4549B7BB2327B8600923BC2564B9CBBCC5595C96A359AEF55ECED1459D943EC2D9DA389A220B6A8ADD6EA6F3FA4E616B31F664E7DEAC2CCB4A705928142A55236A758D5AA32EAF5CB1327A7F692C1653FDAAAAAAFE07E2B5AB1E9C9FAA5FF597065455D5EF4AF72D95CA255966492A972A6091716138F1CDE9AD4F95CFE9F0AEBA1FF7842737266E0EBF75BD323F555CFB89EFD6136CEDAFA9FE7AF89F83D5A626771F3C9BDF7971764D72BC59F9F827E6CF1ADF25D735FC6DDEF868F61CD3DED7A677327CD39FBFF4FABBFF34327E3D730E8B7B7D7B65F0FD679B33D7187FEEEAE0A1E3F599ABEE19F6E0074D8D199BF1816B8343FBEA3257187F4597DCDED4F1DD9AEBD1100CFB189E1AAB69AAEA7B5564DC99DDFA35C35563E9D3FB3FCCF6179F19CB837673FDDEEF8BBDDF1BADC33738E752B1B7EFED81A87BE7CAFCD4F94F4FFCC0B83C147B8961DB99CD5F306C39F9DE335F569CBFA00DFDD1C03459E07F1136175A58B8F63FE98EB1F6C9DF464FFE7CA4E95EF12F', 1, 'structured_data');
@@ -916,176 +916,176 @@ INSERT INTO page_layouts (crawl_id, url, layout, template_id, assigned_by) VALUE
 INSERT INTO page_layouts (crawl_id, url, layout, template_id, assigned_by) VALUES (2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', X'AD525D6C1455143EE7CEDF76966E99D95DBA5DD89FB65056A930BBFD594B6B62306E0CF1A1448D4D130C422592A890DAC6440D99879A8C587134A21588691ADC9852032486D4E8C3C68029F8E022FE545ACAA60CC30A8948B292CDBE68CE4E21DB1A88249E73CFF77DE7BB77EEDC9B5CFC45BEA230CFA6FE179EEFDBD13FF8F2F62777BD3A2075F7EFEE1BDC31F012202272C8441722E3F81AA7450E05749321885E64C802C81091F1C8246432B26A64CB917991AD4056872CE94C7322819B6039C156329189C85046E6016743C95525BBDD6EF7B2D56B9AF8B5319EF28107D775363FB47E835F8BC713FE96D6B6F6E4DD46877F636DA02EB87209AC0A8523D1FA7A8270A4A11100208DA0450146B92600B31A0A8A062692E9B3D05764BE59DE97C63CD21A806814F22E00C6461118CB30606CD20D894422CD127996487389349FB8C56BD33200BC080026D3B2350B9A7E2603F43AF4253ABC9F399C5FE06F39870FF30EDF5AE0AC50666DACD6D92E18043A35E4B829BEA231AB2A9AE9EA8A06E62369D4916E017B00403B2E2EC8DCB2B248A3CE4DF8CF364EF8F398534DCCB0EE0CEB3EE24999D5A90F31D5A54DF87B726ACF106A7DDA49D4DED4726A29A4ABC5AAA24C9575992ED355944DA41CC6E17FF194B84FB48459B484D8D39A256CB304CD12B6EBEA24AFAB4FE86A96D3D53F515733A8AB1F48656B5C74AA372DF75E907AFF3F5114CAFB9BC2E7BC2914B8C3BCC9995C81D30A5CD77F77662B9C097F9ECBA959D4452A4D17B79551BBD32F6E726A8C1EFAED972ECBB2BB46092A2B572994A1702416AD6F50BC8AA228DEC6D56B9AD6DE6D28DE1A9FA228FE25B0A2560A48B24C2005A43AB8479C194B7D776CCB3381DB7D7857FCA7DDE1E9C75337C6DEBE1C2ACDC07D86756DCBE9E6A9CCB103BEFDE65C67577CDFA785C16B0FA7B31DEECF7EA6F9AAD7E77612BFE52D9D7FE3BDBFDB495FB6BFA2877927BEBF681CD8DA61CF937EEE92F1D19156FB12E99B39E3E364BB9D233D346F8CEC8DDB1749D75AC6274A8B3D477AFC8A71B067BD5D3EF723578D43D737D8B3A4477F308613EBECDF48B79C33DE3DDD6C5F20AD599EBF96DE215602F5C6637BCE557A3767065B4F96769EADF47E6F370FFEC159E749B705C31EE22FA61A929181D7C4CA757BDF196A2ADF33549A397562FC47D2F248EC15E2478F6FFE9A78E3D1F79FFDA6EED41975E47A1BF56CF191180DCAFB8CF2074B6051743E7575F2E8AF8792F7AA7F00', 1, 'structured_data');
 INSERT INTO page_layouts (crawl_id, url, layout, template_id, assigned_by) VALUES (2, 'http://127.0.0.1:8000/shop/category/chargers.html', X'C5925148536114C7CFF9BEEB9DBB739BF7B2E95C3AE70AB1A0FA8254281F447359F96049244860A5900F9998D14BC40D44885E6E14346C0F21B12857DACB888AD88344F6541616257121478B20075994F51067B5B826984F75B8DFEF9CFFFF9EEF5CEEC787D3CA7927BA1AFABB0F741DEA3F7EE4604BCFB1810E4044E4C8E47C44C62537328EC8A8CCB32343326582835048F012FC8472C21AC25A8268A1766432325490B9203B45B6E5DB1587C3E1286868DCD614DEDE4CB1636751B1AFC4BF6AA5D8555A16280F56541002E5A1D5000031041104B8CC2B010C27CCAB020C24D3338B9E2FCC33237962984611143751BC6600A150E83000D4838E9044D09921D19C6600BF1F681098FCA5641109BB45C0789EB5CDAA1276AB0253B1365A55C26E55902E84FB4531D4110082D00700625CFE559A05D922863A8F7B63FEB8378DA6666092B52659EB1557D870862F60B84EC4BDEDA6D63E88A24B24509C14A636EDD1B5DE8CC3405D8BA8267FC4A3BC26CA932CCAEBAD4FC61951334E917166DC7724236F488A4A0637F8902486A4BA9FCECC126769CFBFD995718AB837CD4DED31EA322DA1CB9D598ADF7AB130B52ABA7FB90BA8288A23A0BAD76F503752A8C2ED5155D5BB52A845C5369F4D5108369FAD049689C991F083B1DD7B7D391DE8D9F4EC68E04553786EE4CC9BB2855739EFF4C4BAFE5CCFC5E4B579CAF1F6D4D7EEFDA9EF531DA96F1FDB529F3BF7A43E915F3F961EFEF33B550BA0CD35F63DA1BADA1F7051BEF130545B3E7042B6F6BDAB31863FF0D9A7FF6B6FE9D582CD56FFD4D9C14ACA741613B7AE4F51AD44AA7AB3FF39BEF32EE52DA3E7F6DD2B9998D422EFAB49B365CE3BFB6EA5581C5BDBDEDE1E7D7EA9F66FEB07', 2, 'shape');
 INSERT INTO page_layouts (crawl_id, url, layout, template_id, assigned_by) VALUES (2, 'http://127.0.0.1:8000/shop/info/shipping.html', X'63BCC635918D91CFA928353125B9A83437C927B3B8C49481919191919991898D8391918999859F91899191898591899D91898711CE5403311999D8189918B91899F818404A59D9D83938B9B8B9B9B9797CC2C2830D2128C224322A2A323A3A323A5A46564E5E41511144C8C92B29333030302C63643050606058C0ACC6C0308197E18BA001C3044690A0C81346911F4C227758449631BE6034503058C6C8C0A0E0A1B083B18B0D424FE381D006FF9841263130CC6362600880508B1821F41E8E658C0D8C0C0C0C0A0C050C0C0C061BD8A0CC073C60C632C606E635A28B78D688BE607C203481F10053C001A680257C6E1378DDA630BAD918AC118D782014D1C2689062B08DD1A0C6E081D015B606A1BC06A1154CAF585730AD62F558C56A808DB58CF91B230407CD630AEA600CC264AC117DC1FC40E80263031B081B34B025804903381F95F340480314CCB070E6E2E2E296E33711168420651555535355333355333331717609762E2E10C12EC12EC980079C5CE4766C7D60A8048C2F976978255FEE86ABDBFB459D8F657FDD0689C1681050DAFBCFF49F08BF3E88FD5D27FF49D0963FDD2076FFF3C419DFE61D99856C76D4AAAD4A11F51D1920B6CBEB4D3F824D5C1A41ECFB0D3E59BFCD626490D5D675B7A8C1EC3AB271D525109B6B86461E8876D8E0B51B445BAD9E18BE47F2C849A119AF4D417C267C1EC306AC839FEF0000', 6, 'shape');
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (1, 1, 'http://127.0.0.1:8000/shop/', 200, 'text/html', 5272, 11, 0, 'Robin Electronics | Robin Electronics', 'Chargers, cables and headphones.', 'Charge everything', 'Popular right now', NULL, NULL, 'Indexable', 38, '3110f79e6a08d67b36c59b1c4b52e596', 1792681167, 0, 1, NULL, '["WebSite"]', 6918797436566768178, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","5176"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 356, 218, NULL, 8.81119003295898437e+01, NULL, 38, 'Charge everything', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (2, 1, 'http://127.0.0.1:8000/shop/style.css', 200, 'text/css', 5409, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","text/css"],["content-length","5409"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'link', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (3, 1, 'http://127.0.0.1:8000/shop/variant.css', 200, 'text/css', 199, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","text/css"],["content-length","199"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'link', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (4, 1, 'http://127.0.0.1:8000/shop/img/logo.svg', 200, 'image/svg+xml', 219, 45, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","219"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (5, 1, 'http://127.0.0.1:8000/shop/img/category.svg', 200, 'image/svg+xml', 189, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","189"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (6, 1, 'http://127.0.0.1:8000/shop/img/product.svg', 200, 'image/svg+xml', 212, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","212"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (7, 1, 'http://127.0.0.1:8000/shop/shop.js', 200, 'application/javascript', 1343, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","application/javascript"],["content-length","1343"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'script', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (8, 1, 'http://127.0.0.1:8000/shop/img/favicon.svg', 200, 'image/svg+xml', 0, 15, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'N/A', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'other', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (9, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 200, 'text/html', 3314, 12, 1, 'Returns | Robin Electronics', 'Returns at Robin Electronics.', 'Returns', 'Register the return', NULL, NULL, 'Indexable', 41, 'b8b0bd8b4163fa678e3c9d2f9d9738c9', 1792681167, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 136483128739668165, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","3218"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Pack it', 262, 181, NULL, 5.65517501831054687e+01, NULL, 41, 'Returns', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (10, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 200, 'text/html', 9045, 11, 1, 'USB-C Cable 2 m | Robin Electronics', 'Buy USB-C Cable 2 m from Robin Electronics.', 'USB-C Cable 2 m', 'Description', NULL, NULL, 'Indexable', 298, 'c954681d1c128e261006b288ab5ab362', 1792681168, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579273232984, 100, 4, NULL, 0, 1, '[["connection","close"],["content-length","8926"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 356, 288, NULL, 5.01130943298339843e+01, NULL, 294, 'USB-C Cable 2 m', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/headphones-anc.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/charger-65w.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (11, 1, 'http://127.0.0.1:8000/shop/info/about.html', 200, 'text/html', 3702, 11, 1, 'About us | Robin Electronics', 'About us at Robin Electronics.', 'About us', NULL, NULL, NULL, 'Indexable', 105, 'c678ef56f5987705c294e4bc978da2d4', 1792681168, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 8439090172742799370, 90, 1, NULL, 0, 2, '[["connection","close"],["content-length","3608"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 275, 188, NULL, 5.65517501831054687e+01, NULL, 105, 'About us', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (12, 1, 'http://127.0.0.1:8000/shop/img/banner.svg', 200, 'image/svg+xml', 213, 43, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681168, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","213"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (13, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 200, 'text/html', 9213, 11, 1, 'USB-C Charger 20W | Robin Electronics', 'Buy USB-C Charger 20W from Robin Electronics.', 'USB-C Charger 20W', 'Description', NULL, NULL, 'Indexable', 298, '4e6dd530689561da77790d8a7634ff05', 1792681168, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032578700710472, 93, 3, NULL, 0, 1, '[["connection","close"],["content-length","9109"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 390, 307, NULL, 3.54659347534179687e+01, NULL, 298, 'USB-C Charger 20W', 0, '["http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/info/about.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (14, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 200, 'text/html', 8927, 13, 1, 'Wireless Headphones ANC | Robin Electronics', 'Buy Wireless Headphones ANC from Robin Electronics.', 'Wireless Headphones ANC', 'Description', NULL, NULL, 'Indexable', 304, '8f4006756811a585be8e7ac330b41705', 1792681168, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579273232984, 100, 4, NULL, 0, 1, '[["connection","close"],["content-length","8829"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 452, 347, NULL, 4.06345481872558593e+01, NULL, 304, 'Wireless Headphones ANC', 0, '["http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/charger-65w.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (15, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 200, 'text/html', 8091, 10, 1, 'Power Bank 10000 mAh | Robin Electronics', 'Buy Power Bank 10000 mAh from Robin Electronics.', 'Power Bank 10000 mAh', 'Description', NULL, NULL, 'Indexable', 295, '7ede9ca54b3df83238a202002f71a1ce', 1792681169, 0, 3, NULL, '["BreadcrumbList","ListItem"]', 8403061376294261276, 90, 2, NULL, 0, 1, '[["connection","close"],["content-length","7992"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 425, 328, NULL, 3.54659347534179687e+01, NULL, 295, 'Power Bank 10000 mAh', 0, '["http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (16, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 200, 'text/html', 7341, 11, 1, 'Chargers | Robin Electronics', 'Shop chargers at Robin Electronics.', 'Chargers', 'Filter', NULL, NULL, 'Indexable', 89, 'c8a354d74a145e70f4b3e3cac2de1aa0', 1792681169, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 8096535202084659764, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","7245"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 278, 223, NULL, 7.19831085205078125e+01, NULL, 89, 'Chargers', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (17, 1, 'http://127.0.0.1:8000/shop/cart', 404, 'text/plain', 262, 1062, 1, NULL, NULL, NULL, NULL, NULL, NULL, 'Non-Indexable', NULL, NULL, 1792681169, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","13"],["content-type","text/plain"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5.21818389892578125e+01, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (18, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 200, 'text/html', 3425, 11, 1, 'Shipping | Robin Electronics', 'Shipping at Robin Electronics.', 'Shipping', 'Home delivery', NULL, NULL, 'Indexable', 30, '6850c0f40d5607a4761c442be3edae41', 1792681169, 0, 2, NULL, '["BreadcrumbList","ListItem"]', -7201497713299298398, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","3329"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Pickup point', 271, 187, NULL, 100.0, NULL, 30, 'Shipping', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (19, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 200, 'text/html', 9575, 11, 1, 'GaN Charger 65W | Robin Electronics', 'Buy GaN Charger 65W from Robin Electronics.', 'GaN Charger 65W', 'Description', NULL, NULL, 'Indexable', 327, 'c20b818dfc894238df7f416c6f269bb6', 1792681169, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032578740793432, 90, 2, NULL, 0, 1, '[["connection","close"],["content-length","9474"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 368, 293, NULL, 3.54659347534179687e+01, NULL, 327, 'GaN Charger 65W', 0, '["http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (20, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 200, 'text/html', 7228, 11, 1, 'Cables | Robin Electronics', 'Shop cables at Robin Electronics.', 'Cables', 'Filter', NULL, NULL, 'Indexable', 86, '46b9ec7837547f678cbc80615b407016', 1792681169, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 3777864772301312648, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","7134"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 254, 209, NULL, 6.42022628784179687e+01, NULL, 86, 'Cables', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (21, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 200, 'text/html', 5731, 11, 1, 'Headphones | Robin Electronics', 'Shop headphones at Robin Electronics.', 'Headphones', 'Filter', NULL, NULL, 'Indexable', 70, '6f80df8698704fb6a1919287ae550bf3', 1792681170, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 3863131754272399462, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","5637"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 312, 246, NULL, 6.54561004638671875e+01, NULL, 70, 'Headphones', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (22, 2, 'http://127.0.0.1:8000/shop/', 200, 'text/html', 5270, 11, 0, 'Robin Electronics | Robin Electronics', 'Chargers, cables and headphones.', 'Charge everything', 'Popular right now', NULL, NULL, 'Indexable', 38, '3110f79e6a08d67b36c59b1c4b52e596', 1792681176, 0, 1, NULL, '["WebSite"]', 6918797436566768178, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","5176"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 356, 218, NULL, 8.81119003295898437e+01, NULL, 38, 'Charge everything', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (23, 2, 'http://127.0.0.1:8000/shop/style.css', 200, 'text/css', 5409, 33, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","text/css"],["content-length","5409"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'link', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (24, 2, 'http://127.0.0.1:8000/shop/variant.css', 200, 'text/css', 633, 33, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","text/css"],["content-length","633"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'link', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (25, 2, 'http://127.0.0.1:8000/shop/img/category.svg', 200, 'image/svg+xml', 189, 34, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","189"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (26, 2, 'http://127.0.0.1:8000/shop/img/logo.svg', 200, 'image/svg+xml', 219, 34, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","219"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (27, 2, 'http://127.0.0.1:8000/shop/img/product.svg', 200, 'image/svg+xml', 212, 34, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","212"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (28, 2, 'http://127.0.0.1:8000/shop/shop.js', 200, 'application/javascript', 1343, 34, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","application/javascript"],["content-length","1343"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'script', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (29, 2, 'http://127.0.0.1:8000/shop/img/favicon.svg', 200, 'image/svg+xml', 0, 14, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'N/A', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'other', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (30, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 200, 'text/html', 9230, 10, 1, 'USB-C Charger 20W | Robin Electronics', 'Buy USB-C Charger 20W from Robin Electronics.', 'USB-C Charger 20W', 'Description', NULL, NULL, 'Indexable', 302, 'b460b4d7f80d57921246e966e9c0c862', 1792681177, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579239686664, 95, 4, NULL, 0, 0, '[["connection","close"],["content-length","9109"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 390, 307, NULL, 3.54659347534179687e+01, NULL, 298, 'USB-C Charger 20W', 0, '["http://127.0.0.1:8000/shop/product/charger-65w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (31, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 200, 'text/html', 9590, 11, 1, 'GaN Charger 65W | Robin Electronics', 'Buy GaN Charger 65W from Robin Electronics.', 'GaN Charger 65W', 'Description', NULL, NULL, 'Indexable', 331, 'f8ed1ede15107ab2c9e75c8c02ba79a0', 1792681177, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032578740564056, 92, 4, NULL, 0, 0, '[["connection","close"],["content-length","9474"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 368, 293, NULL, 3.54659347534179687e+01, NULL, 327, 'GaN Charger 65W', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (32, 2, 'http://127.0.0.1:8000/shop/img/banner.svg', 200, 'image/svg+xml', 213, 53, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681177, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","213"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (33, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 200, 'text/html', 8109, 11, 1, 'Power Bank 10000 mAh | Robin Electronics', 'Buy Power Bank 10000 mAh from Robin Electronics.', 'Power Bank 10000 mAh', 'Description', NULL, NULL, 'Indexable', 299, '9b77d0780e615ed4d288c2004c2797af', 1792681177, 0, 3, NULL, '["BreadcrumbList","ListItem"]', 8367032579239645208, 95, 5, NULL, 0, 0, '[["connection","close"],["content-length","7992"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 425, 328, NULL, 3.54659347534179687e+01, NULL, 295, 'Power Bank 10000 mAh', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/charger-65w.html","http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/info/about.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (34, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 200, 'text/html', 9030, 10, 1, 'USB-C Cable 2 m | Robin Electronics', 'Buy USB-C Cable 2 m from Robin Electronics.', 'USB-C Cable 2 m', 'Description', NULL, NULL, 'Indexable', 294, '43a782887374e3edb03b3ee2db762ee3', 1792681177, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579273208344, 96, 4, NULL, 0, 0, '[["connection","close"],["content-length","8926"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 356, 288, NULL, 5.01130943298339843e+01, NULL, 294, 'USB-C Cable 2 m', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/charger-65w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (35, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 200, 'text/html', 7230, 11, 1, 'Cables | Robin Electronics', 'Shop cables at Robin Electronics.', 'Cables', 'Filter', NULL, NULL, 'Indexable', 86, '46b9ec7837547f678cbc80615b407016', 1792681177, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 3777864772301312648, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","7134"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 254, 209, NULL, 6.42022628784179687e+01, NULL, 86, 'Cables', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (36, 2, 'http://127.0.0.1:8000/shop/info/about.html', 200, 'text/html', 3702, 11, 1, 'About us | Robin Electronics', 'About us at Robin Electronics.', 'About us', NULL, NULL, NULL, 'Indexable', 105, 'c678ef56f5987705c294e4bc978da2d4', 1792681178, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 8439090172742799370, 90, 1, NULL, 0, 1, '[["connection","close"],["content-length","3608"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 275, 188, NULL, 5.65517501831054687e+01, NULL, 105, 'About us', 0, '["http://127.0.0.1:8000/shop/product/powerbank-10k.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (37, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 200, 'text/html', 3312, 10, 1, 'Returns | Robin Electronics', 'Returns at Robin Electronics.', 'Returns', 'Register the return', NULL, NULL, 'Indexable', 41, 'b8b0bd8b4163fa678e3c9d2f9d9738c9', 1792681178, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 136483128739668165, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","3218"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Pack it', 262, 181, NULL, 5.65517501831054687e+01, NULL, 41, 'Returns', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (38, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 200, 'text/html', 5731, 11, 1, 'Headphones | Robin Electronics', 'Shop headphones at Robin Electronics.', 'Headphones', 'Filter', NULL, NULL, 'Indexable', 70, '6f80df8698704fb6a1919287ae550bf3', 1792681178, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 3863131754272399462, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","5637"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 312, 246, NULL, 6.54561004638671875e+01, NULL, 70, 'Headphones', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (39, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 200, 'text/html', 8930, 10, 1, 'Wireless Headphones ANC | Robin Electronics', 'Buy Wireless Headphones ANC from Robin Electronics.', 'Wireless Headphones ANC', 'Description', NULL, NULL, 'Indexable', 304, 'c4f5748a2b449ab6e613ca8339cf5229', 1792681178, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579273232920, 96, 4, NULL, 0, 0, '[["connection","close"],["content-length","8829"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 452, 347, NULL, 4.06345481872558593e+01, NULL, 304, 'Wireless Headphones ANC', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/charger-65w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/cable-2m.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (40, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 200, 'text/html', 7339, 11, 1, 'Chargers | Robin Electronics', 'Shop chargers at Robin Electronics.', 'Chargers', 'Filter', NULL, NULL, 'Indexable', 89, 'c8a354d74a145e70f4b3e3cac2de1aa0', 1792681178, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 8096535202084659764, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","7245"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 278, 223, NULL, 7.19831085205078125e+01, NULL, 89, 'Chargers', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (41, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 200, 'text/html', 3425, 11, 1, 'Shipping | Robin Electronics', 'Shipping at Robin Electronics.', 'Shipping', 'Home delivery', NULL, NULL, 'Indexable', 30, '6850c0f40d5607a4761c442be3edae41', 1792681179, 0, 2, NULL, '["BreadcrumbList","ListItem"]', -7201497713299298398, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","3329"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Pickup point', 271, 187, NULL, 100.0, NULL, 30, 'Shipping', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0);
-INSERT INTO pages (id, crawl_id, url, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential) VALUES (42, 2, 'http://127.0.0.1:8000/shop/cart', 404, 'text/plain', 260, 1099, 1, NULL, NULL, NULL, NULL, NULL, NULL, 'Non-Indexable', NULL, NULL, 1792681179, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","13"],["content-type","text/plain"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5.21818389892578125e+01, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, NULL);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (1, 1, 'http://127.0.0.1:8000/shop/', 104, 0.0, 11, NULL, 104);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (2, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 112, 0.0, 12, NULL, 100);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (3, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 92, 0.0, 11, NULL, 92);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (4, 1, 'http://127.0.0.1:8000/shop/info/about.html', 84, 0.0, 11, NULL, 84);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (5, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 124, 0.0, 11, NULL, 124);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (6, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 96, 0.0, 13, NULL, 96);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (7, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 68, 0.0, 10, NULL, 68);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (8, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 196, 0.0, 11, NULL, 196);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (9, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 184, 0.0, 11, NULL, 184);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (10, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 192, 0.0, 11, NULL, 192);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (11, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 72, 0.0, 11, NULL, 72);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (12, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 56, 0.0, 11, NULL, 56);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (13, 2, 'http://127.0.0.1:8000/shop/', 76, 0.0, 11, NULL, 76);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (14, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 104, 0.0, 10, NULL, 104);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (15, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 96, 0.0, 11, NULL, 96);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (16, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 116, 0.0, 11, NULL, 116);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (17, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 132, 0.0, 10, NULL, 132);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (18, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 144, 0.0, 11, NULL, 144);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (19, 2, 'http://127.0.0.1:8000/shop/info/about.html', 60, 0.0, 11, NULL, 60);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (20, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 88, 0.0, 10, NULL, 88);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (21, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 84, 0.0, 11, NULL, 84);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (22, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 104, 0.0, 10, NULL, 104);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (23, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 68, 0.0, 11, NULL, 68);
-INSERT INTO performance (id, crawl_id, page_url, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (24, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 116, 0.0, 11, NULL, 116);
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (1, 1, 'http://127.0.0.1:8000/shop/', 'warning', 'WebSite', 'relative-url:url', 'Property ''url'' of WebSite is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (2, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (3, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/returns.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (4, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (5, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/cables.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (6, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/cable-2m.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (7, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (8, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (9, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (10, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (11, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (12, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (13, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/about.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (14, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (15, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (16, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/charger-20w.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (17, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (18, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (19, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (20, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (21, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (22, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (23, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/headphones.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (24, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/headphones-anc.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (25, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (26, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (27, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (28, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (29, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (30, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (31, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (32, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/powerbank-10k.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (33, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (34, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (35, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (36, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/shipping.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (37, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (38, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (39, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/charger-65w.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (40, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (41, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (42, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (43, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (44, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (45, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (46, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/cables.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (47, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (48, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/headphones.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (49, 2, 'http://127.0.0.1:8000/shop/', 'warning', 'WebSite', 'relative-url:url', 'Property ''url'' of WebSite is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (50, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (51, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (52, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/charger-20w.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (53, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (54, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (55, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (56, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (57, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (58, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (59, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (60, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/charger-65w.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (61, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (62, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (63, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (64, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (65, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (66, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (67, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (68, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/powerbank-10k.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (69, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (70, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/cables.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (71, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/cable-2m.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (72, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (73, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (74, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (75, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (76, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (77, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (78, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/cables.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (79, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (80, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/about.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (81, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (82, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/returns.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (83, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (84, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/headphones.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (85, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (86, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/headphones.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (87, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/headphones-anc.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (88, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (89, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (90, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (91, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (92, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (93, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (94, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (95, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
-INSERT INTO sd_issues (id, crawl_id, page_url, severity, type_name, code, message) VALUES (96, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/shipping.html''; Google expects an absolute URL here');
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (1, 1, 200, 'text/html', 5272, 11, 0, 'Robin Electronics | Robin Electronics', 'Chargers, cables and headphones.', 'Charge everything', 'Popular right now', NULL, NULL, 'Indexable', 38, '3110f79e6a08d67b36c59b1c4b52e596', 1792681167, 0, 1, NULL, '["WebSite"]', 6918797436566768178, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","5176"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 356, 218, NULL, 8.81119003295898437e+01, NULL, 38, 'Charge everything', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 1);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (2, 1, 200, 'text/css', 5409, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","text/css"],["content-length","5409"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'link', 0, 0, NULL, NULL, NULL, 2);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (3, 1, 200, 'text/css', 199, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","text/css"],["content-length","199"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'link', 0, 0, NULL, NULL, NULL, 3);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (4, 1, 200, 'image/svg+xml', 219, 45, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","219"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL, 4);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (5, 1, 200, 'image/svg+xml', 189, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","189"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL, 5);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (6, 1, 200, 'image/svg+xml', 212, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","212"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL, 6);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (7, 1, 200, 'application/javascript', 1343, 40, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","application/javascript"],["content-length","1343"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'script', 0, 0, NULL, NULL, NULL, 7);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (8, 1, 200, 'image/svg+xml', 0, 15, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'N/A', NULL, NULL, 1792681167, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'other', 0, 0, NULL, NULL, NULL, 8);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (9, 1, 200, 'text/html', 3314, 12, 1, 'Returns | Robin Electronics', 'Returns at Robin Electronics.', 'Returns', 'Register the return', NULL, NULL, 'Indexable', 41, 'b8b0bd8b4163fa678e3c9d2f9d9738c9', 1792681167, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 136483128739668165, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","3218"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Pack it', 262, 181, NULL, 5.65517501831054687e+01, NULL, 41, 'Returns', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 9);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (10, 1, 200, 'text/html', 9045, 11, 1, 'USB-C Cable 2 m | Robin Electronics', 'Buy USB-C Cable 2 m from Robin Electronics.', 'USB-C Cable 2 m', 'Description', NULL, NULL, 'Indexable', 298, 'c954681d1c128e261006b288ab5ab362', 1792681168, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579273232984, 100, 4, NULL, 0, 1, '[["connection","close"],["content-length","8926"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 356, 288, NULL, 5.01130943298339843e+01, NULL, 294, 'USB-C Cable 2 m', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/headphones-anc.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/charger-65w.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 10);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (11, 1, 200, 'text/html', 3702, 11, 1, 'About us | Robin Electronics', 'About us at Robin Electronics.', 'About us', NULL, NULL, NULL, 'Indexable', 105, 'c678ef56f5987705c294e4bc978da2d4', 1792681168, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 8439090172742799370, 90, 1, NULL, 0, 2, '[["connection","close"],["content-length","3608"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 275, 188, NULL, 5.65517501831054687e+01, NULL, 105, 'About us', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 11);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (12, 1, 200, 'image/svg+xml', 213, 43, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681168, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","213"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL, 12);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (13, 1, 200, 'text/html', 9213, 11, 1, 'USB-C Charger 20W | Robin Electronics', 'Buy USB-C Charger 20W from Robin Electronics.', 'USB-C Charger 20W', 'Description', NULL, NULL, 'Indexable', 298, '4e6dd530689561da77790d8a7634ff05', 1792681168, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032578700710472, 93, 3, NULL, 0, 1, '[["connection","close"],["content-length","9109"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 390, 307, NULL, 3.54659347534179687e+01, NULL, 298, 'USB-C Charger 20W', 0, '["http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/info/about.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 13);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (14, 1, 200, 'text/html', 8927, 13, 1, 'Wireless Headphones ANC | Robin Electronics', 'Buy Wireless Headphones ANC from Robin Electronics.', 'Wireless Headphones ANC', 'Description', NULL, NULL, 'Indexable', 304, '8f4006756811a585be8e7ac330b41705', 1792681168, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579273232984, 100, 4, NULL, 0, 1, '[["connection","close"],["content-length","8829"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 452, 347, NULL, 4.06345481872558593e+01, NULL, 304, 'Wireless Headphones ANC', 0, '["http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/charger-65w.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 14);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (15, 1, 200, 'text/html', 8091, 10, 1, 'Power Bank 10000 mAh | Robin Electronics', 'Buy Power Bank 10000 mAh from Robin Electronics.', 'Power Bank 10000 mAh', 'Description', NULL, NULL, 'Indexable', 295, '7ede9ca54b3df83238a202002f71a1ce', 1792681169, 0, 3, NULL, '["BreadcrumbList","ListItem"]', 8403061376294261276, 90, 2, NULL, 0, 1, '[["connection","close"],["content-length","7992"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 425, 328, NULL, 3.54659347534179687e+01, NULL, 295, 'Power Bank 10000 mAh', 0, '["http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 15);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (16, 1, 200, 'text/html', 7341, 11, 1, 'Chargers | Robin Electronics', 'Shop chargers at Robin Electronics.', 'Chargers', 'Filter', NULL, NULL, 'Indexable', 89, 'c8a354d74a145e70f4b3e3cac2de1aa0', 1792681169, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 8096535202084659764, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","7245"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 278, 223, NULL, 7.19831085205078125e+01, NULL, 89, 'Chargers', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 16);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (17, 1, 404, 'text/plain', 262, 1062, 1, NULL, NULL, NULL, NULL, NULL, NULL, 'Non-Indexable', NULL, NULL, 1792681169, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","13"],["content-type","text/plain"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5.21818389892578125e+01, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, NULL, 17);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (18, 1, 200, 'text/html', 3425, 11, 1, 'Shipping | Robin Electronics', 'Shipping at Robin Electronics.', 'Shipping', 'Home delivery', NULL, NULL, 'Indexable', 30, '6850c0f40d5607a4761c442be3edae41', 1792681169, 0, 2, NULL, '["BreadcrumbList","ListItem"]', -7201497713299298398, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","3329"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Pickup point', 271, 187, NULL, 100.0, NULL, 30, 'Shipping', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 18);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (19, 1, 200, 'text/html', 9575, 11, 1, 'GaN Charger 65W | Robin Electronics', 'Buy GaN Charger 65W from Robin Electronics.', 'GaN Charger 65W', 'Description', NULL, NULL, 'Indexable', 327, 'c20b818dfc894238df7f416c6f269bb6', 1792681169, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032578740793432, 90, 2, NULL, 0, 1, '[["connection","close"],["content-length","9474"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 368, 293, NULL, 3.54659347534179687e+01, NULL, 327, 'GaN Charger 65W', 0, '["http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 19);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (20, 1, 200, 'text/html', 7228, 11, 1, 'Cables | Robin Electronics', 'Shop cables at Robin Electronics.', 'Cables', 'Filter', NULL, NULL, 'Indexable', 86, '46b9ec7837547f678cbc80615b407016', 1792681169, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 3777864772301312648, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","7134"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 254, 209, NULL, 6.42022628784179687e+01, NULL, 86, 'Cables', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 20);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (21, 1, 200, 'text/html', 5731, 11, 1, 'Headphones | Robin Electronics', 'Shop headphones at Robin Electronics.', 'Headphones', 'Filter', NULL, NULL, 'Indexable', 70, '6f80df8698704fb6a1919287ae550bf3', 1792681170, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 3863131754272399462, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","5637"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 312, 246, NULL, 6.54561004638671875e+01, NULL, 70, 'Headphones', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 21);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (22, 2, 200, 'text/html', 5270, 11, 0, 'Robin Electronics | Robin Electronics', 'Chargers, cables and headphones.', 'Charge everything', 'Popular right now', NULL, NULL, 'Indexable', 38, '3110f79e6a08d67b36c59b1c4b52e596', 1792681176, 0, 1, NULL, '["WebSite"]', 6918797436566768178, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","5176"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 356, 218, NULL, 8.81119003295898437e+01, NULL, 38, 'Charge everything', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 22);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (23, 2, 200, 'text/css', 5409, 33, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","text/css"],["content-length","5409"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'link', 0, 0, NULL, NULL, NULL, 23);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (24, 2, 200, 'text/css', 633, 33, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","text/css"],["content-length","633"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'link', 0, 0, NULL, NULL, NULL, 24);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (25, 2, 200, 'image/svg+xml', 189, 34, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","189"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL, 25);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (26, 2, 200, 'image/svg+xml', 219, 34, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","219"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL, 26);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (27, 2, 200, 'image/svg+xml', 212, 34, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","212"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL, 27);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (28, 2, 200, 'application/javascript', 1343, 34, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","application/javascript"],["content-length","1343"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'script', 0, 0, NULL, NULL, NULL, 28);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (29, 2, 200, 'image/svg+xml', 0, 14, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'N/A', NULL, NULL, 1792681176, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'other', 0, 0, NULL, NULL, NULL, 29);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (30, 2, 200, 'text/html', 9230, 10, 1, 'USB-C Charger 20W | Robin Electronics', 'Buy USB-C Charger 20W from Robin Electronics.', 'USB-C Charger 20W', 'Description', NULL, NULL, 'Indexable', 302, 'b460b4d7f80d57921246e966e9c0c862', 1792681177, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579239686664, 95, 4, NULL, 0, 0, '[["connection","close"],["content-length","9109"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 390, 307, NULL, 3.54659347534179687e+01, NULL, 298, 'USB-C Charger 20W', 0, '["http://127.0.0.1:8000/shop/product/charger-65w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 30);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (31, 2, 200, 'text/html', 9590, 11, 1, 'GaN Charger 65W | Robin Electronics', 'Buy GaN Charger 65W from Robin Electronics.', 'GaN Charger 65W', 'Description', NULL, NULL, 'Indexable', 331, 'f8ed1ede15107ab2c9e75c8c02ba79a0', 1792681177, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032578740564056, 92, 4, NULL, 0, 0, '[["connection","close"],["content-length","9474"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 368, 293, NULL, 3.54659347534179687e+01, NULL, 327, 'GaN Charger 65W', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 31);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (32, 2, 200, 'image/svg+xml', 213, 53, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'Indexable', NULL, NULL, 1792681177, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["content-type","image/svg+xml"],["content-length","213"],["connection","close"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 1, 'img', 0, 0, NULL, NULL, NULL, 32);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (33, 2, 200, 'text/html', 8109, 11, 1, 'Power Bank 10000 mAh | Robin Electronics', 'Buy Power Bank 10000 mAh from Robin Electronics.', 'Power Bank 10000 mAh', 'Description', NULL, NULL, 'Indexable', 299, '9b77d0780e615ed4d288c2004c2797af', 1792681177, 0, 3, NULL, '["BreadcrumbList","ListItem"]', 8367032579239645208, 95, 5, NULL, 0, 0, '[["connection","close"],["content-length","7992"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 425, 328, NULL, 3.54659347534179687e+01, NULL, 295, 'Power Bank 10000 mAh', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/charger-65w.html","http://127.0.0.1:8000/shop/product/cable-2m.html","http://127.0.0.1:8000/shop/info/about.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 33);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (34, 2, 200, 'text/html', 9030, 10, 1, 'USB-C Cable 2 m | Robin Electronics', 'Buy USB-C Cable 2 m from Robin Electronics.', 'USB-C Cable 2 m', 'Description', NULL, NULL, 'Indexable', 294, '43a782887374e3edb03b3ee2db762ee3', 1792681177, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579273208344, 96, 4, NULL, 0, 0, '[["connection","close"],["content-length","8926"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 356, 288, NULL, 5.01130943298339843e+01, NULL, 294, 'USB-C Cable 2 m', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/charger-65w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/headphones-anc.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 34);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (35, 2, 200, 'text/html', 7230, 11, 1, 'Cables | Robin Electronics', 'Shop cables at Robin Electronics.', 'Cables', 'Filter', NULL, NULL, 'Indexable', 86, '46b9ec7837547f678cbc80615b407016', 1792681177, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 3777864772301312648, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","7134"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 254, 209, NULL, 6.42022628784179687e+01, NULL, 86, 'Cables', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 35);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (36, 2, 200, 'text/html', 3702, 11, 1, 'About us | Robin Electronics', 'About us at Robin Electronics.', 'About us', NULL, NULL, NULL, 'Indexable', 105, 'c678ef56f5987705c294e4bc978da2d4', 1792681178, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 8439090172742799370, 90, 1, NULL, 0, 1, '[["connection","close"],["content-length","3608"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 275, 188, NULL, 5.65517501831054687e+01, NULL, 105, 'About us', 0, '["http://127.0.0.1:8000/shop/product/powerbank-10k.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 36);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (37, 2, 200, 'text/html', 3312, 10, 1, 'Returns | Robin Electronics', 'Returns at Robin Electronics.', 'Returns', 'Register the return', NULL, NULL, 'Indexable', 41, 'b8b0bd8b4163fa678e3c9d2f9d9738c9', 1792681178, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 136483128739668165, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","3218"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Pack it', 262, 181, NULL, 5.65517501831054687e+01, NULL, 41, 'Returns', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 37);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (38, 2, 200, 'text/html', 5731, 11, 1, 'Headphones | Robin Electronics', 'Shop headphones at Robin Electronics.', 'Headphones', 'Filter', NULL, NULL, 'Indexable', 70, '6f80df8698704fb6a1919287ae550bf3', 1792681178, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 3863131754272399462, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","5637"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 312, 246, NULL, 6.54561004638671875e+01, NULL, 70, 'Headphones', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 38);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (39, 2, 200, 'text/html', 8930, 10, 1, 'Wireless Headphones ANC | Robin Electronics', 'Buy Wireless Headphones ANC from Robin Electronics.', 'Wireless Headphones ANC', 'Description', NULL, NULL, 'Indexable', 304, 'c4f5748a2b449ab6e613ca8339cf5229', 1792681178, 0, 8, NULL, '["BreadcrumbList","ListItem","Product"]', 8367032579273232920, 96, 4, NULL, 0, 0, '[["connection","close"],["content-length","8829"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Specifications', 452, 347, NULL, 4.06345481872558593e+01, NULL, 304, 'Wireless Headphones ANC', 0, '["http://127.0.0.1:8000/shop/product/charger-20w.html","http://127.0.0.1:8000/shop/product/charger-65w.html","http://127.0.0.1:8000/shop/product/powerbank-10k.html","http://127.0.0.1:8000/shop/product/cable-2m.html"]', NULL, 0, NULL, 1, 0, NULL, 1, 0, 39);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (40, 2, 200, 'text/html', 7339, 11, 1, 'Chargers | Robin Electronics', 'Shop chargers at Robin Electronics.', 'Chargers', 'Filter', NULL, NULL, 'Indexable', 89, 'c8a354d74a145e70f4b3e3cac2de1aa0', 1792681178, 0, 2, NULL, '["BreadcrumbList","ListItem"]', 8096535202084659764, NULL, NULL, NULL, 0, 1, '[["connection","close"],["content-length","7245"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, NULL, 278, 223, NULL, 7.19831085205078125e+01, NULL, 89, 'Chargers', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 40);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (41, 2, 200, 'text/html', 3425, 11, 1, 'Shipping | Robin Electronics', 'Shipping at Robin Electronics.', 'Shipping', 'Home delivery', NULL, NULL, 'Indexable', 30, '6850c0f40d5607a4761c442be3edae41', 1792681179, 0, 2, NULL, '["BreadcrumbList","ListItem"]', -7201497713299298398, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","3329"],["content-type","text/html; charset=utf-8"]]', NULL, NULL, NULL, NULL, 'Pickup point', 271, 187, NULL, 100.0, NULL, 30, 'Shipping', 0, NULL, NULL, 0, NULL, 1, 0, NULL, 1, 0, 41);
+INSERT INTO pages (id, crawl_id, status, content_type, size_bytes, response_time_ms, depth, title, meta_description, h1, h2, canonical, robots, indexability, word_count, hash, crawled_at, sd_errors, sd_warnings, hreflang_tags_json, sd_types_json, simhash, closest_similarity, near_duplicate_count, og_type, a11y_errors, a11y_warnings, headers_json, redirect_url, title_2, meta_description_2, h1_2, h2_2, title_pixel_width, meta_description_pixel_width, redirect_status, link_score, hreflang_issues_json, ssr_word_count, ssr_h1, ssr_content_missing, near_duplicate_urls_json, blocked_by_robots, is_resource, resource_initiator, is_page, has_mixed_content, hreflang_sources_json, has_body_tag, h2_non_sequential, url_id) VALUES (42, 2, 404, 'text/plain', 260, 1099, 1, NULL, NULL, NULL, NULL, NULL, NULL, 'Non-Indexable', NULL, NULL, 1792681179, 0, 0, NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, '[["connection","close"],["content-length","13"],["content-type","text/plain"]]', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 5.21818389892578125e+01, NULL, NULL, NULL, NULL, NULL, NULL, 0, NULL, 1, 0, NULL, NULL, NULL, 42);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (1, 1, 1, 104, 0.0, 11, NULL, 104);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (2, 1, 9, 112, 0.0, 12, NULL, 100);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (3, 1, 10, 92, 0.0, 11, NULL, 92);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (4, 1, 11, 84, 0.0, 11, NULL, 84);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (5, 1, 13, 124, 0.0, 11, NULL, 124);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (6, 1, 14, 96, 0.0, 13, NULL, 96);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (7, 1, 15, 68, 0.0, 10, NULL, 68);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (8, 1, 16, 196, 0.0, 11, NULL, 196);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (9, 1, 18, 184, 0.0, 11, NULL, 184);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (10, 1, 19, 192, 0.0, 11, NULL, 192);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (11, 1, 20, 72, 0.0, 11, NULL, 72);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (12, 1, 21, 56, 0.0, 11, NULL, 56);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (13, 2, 22, 76, 0.0, 11, NULL, 76);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (14, 2, 30, 104, 0.0, 10, NULL, 104);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (15, 2, 31, 96, 0.0, 11, NULL, 96);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (16, 2, 33, 116, 0.0, 11, NULL, 116);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (17, 2, 34, 132, 0.0, 10, NULL, 132);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (18, 2, 35, 144, 0.0, 11, NULL, 144);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (19, 2, 36, 60, 0.0, 11, NULL, 60);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (20, 2, 37, 88, 0.0, 10, NULL, 88);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (21, 2, 38, 84, 0.0, 11, NULL, 84);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (22, 2, 39, 104, 0.0, 10, NULL, 104);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (23, 2, 40, 68, 0.0, 11, NULL, 68);
+INSERT INTO performance (id, crawl_id, page_url_id, lcp_ms, cls, ttfb_ms, transfer_kb, fcp_ms) VALUES (24, 2, 41, 116, 0.0, 11, NULL, 116);
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (1, 1, 1, 'warning', 'WebSite', 'relative-url:url', 'Property ''url'' of WebSite is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (2, 1, 9, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (3, 1, 9, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/returns.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (4, 1, 10, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (5, 1, 10, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/cables.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (6, 1, 10, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/cable-2m.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (7, 1, 10, 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (8, 1, 10, 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (9, 1, 10, 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (10, 1, 10, 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (11, 1, 10, 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (12, 1, 11, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (13, 1, 11, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/about.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (14, 1, 13, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (15, 1, 13, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (16, 1, 13, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/charger-20w.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (17, 1, 13, 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (18, 1, 13, 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (19, 1, 13, 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (20, 1, 13, 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (21, 1, 13, 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (22, 1, 14, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (23, 1, 14, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/headphones.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (24, 1, 14, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/headphones-anc.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (25, 1, 14, 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (26, 1, 14, 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (27, 1, 14, 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (28, 1, 14, 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (29, 1, 14, 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (30, 1, 15, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (31, 1, 15, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (32, 1, 15, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/powerbank-10k.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (33, 1, 16, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (34, 1, 16, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (35, 1, 18, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (36, 1, 18, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/shipping.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (37, 1, 19, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (38, 1, 19, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (39, 1, 19, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/charger-65w.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (40, 1, 19, 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (41, 1, 19, 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (42, 1, 19, 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (43, 1, 19, 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (44, 1, 19, 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (45, 1, 20, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (46, 1, 20, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/cables.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (47, 1, 21, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (48, 1, 21, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/headphones.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (49, 2, 22, 'warning', 'WebSite', 'relative-url:url', 'Property ''url'' of WebSite is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (50, 2, 30, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (51, 2, 30, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (52, 2, 30, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/charger-20w.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (53, 2, 30, 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (54, 2, 30, 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (55, 2, 30, 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (56, 2, 30, 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (57, 2, 30, 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (58, 2, 31, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (59, 2, 31, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (60, 2, 31, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/charger-65w.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (61, 2, 31, 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (62, 2, 31, 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (63, 2, 31, 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (64, 2, 31, 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (65, 2, 31, 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (66, 2, 33, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (67, 2, 33, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (68, 2, 33, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/powerbank-10k.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (69, 2, 34, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (70, 2, 34, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/cables.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (71, 2, 34, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/cable-2m.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (72, 2, 34, 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (73, 2, 34, 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (74, 2, 34, 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (75, 2, 34, 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (76, 2, 34, 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (77, 2, 35, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (78, 2, 35, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/cables.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (79, 2, 36, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (80, 2, 36, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/about.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (81, 2, 37, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (82, 2, 37, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/returns.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (83, 2, 38, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (84, 2, 38, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/headphones.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (85, 2, 39, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (86, 2, 39, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/headphones.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (87, 2, 39, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/product/headphones-anc.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (88, 2, 39, 'warning', 'Product', 'relative-url:image', 'Property ''image'' of Product is the relative URL ''/shop/img/product.svg''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (89, 2, 39, 'warning', 'Product', 'missing-recommended:description', 'Recommended property ''description'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (90, 2, 39, 'warning', 'Product', 'missing-recommended:brand', 'Recommended property ''brand'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (91, 2, 39, 'warning', 'Product', 'missing-recommended:review', 'Recommended property ''review'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (92, 2, 39, 'warning', 'Product', 'missing-recommended:aggregateRating', 'Recommended property ''aggregateRating'' is missing from Product');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (93, 2, 40, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (94, 2, 40, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/category/chargers.html''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (95, 2, 41, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/''; Google expects an absolute URL here');
+INSERT INTO sd_issues (id, crawl_id, page_url_id, severity, type_name, code, message) VALUES (96, 2, 41, 'warning', 'ListItem', 'relative-url:item', 'Property ''item'' of ListItem is the relative URL ''/shop/info/shipping.html''; Google expects an absolute URL here');
 INSERT INTO site_icons (host, icon_png, fetched_at) VALUES ('127.0.0.1:8000', X'89504E470D0A1A0A0000000D4948445200000020000000200806000000737A7AF400000211494441547801EDC003A0245996C6F1FF77EE8DC8CCA7724B63AE6DDBB66DDBB66DDBB66D698C9E964AAF9E323322EEF976B76A7AA6873B6BD5AF6E3EF64DCD7F1F82FF5E04FFBD08FE7B11FCF722F8EF45F0DF8BCABFD2AB3D68C93BBDE41E2F7EED8A17BF760DC0DFDF3BE3EFEF9DF3237FBBC31F3C63C1BF02DA7CEC9B9A17C18B5FBBE6F3DEE02CAFF6A0235E983F78C6069FF16B67F8FB7B67BC08D0E663DFD4FC0B5EFCDA353FF5EE77706CDE78515C5A15DEE6FB6FE2EFEF9DF12F20F817BCF8B56B7EEADDEFE0D8BCF1A23A366FFCD4BBDFC18B5FBBE65F40F02FF8BC3738CBB179E35FEBD8BCF1796F70967F01C10BF16A0F5AF26A0F3AE2DFEAD51E74C4AB3D68C90B41F042BCF34B5EE2DFEB9D5FF2122F049517E2C5AE5DF3EFF562D7AE7921A8BC102F7EED9A7FAF17BF76CD0B41F0DF8BE085F8877B67FC7BFDC3BD335E088217E2EFEF9DF1EFF5F7F7CE7821085E881FFEDB63FC7BFDF0DF1EE385207821FEE0190BFEF0B60DFEADFEF0B60DFEE0190B5E08827FC1A7FFEA19F6D6857FADBD75E1D37FF50CFF02827FC1DFDF3BE3ADBFEF26F6D68517D5DEBAF0D6DF77137F7FEF8C7F01C18BE0EFEF9DF1D6DF77137F78DB06FF923FBC6D83B7FEBE9BF8FB7B67BC08D0E663DFD4FC2BBCDA8396BCF34B5EE2C5AF5DF362D7AE01F8877B67FCFDBD337EF86F8FF107CF58F0AF80361FFBA6E6BF0FC17F2F82FF5E04FFBD08FE7B11FCF722F8EFC53F02513D76C96B82D7DD0000000049454E44AE426082', 1792681174);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (1, 1, 'http://127.0.0.1:8000/shop/', 'json-ld', 'WebSite', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (1, 1, 1, 'json-ld', 'WebSite', '{
   "@context": "https://schema.org",
   "@type": "WebSite",
   "name": "Robin Electronics",
   "url": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (2, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (2, 1, 9, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1103,19 +1103,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (3, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (3, 1, 9, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (4, 1, 'http://127.0.0.1:8000/shop/info/returns.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (4, 1, 9, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Returns",
   "item": "/shop/info/returns.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (5, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (5, 1, 10, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1139,25 +1139,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (6, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (6, 1, 10, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (7, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (7, 1, 10, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Cables",
   "item": "/shop/category/cables.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (8, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (8, 1, 10, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "USB-C Cable 2 m",
   "item": "/shop/product/cable-2m.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (9, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'Product', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (9, 1, 10, 'json-ld', 'Product', '{
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "USB-C Cable 2 m",
@@ -1170,7 +1170,7 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     "availability": "https://schema.org/InStock"
   }
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (10, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (10, 1, 11, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1188,19 +1188,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (11, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (11, 1, 11, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (12, 1, 'http://127.0.0.1:8000/shop/info/about.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (12, 1, 11, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "About us",
   "item": "/shop/info/about.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (13, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (13, 1, 13, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1224,25 +1224,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (14, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (14, 1, 13, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (15, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (15, 1, 13, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Chargers",
   "item": "/shop/category/chargers.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (16, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (16, 1, 13, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "USB-C Charger 20W",
   "item": "/shop/product/charger-20w.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (17, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'Product', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (17, 1, 13, 'json-ld', 'Product', '{
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "USB-C Charger 20W",
@@ -1255,7 +1255,7 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     "availability": "https://schema.org/InStock"
   }
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (18, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (18, 1, 14, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1279,25 +1279,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (19, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (19, 1, 14, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (20, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (20, 1, 14, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Headphones",
   "item": "/shop/category/headphones.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (21, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (21, 1, 14, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "Wireless Headphones ANC",
   "item": "/shop/product/headphones-anc.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (22, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'Product', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (22, 1, 14, 'json-ld', 'Product', '{
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "Wireless Headphones ANC",
@@ -1310,7 +1310,7 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     "availability": "https://schema.org/InStock"
   }
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (23, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (23, 1, 15, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1334,25 +1334,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (24, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (24, 1, 15, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (25, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (25, 1, 15, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Chargers",
   "item": "/shop/category/chargers.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (26, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (26, 1, 15, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "Power Bank 10000 mAh",
   "item": "/shop/product/powerbank-10k.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (27, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (27, 1, 16, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1370,19 +1370,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (28, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (28, 1, 16, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (29, 1, 'http://127.0.0.1:8000/shop/category/chargers.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (29, 1, 16, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Chargers",
   "item": "/shop/category/chargers.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (30, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (30, 1, 18, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1400,19 +1400,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (31, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (31, 1, 18, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (32, 1, 'http://127.0.0.1:8000/shop/info/shipping.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (32, 1, 18, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Shipping",
   "item": "/shop/info/shipping.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (33, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (33, 1, 19, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1436,25 +1436,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (34, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (34, 1, 19, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (35, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (35, 1, 19, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Chargers",
   "item": "/shop/category/chargers.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (36, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (36, 1, 19, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "GaN Charger 65W",
   "item": "/shop/product/charger-65w.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (37, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'Product', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (37, 1, 19, 'json-ld', 'Product', '{
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "GaN Charger 65W",
@@ -1467,7 +1467,7 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     "availability": "https://schema.org/InStock"
   }
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (38, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (38, 1, 20, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1485,19 +1485,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (39, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (39, 1, 20, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (40, 1, 'http://127.0.0.1:8000/shop/category/cables.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (40, 1, 20, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Cables",
   "item": "/shop/category/cables.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (41, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (41, 1, 21, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1515,25 +1515,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (42, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (42, 1, 21, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (43, 1, 'http://127.0.0.1:8000/shop/category/headphones.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (43, 1, 21, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Headphones",
   "item": "/shop/category/headphones.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (44, 2, 'http://127.0.0.1:8000/shop/', 'json-ld', 'WebSite', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (44, 2, 22, 'json-ld', 'WebSite', '{
   "@context": "https://schema.org",
   "@type": "WebSite",
   "name": "Robin Electronics",
   "url": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (45, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (45, 2, 30, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1557,25 +1557,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (46, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (46, 2, 30, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (47, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (47, 2, 30, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Chargers",
   "item": "/shop/category/chargers.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (48, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (48, 2, 30, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "USB-C Charger 20W",
   "item": "/shop/product/charger-20w.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (49, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html', 'json-ld', 'Product', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (49, 2, 30, 'json-ld', 'Product', '{
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "USB-C Charger 20W",
@@ -1588,7 +1588,7 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     "availability": "https://schema.org/InStock"
   }
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (50, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (50, 2, 31, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1612,25 +1612,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (51, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (51, 2, 31, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (52, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (52, 2, 31, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Chargers",
   "item": "/shop/category/chargers.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (53, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (53, 2, 31, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "GaN Charger 65W",
   "item": "/shop/product/charger-65w.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (54, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html', 'json-ld', 'Product', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (54, 2, 31, 'json-ld', 'Product', '{
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "GaN Charger 65W",
@@ -1643,7 +1643,7 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     "availability": "https://schema.org/InStock"
   }
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (55, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (55, 2, 33, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1667,25 +1667,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (56, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (56, 2, 33, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (57, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (57, 2, 33, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Chargers",
   "item": "/shop/category/chargers.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (58, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (58, 2, 33, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "Power Bank 10000 mAh",
   "item": "/shop/product/powerbank-10k.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (59, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (59, 2, 34, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1709,25 +1709,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (60, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (60, 2, 34, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (61, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (61, 2, 34, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Cables",
   "item": "/shop/category/cables.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (62, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (62, 2, 34, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "USB-C Cable 2 m",
   "item": "/shop/product/cable-2m.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (63, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html', 'json-ld', 'Product', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (63, 2, 34, 'json-ld', 'Product', '{
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "USB-C Cable 2 m",
@@ -1740,7 +1740,7 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     "availability": "https://schema.org/InStock"
   }
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (64, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (64, 2, 35, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1758,19 +1758,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (65, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (65, 2, 35, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (66, 2, 'http://127.0.0.1:8000/shop/category/cables.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (66, 2, 35, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Cables",
   "item": "/shop/category/cables.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (67, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (67, 2, 36, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1788,19 +1788,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (68, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (68, 2, 36, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (69, 2, 'http://127.0.0.1:8000/shop/info/about.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (69, 2, 36, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "About us",
   "item": "/shop/info/about.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (70, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (70, 2, 37, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1818,19 +1818,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (71, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (71, 2, 37, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (72, 2, 'http://127.0.0.1:8000/shop/info/returns.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (72, 2, 37, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Returns",
   "item": "/shop/info/returns.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (73, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (73, 2, 38, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1848,19 +1848,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (74, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (74, 2, 38, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (75, 2, 'http://127.0.0.1:8000/shop/category/headphones.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (75, 2, 38, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Headphones",
   "item": "/shop/category/headphones.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (76, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (76, 2, 39, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1884,25 +1884,25 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (77, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (77, 2, 39, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (78, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (78, 2, 39, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Headphones",
   "item": "/shop/category/headphones.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (79, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (79, 2, 39, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 3,
   "name": "Wireless Headphones ANC",
   "item": "/shop/product/headphones-anc.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (80, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html', 'json-ld', 'Product', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (80, 2, 39, 'json-ld', 'Product', '{
   "@context": "https://schema.org",
   "@type": "Product",
   "name": "Wireless Headphones ANC",
@@ -1915,7 +1915,7 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     "availability": "https://schema.org/InStock"
   }
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (81, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (81, 2, 40, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1933,19 +1933,19 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (82, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (82, 2, 40, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (83, 2, 'http://127.0.0.1:8000/shop/category/chargers.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (83, 2, 40, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Chargers",
   "item": "/shop/category/chargers.html"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (84, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'json-ld', 'BreadcrumbList', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (84, 2, 41, 'json-ld', 'BreadcrumbList', '{
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
   "itemListElement": [
@@ -1963,15 +1963,117 @@ INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, er
     }
   ]
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (85, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (85, 2, 41, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 1,
   "name": "Home",
   "item": "/shop/"
 }', NULL);
-INSERT INTO structured_data (id, crawl_id, page_url, format, type_name, json, errors) VALUES (86, 2, 'http://127.0.0.1:8000/shop/info/shipping.html', 'json-ld', 'ListItem', '{
+INSERT INTO structured_data (id, crawl_id, page_url_id, format, type_name, json, errors) VALUES (86, 2, 41, 'json-ld', 'ListItem', '{
   "@type": "ListItem",
   "position": 2,
   "name": "Shipping",
   "item": "/shop/info/shipping.html"
 }', NULL);
+INSERT INTO texts (id, crawl_id, text) VALUES (1, 1, 'http://127.0.0.1:8000/shop/');
+INSERT INTO texts (id, crawl_id, text) VALUES (2, 1, 'http://127.0.0.1:8000/shop/style.css');
+INSERT INTO texts (id, crawl_id, text) VALUES (3, 1, 'http://127.0.0.1:8000/shop/variant.css');
+INSERT INTO texts (id, crawl_id, text) VALUES (4, 1, 'http://127.0.0.1:8000/shop/img/logo.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (5, 1, 'http://127.0.0.1:8000/shop/img/category.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (6, 1, 'http://127.0.0.1:8000/shop/img/product.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (7, 1, 'http://127.0.0.1:8000/shop/shop.js');
+INSERT INTO texts (id, crawl_id, text) VALUES (8, 1, 'http://127.0.0.1:8000/shop/img/favicon.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (9, 1, 'http://127.0.0.1:8000/shop/info/returns.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (10, 1, 'http://127.0.0.1:8000/shop/product/cable-2m.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (11, 1, 'http://127.0.0.1:8000/shop/info/about.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (12, 1, 'http://127.0.0.1:8000/shop/img/banner.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (13, 1, 'http://127.0.0.1:8000/shop/product/charger-20w.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (14, 1, 'http://127.0.0.1:8000/shop/product/headphones-anc.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (15, 1, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (16, 1, 'http://127.0.0.1:8000/shop/category/chargers.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (17, 1, 'http://127.0.0.1:8000/shop/cart');
+INSERT INTO texts (id, crawl_id, text) VALUES (18, 1, 'http://127.0.0.1:8000/shop/info/shipping.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (19, 1, 'http://127.0.0.1:8000/shop/product/charger-65w.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (20, 1, 'http://127.0.0.1:8000/shop/category/cables.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (21, 1, 'http://127.0.0.1:8000/shop/category/headphones.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (22, 2, 'http://127.0.0.1:8000/shop/');
+INSERT INTO texts (id, crawl_id, text) VALUES (23, 2, 'http://127.0.0.1:8000/shop/style.css');
+INSERT INTO texts (id, crawl_id, text) VALUES (24, 2, 'http://127.0.0.1:8000/shop/variant.css');
+INSERT INTO texts (id, crawl_id, text) VALUES (25, 2, 'http://127.0.0.1:8000/shop/img/category.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (26, 2, 'http://127.0.0.1:8000/shop/img/logo.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (27, 2, 'http://127.0.0.1:8000/shop/img/product.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (28, 2, 'http://127.0.0.1:8000/shop/shop.js');
+INSERT INTO texts (id, crawl_id, text) VALUES (29, 2, 'http://127.0.0.1:8000/shop/img/favicon.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (30, 2, 'http://127.0.0.1:8000/shop/product/charger-20w.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (31, 2, 'http://127.0.0.1:8000/shop/product/charger-65w.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (32, 2, 'http://127.0.0.1:8000/shop/img/banner.svg');
+INSERT INTO texts (id, crawl_id, text) VALUES (33, 2, 'http://127.0.0.1:8000/shop/product/powerbank-10k.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (34, 2, 'http://127.0.0.1:8000/shop/product/cable-2m.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (35, 2, 'http://127.0.0.1:8000/shop/category/cables.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (36, 2, 'http://127.0.0.1:8000/shop/info/about.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (37, 2, 'http://127.0.0.1:8000/shop/info/returns.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (38, 2, 'http://127.0.0.1:8000/shop/category/headphones.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (39, 2, 'http://127.0.0.1:8000/shop/product/headphones-anc.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (40, 2, 'http://127.0.0.1:8000/shop/category/chargers.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (41, 2, 'http://127.0.0.1:8000/shop/info/shipping.html');
+INSERT INTO texts (id, crawl_id, text) VALUES (42, 2, 'http://127.0.0.1:8000/shop/cart');
+INSERT INTO texts (id, crawl_id, text) VALUES (43, 1, 'Robin Electronics');
+INSERT INTO texts (id, crawl_id, text) VALUES (44, 1, 'Cart');
+INSERT INTO texts (id, crawl_id, text) VALUES (45, 1, 'Chargers');
+INSERT INTO texts (id, crawl_id, text) VALUES (46, 1, 'Cables');
+INSERT INTO texts (id, crawl_id, text) VALUES (47, 1, 'Headphones');
+INSERT INTO texts (id, crawl_id, text) VALUES (48, 1, 'Shipping');
+INSERT INTO texts (id, crawl_id, text) VALUES (49, 1, 'Shop chargers');
+INSERT INTO texts (id, crawl_id, text) VALUES (50, 1, 'USB-C Charger 20W 199 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (51, 1, 'GaN Charger 65W 379 kr 449 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (52, 1, 'USB-C Cable 2 m 129 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (53, 1, 'Wireless Headphones ANC 990 kr 1290 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (54, 1, 'Power Bank 10000 mAh 349 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (55, 1, 'Returns');
+INSERT INTO texts (id, crawl_id, text) VALUES (56, 1, 'Our story');
+INSERT INTO texts (id, crawl_id, text) VALUES (57, 1, 'Home');
+INSERT INTO texts (id, crawl_id, text) VALUES (58, 1, 'USB-C Cable 2 m');
+INSERT INTO texts (id, crawl_id, text) VALUES (59, 1, 'About us');
+INSERT INTO texts (id, crawl_id, text) VALUES (60, 1, 'USB-C Charger 20W');
+INSERT INTO texts (id, crawl_id, text) VALUES (61, 1, 'Wireless Headphones ANC');
+INSERT INTO texts (id, crawl_id, text) VALUES (62, 1, 'Power Bank 10000 mAh');
+INSERT INTO texts (id, crawl_id, text) VALUES (63, 1, '1');
+INSERT INTO texts (id, crawl_id, text) VALUES (64, 1, 'GaN Charger 65W');
+INSERT INTO texts (id, crawl_id, text) VALUES (65, 2, 'Robin Electronics');
+INSERT INTO texts (id, crawl_id, text) VALUES (66, 2, 'Cart');
+INSERT INTO texts (id, crawl_id, text) VALUES (67, 2, 'Chargers');
+INSERT INTO texts (id, crawl_id, text) VALUES (68, 2, 'Cables');
+INSERT INTO texts (id, crawl_id, text) VALUES (69, 2, 'Headphones');
+INSERT INTO texts (id, crawl_id, text) VALUES (70, 2, 'Shipping');
+INSERT INTO texts (id, crawl_id, text) VALUES (71, 2, 'Shop chargers');
+INSERT INTO texts (id, crawl_id, text) VALUES (72, 2, 'USB-C Charger 20W 199 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (73, 2, 'GaN Charger 65W 379 kr 449 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (74, 2, 'USB-C Cable 2 m 129 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (75, 2, 'Wireless Headphones ANC 990 kr 1290 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (76, 2, 'Power Bank 10000 mAh 349 kr');
+INSERT INTO texts (id, crawl_id, text) VALUES (77, 2, 'Returns');
+INSERT INTO texts (id, crawl_id, text) VALUES (78, 2, 'Our story');
+INSERT INTO texts (id, crawl_id, text) VALUES (79, 2, 'Home');
+INSERT INTO texts (id, crawl_id, text) VALUES (80, 2, 'USB-C Charger 20W');
+INSERT INTO texts (id, crawl_id, text) VALUES (81, 2, 'GaN Charger 65W');
+INSERT INTO texts (id, crawl_id, text) VALUES (82, 2, 'Power Bank 10000 mAh');
+INSERT INTO texts (id, crawl_id, text) VALUES (83, 2, 'USB-C Cable 2 m');
+INSERT INTO texts (id, crawl_id, text) VALUES (84, 2, '1');
+INSERT INTO texts (id, crawl_id, text) VALUES (85, 2, 'About us');
+INSERT INTO texts (id, crawl_id, text) VALUES (86, 2, 'Wireless Headphones ANC');
+INSERT INTO texts (id, crawl_id, text) VALUES (87, 1, '');
+INSERT INTO texts (id, crawl_id, text) VALUES (88, 2, '');
+INSERT INTO texts (id, crawl_id, text) VALUES (89, 1, 'landmark-unique');
+INSERT INTO texts (id, crawl_id, text) VALUES (90, 1, 'heading-order');
+INSERT INTO texts (id, crawl_id, text) VALUES (91, 2, 'landmark-unique');
+INSERT INTO texts (id, crawl_id, text) VALUES (92, 2, 'heading-order');
+INSERT INTO texts (id, crawl_id, text) VALUES (93, 1, 'moderate');
+INSERT INTO texts (id, crawl_id, text) VALUES (94, 2, 'moderate');
+INSERT INTO texts (id, crawl_id, text) VALUES (95, 1, '.main-nav');
+INSERT INTO texts (id, crawl_id, text) VALUES (96, 1, '.footer-column:nth-child(1) > h3');
+INSERT INTO texts (id, crawl_id, text) VALUES (97, 2, '.main-nav');
+INSERT INTO texts (id, crawl_id, text) VALUES (98, 2, '.footer-column:nth-child(1) > h3');
+INSERT INTO texts (id, crawl_id, text) VALUES (99, 1, '<nav class="main-nav">');
+INSERT INTO texts (id, crawl_id, text) VALUES (100, 1, '<h3 class="footer-column__title">Customer service</h3>');
+INSERT INTO texts (id, crawl_id, text) VALUES (101, 2, '<nav class="main-nav">');
+INSERT INTO texts (id, crawl_id, text) VALUES (102, 2, '<h3 class="footer-column__title">Customer service</h3>');
