@@ -893,10 +893,6 @@ impl CrawlEngine {
             )
             .await;
 
-            if let Err(e) = storage::finish_crawl(&pool, crawl_id).await {
-                tracing::warn!(error=%e, "failed to finalize crawl record");
-            }
-
             // A failed pass leaves its columns empty, which reads as "no
             // issues" unless the reader is told otherwise.
             let passes: [(&str, Result<(), sqlx::Error>); 5] = [
@@ -1020,6 +1016,12 @@ impl CrawlEngine {
                     Ok(Err(e)) => tracing::warn!(error=%e, "failed to store the site icon"),
                     Err(e) => tracing::warn!(error=%e, "site icon task failed"),
                 }
+            }
+
+            // Last, after the passes and the rows recorded above: a finished
+            // crawl's stored counts and cached filter counts are taken as final.
+            if let Err(e) = storage::finish_crawl(&pool, crawl_id).await {
+                tracing::warn!(error=%e, "failed to finalize crawl record");
             }
 
             if let Err(e) = tx
