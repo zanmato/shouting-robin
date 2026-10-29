@@ -33,6 +33,8 @@ All notable changes to this project will be documented in this file.
 - Removed the Total Types, JSON-LD and Microdata columns from the Structured
   Data tab, which were always empty, and the empty badges of cells with no
   value
+- Left the page sections out of the details panel for assets, redirects and
+  other files, which have no page to describe
 
 ## [0.2.3] - 2026-10-28
 

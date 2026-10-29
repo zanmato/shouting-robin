@@ -634,23 +634,6 @@ fn was_fetched(page: &PageRecord) -> bool {
     page.status.is_some() || page.redirect_url.is_some()
 }
 
-/// True when a record is a navigated, parsed document (from spider's page
-/// callback) rather than a harvested subresource (CSS/JS/image/font/XHR).
-/// Document-derived tabs key off this instead of `content_type`: spider can
-/// report a misleading `Content-Type` for the document itself (e.g. SPAs
-/// serving `application/javascript` for the request it actually issued), which
-/// would otherwise hide real pages from these tabs.
-///
-/// A redirect is not one either. A 3xx response carries no document, so a tab
-/// describing what a document says can only show it as a row of empty cells —
-/// which is what it was doing: three 301s appeared on Page Titles, Meta Desc,
-/// H1, H2, Content, Canonicals and Hreflang, on tabs whose rules already knew
-/// to skip them. A redirect belongs on Response Codes, where its status is the
-/// point.
-fn is_page_document(page: &PageRecord) -> bool {
-    page.is_page && !page.is_resource && !page.is_redirect() && page.is_html_document()
-}
-
 /// File types a build tool emits rather than a person names. Stylesheets,
 /// scripts, source maps, images and fonts all come out of a bundler with a
 /// content hash in the file name.
@@ -814,7 +797,7 @@ pub(super) fn is_low_content(page: &PageRecord) -> bool {
 /// statuses, and in Chrome mode the document status is unreliable (a
 /// sub-resource's 404 can leak onto a perfectly good page).
 pub(crate) fn is_content_eligible(page: &PageRecord) -> bool {
-    is_page_document(page) && !page.is_noindex() && !page.is_canonicalised()
+    page.is_page_document() && !page.is_noindex() && !page.is_canonicalised()
 }
 
 /// The issue filters that represent an on-page content problem (as opposed to
@@ -899,7 +882,7 @@ pub(super) fn filter_for_tab(
         | ResultTab::Directives => pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.is_internal && is_page_document(p))
+            .filter(|(_, p)| p.is_internal && p.is_page_document())
             .map(|(i, _)| i)
             .collect(),
         // External URLs and resources (images/scripts/styles on other origins)
@@ -917,7 +900,7 @@ pub(super) fn filter_for_tab(
         ResultTab::Performance => pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.is_internal && is_page_document(p))
+            .filter(|(_, p)| p.is_internal && p.is_page_document())
             .map(|(i, _)| i)
             .collect(),
         // Documents, plus the URLs robots.txt kept us out of: the tab carries
@@ -927,7 +910,7 @@ pub(super) fn filter_for_tab(
             .iter()
             .enumerate()
             .filter(|(_, p)| {
-                p.is_internal && (is_page_document(p) || p.blocked_by_robots == Some(true))
+                p.is_internal && (p.is_page_document() || p.blocked_by_robots == Some(true))
             })
             .map(|(i, _)| i)
             .collect(),
@@ -950,7 +933,7 @@ pub(super) fn filter_for_tab(
         ResultTab::Sitemaps => pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.is_internal && (is_page_document(p) || p.in_sitemap == Some(true)))
+            .filter(|(_, p)| p.is_internal && (p.is_page_document() || p.in_sitemap == Some(true)))
             .map(|(i, _)| i)
             .collect(),
         // Every URL that answered, internal or external. It used to be every
@@ -965,7 +948,7 @@ pub(super) fn filter_for_tab(
         ResultTab::Ecommerce | ResultTab::SiteStructure => pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.is_internal && is_page_document(p))
+            .filter(|(_, p)| p.is_internal && p.is_page_document())
             .map(|(i, _)| i)
             .collect(),
         _ => (0..pages.len()).collect(),
@@ -1267,7 +1250,7 @@ pub(super) fn filter_for_tab(
             }),
             IssueFilter::IndexableParameterUrl => indices.retain(|&idx| {
                 let page = &pages[idx];
-                page.url.contains('?') && is_page_document(page) && page.is_indexable()
+                page.url.contains('?') && page.is_page_document() && page.is_indexable()
             }),
             // The target of this page's redirect is itself a redirect. Every
             // extra hop is a request a crawler may decline to make, and a
@@ -2730,7 +2713,7 @@ mod filter_version_tests {
     /// set for.
     const COUNTED_WITH: (i64, &str) = (
         1,
-        "0decae153c605dac0fe9810c6d8030885ef97e6d618f0d63550fd5df6629d85c",
+        "62aef22c6b27347dd02487af11b6d7acc77d62ae9f6319fb56702d09a716d651",
     );
 
     /// A function's text from its signature to its closing brace, without

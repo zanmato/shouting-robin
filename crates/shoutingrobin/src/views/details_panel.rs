@@ -2176,32 +2176,36 @@ impl Render for DetailsPanel {
                     layout_section(rec, order, &panel, muted, border),
                     |el, s| el.child(s),
                 )
-                .child(page_content_section(rec, order, muted, border))
-                .child(serp_section(rec, order, muted, border, cx))
-                .child(structured_data_section(
-                    rec,
-                    order,
-                    &self.json_views,
-                    muted,
-                    fg,
-                    border,
-                    cx,
-                ))
-                // Both of these are measured in a browser. On an HTTP crawl
-                // they would be a heading over nothing.
-                .when(self.render_mode.renders_javascript(), |el| {
-                    el.child(accessibility_section(
-                        rec,
-                        order,
-                        &self.html_views,
-                        muted,
-                        fg,
-                        border,
-                        cx,
-                    ))
-                    .child(vitals_section(rec, order, muted, border, panel2))
+                // An asset, a redirect or another file has no document to
+                // describe, so these would be headings over empty values.
+                .when(rec.is_page_document(), |el| {
+                    el.child(page_content_section(rec, order, muted, border))
+                        .child(serp_section(rec, order, muted, border, cx))
+                        .child(structured_data_section(
+                            rec,
+                            order,
+                            &self.json_views,
+                            muted,
+                            fg,
+                            border,
+                            cx,
+                        ))
+                        // Both of these are measured in a browser. On an HTTP crawl
+                        // they would be a heading over nothing.
+                        .when(self.render_mode.renders_javascript(), |el| {
+                            el.child(accessibility_section(
+                                rec,
+                                order,
+                                &self.html_views,
+                                muted,
+                                fg,
+                                border,
+                                cx,
+                            ))
+                            .child(vitals_section(rec, order, muted, border, panel2))
+                        })
+                        .child(link_metrics_section(rec, order, muted, border))
                 })
-                .child(link_metrics_section(rec, order, muted, border))
                 .when_some(
                     hreflang_section(rec, order, muted, fg, border, cx),
                     |el, s| el.child(s),

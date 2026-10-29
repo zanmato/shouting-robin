@@ -343,6 +343,23 @@ impl PageRecord {
             && !self.is_canonicalised()
     }
 
+    /// True when this record is a navigated, parsed document (from spider's page
+    /// callback) rather than a harvested subresource (CSS/JS/image/font/XHR).
+    /// Document-derived tabs key off this instead of `content_type`: spider can
+    /// report a misleading `Content-Type` for the document itself (e.g. SPAs
+    /// serving `application/javascript` for the request it actually issued), which
+    /// would otherwise hide real pages from these tabs.
+    ///
+    /// A redirect is not one either. A 3xx response carries no document, so a tab
+    /// describing what a document says can only show it as a row of empty cells —
+    /// which is what it was doing: three 301s appeared on Page Titles, Meta Desc,
+    /// H1, H2, Content, Canonicals and Hreflang, on tabs whose rules already knew
+    /// to skip them. A redirect belongs on Response Codes, where its status is the
+    /// point.
+    pub fn is_page_document(&self) -> bool {
+        self.is_page && !self.is_resource && !self.is_redirect() && self.is_html_document()
+    }
+
     /// True when the body is (or may be) an HTML document worth auditing for
     /// titles, headings and content. An unknown content type counts as HTML,
     /// because a server that omits the header is still most likely serving a
