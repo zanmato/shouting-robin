@@ -9,6 +9,28 @@ pub struct AppDatabase {
     pool: SqlitePool,
 }
 
+/// Turns off SQLite's allocation statistics for the whole process.
+///
+/// With them on, every allocation SQLite makes takes one lock shared by all
+/// connections, so the reads that open a crawl run one at a time however many
+/// connections they use: on a 400k row crawl that lock alone cost 7 seconds.
+/// Nothing here reads the statistics. SQLite only accepts the setting before
+/// it initialises, which the first connection does, so this runs before any
+/// pool opens.
+pub fn disable_sqlite_memory_statistics() {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        // SAFETY: `sqlite3_config` is only unsafe because it must not race with
+        // SQLite starting up or with another call to it. `Once` rules out the
+        // second, and every caller runs before the first connection opens.
+        let code =
+            unsafe { libsqlite3_sys::sqlite3_config(libsqlite3_sys::SQLITE_CONFIG_MEMSTATUS, 0) };
+        if code != libsqlite3_sys::SQLITE_OK {
+            tracing::warn!(code, "SQLite kept its memory statistics on");
+        }
+    });
+}
+
 pub struct UserSetting {
     pub theme: String,
 }
@@ -17,6 +39,7 @@ impl Global for AppDatabase {}
 
 impl AppDatabase {
     pub async fn new() -> Result<Self, sqlx::Error> {
+        disable_sqlite_memory_statistics();
         let db_path = Self::app_db_path();
 
         // WAL lets the grid read a crawl while the crawler is still writing
