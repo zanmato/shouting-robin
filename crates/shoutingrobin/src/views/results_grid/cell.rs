@@ -334,9 +334,6 @@ pub(super) fn cell_text(
             SharedString::from(tags.join(", "))
         }
         "sd_types" => SharedString::from(record.sd_types.join(", ")),
-        "sd_total_types" => SharedString::from(record.sd_items.len().to_string()),
-        "sd_jsonld" => SharedString::from(record.sd_jsonld_count.to_string()),
-        "sd_microdata" => SharedString::from(record.sd_microdata_count.to_string()),
         "sd_errors" => SharedString::from(record.sd_errors.to_string()),
         "sd_warnings" => SharedString::from(record.sd_warnings.to_string()),
         "ttfb" => SharedString::from(
@@ -669,6 +666,9 @@ pub(super) fn render_cell_tag(
     text: &SharedString,
     cx: &App,
 ) -> Option<gpui_kit::component::tag::Tag> {
+    if text.is_empty() {
+        return None;
+    }
     let tone = match col_key {
         "status_code" => {
             if record.redirect_url.is_some() {

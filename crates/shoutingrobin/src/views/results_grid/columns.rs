@@ -181,9 +181,6 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("sd_type", "Type", 200., None),
             col("sd_errors", "Errors", 70., None),
             col("sd_warnings", "Warnings", 80., None),
-            col("sd_total_types", "Total Types", 90., None),
-            col("sd_jsonld", "JSON-LD", 80., None),
-            col("sd_microdata", "Microdata", 90., None),
             col("indexability", "Indexability", 110., None),
         ],
         ResultTab::Sitemaps => vec![
@@ -495,9 +492,6 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
             | "ssr_words"
             | "ssr_diff"
             | "response_time"
-            | "sd_total_types"
-            | "sd_jsonld"
-            | "sd_microdata"
             | "a11y_errors"
             | "a11y_warnings"
             | "layout_pages"
