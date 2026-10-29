@@ -134,6 +134,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0033_page_layouts",
         include_str!("../../migrations/0033_page_layouts.sql"),
     ),
+    (
+        "0034_crawl_counts",
+        include_str!("../../migrations/0034_crawl_counts.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -432,13 +436,28 @@ pub async fn count_page_layouts(pool: &SqlitePool, crawl_id: i64) -> Result<i64,
     Ok(count)
 }
 
+/// Marks a crawl finished and stores its row counts, which the crawl history
+/// lists. Counting them per listing scanned every crawl's pages, seconds on a
+/// database holding a few large crawls, and a finished crawl's rows no longer
+/// change.
 pub async fn finish_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
     let now = chrono::Utc::now().timestamp();
-    sqlx::query("UPDATE crawls SET finished_at = ? WHERE id = ?")
-        .bind(now)
-        .bind(crawl_id)
-        .execute(pool)
-        .await?;
+    sqlx::query(
+        r#"
+        UPDATE crawls SET
+            finished_at = ?,
+            page_count = (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = crawls.id),
+            document_count =
+                (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = crawls.id AND p.is_page = 1),
+            unfetched_count = (SELECT COUNT(*) FROM pages p
+                WHERE p.crawl_id = crawls.id AND p.status IS NULL AND p.redirect_url IS NULL)
+        WHERE id = ?
+        "#,
+    )
+    .bind(now)
+    .bind(crawl_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -1024,12 +1043,16 @@ impl CrawlRow {
 // Correlated subqueries rather than a join: a join grouped by crawl
 // aggregates every page of every crawl ever made on each sidebar refresh,
 // where these only touch the pages of the crawls the outer query selects.
+// A finished crawl's counts are stored by `finish_crawl`. COALESCE only runs
+// the subquery when they are missing, for a crawl still running or one that
+// ended without finishing.
 const CRAWL_ROW_COLUMNS: &str = r#"
     c.id, c.root_url, c.started_at, c.finished_at,
-    (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id) as page_count,
-    (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id AND p.is_page = 1) as document_count,
-    (SELECT COUNT(*) FROM pages p
-     WHERE p.crawl_id = c.id AND p.status IS NULL AND p.redirect_url IS NULL) as unfetched_count,
+    COALESCE(c.page_count, (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id)) as page_count,
+    COALESCE(c.document_count,
+        (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id AND p.is_page = 1)) as document_count,
+    COALESCE(c.unfetched_count, (SELECT COUNT(*) FROM pages p
+     WHERE p.crawl_id = c.id AND p.status IS NULL AND p.redirect_url IS NULL)) as unfetched_count,
     c.render_mode,
     json_extract(c.config_json, '$.layout_capture') as layout_capture
 "#;
@@ -1864,5 +1887,76 @@ mod tests {
             ]
         );
         assert_eq!(pages.len(), 1);
+    }
+
+    /// The crawl history lists a finished crawl from the counts stored when it
+    /// finished, and counts a crawl that has not finished as it lists it.
+    #[test]
+    fn the_history_lists_the_counts_stored_when_a_crawl_finished() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (finished, running) = runtime.block_on(async {
+            let pool = test_pool().await;
+            let mut crawl_ids = Vec::new();
+            for root in ["https://finished.test/", "https://running.test/"] {
+                let crawl_id = create_crawl(&pool, root, "http", &config())
+                    .await
+                    .expect("crawl");
+                for (path, status) in [("", Some(200)), ("unfetched", None)] {
+                    insert_page(
+                        &pool,
+                        crawl_id,
+                        &PageRecord {
+                            url: format!("{root}{path}"),
+                            status,
+                            is_page: status.is_some(),
+                            is_internal: true,
+                            ..Default::default()
+                        },
+                    )
+                    .await
+                    .expect("page");
+                }
+                crawl_ids.push(crawl_id);
+            }
+            let [finished_id, running_id] = crawl_ids[..] else {
+                panic!("two crawls");
+            };
+            finish_crawl(&pool, finished_id).await.expect("finish");
+            // Rows written after the finish are not what the finished crawl
+            // found, so its listing keeps the stored counts.
+            for crawl_id in [finished_id, running_id] {
+                insert_page(
+                    &pool,
+                    crawl_id,
+                    &PageRecord {
+                        url: format!("https://late.test/{crawl_id}"),
+                        status: Some(200),
+                        is_page: true,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("late page");
+            }
+            let crawls = list_crawls(&pool).await.expect("list");
+            let counts = |crawl_id: i64| {
+                crawls
+                    .iter()
+                    .find(|crawl| crawl.id == crawl_id)
+                    .map(|crawl| {
+                        (
+                            crawl.page_count,
+                            crawl.document_count,
+                            crawl.unfetched_count,
+                        )
+                    })
+            };
+            (counts(finished_id), counts(running_id))
+        });
+        assert_eq!(finished, Some((2, 1, 1)));
+        assert_eq!(running, Some((3, 2, 1)));
     }
 }
