@@ -65,21 +65,23 @@ takumi-html = { git = "https://github.com/kane50613/takumi", rev = "871f534c6080
 minisign-verify = "0.2.5"
 sha2 = "0.10"
 hex = "0.4.3"
+futures = "0.3"
+async-std = "1.13"
 # The SQLite that sqlx links, so `app_database` can configure it before it
 # starts. Keep it at the version sqlx-sqlite depends on.
 libsqlite3-sys = "0.30.1"
 
 # Only for the `scene-export` feature
-futures = { version = "0.3", optional = true }
 raw-window-handle = { version = "0.6", optional = true }
 smallvec = { version = "1", optional = true }
+thin-vec = "0.2"
 
 [features]
 # Stages scenes for the website screenshots, see scripts/screenshots/capture.
 screenshots = []
 # Exports painted frames as vector snapshots for the website's motion demo;
 # see src/scene_export.rs.
-scene-export = ["dep:futures", "dep:raw-window-handle", "dep:smallvec"]
+scene-export = ["dep:raw-window-handle", "dep:smallvec"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["io-util", "net"] }

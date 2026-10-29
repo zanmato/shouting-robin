@@ -442,7 +442,7 @@ pub(super) fn cell_text(
             let unique: std::collections::HashSet<&str> = record
                 .outlinks
                 .iter()
-                .map(|link| link.dst_url.as_str())
+                .map(|link| link.dst_url.as_ref())
                 .collect();
             SharedString::from(unique.len().to_string())
         }
@@ -459,7 +459,7 @@ pub(super) fn cell_text(
                 .outlinks
                 .iter()
                 .filter(|link| is_external_link(record, link))
-                .map(|link| link.dst_url.as_str())
+                .map(|link| link.dst_url.as_ref())
                 .collect();
             SharedString::from(unique.len().to_string())
         }
@@ -482,7 +482,7 @@ pub(super) fn cell_text(
                 .outlinks
                 .iter()
                 .filter(|link| link.csr_only)
-                .map(|link| link.dst_url.as_str())
+                .map(|link| link.dst_url.as_ref())
                 .collect();
             SharedString::from(unique.len().to_string())
         }
@@ -499,7 +499,7 @@ pub(super) fn cell_text(
                 .outlinks
                 .iter()
                 .filter(|link| link.csr_only && is_external_link(record, link))
-                .map(|link| link.dst_url.as_str())
+                .map(|link| link.dst_url.as_ref())
                 .collect();
             SharedString::from(unique.len().to_string())
         }
@@ -909,7 +909,7 @@ mod hreflang_pivot_tests {
             .map(|i| (format!("l{i}"), format!("https://a.test/{i}")))
             .collect();
         let wide = PageRecord {
-            hreflang_tags: many,
+            hreflang_tags: many.into(),
             ..Default::default()
         };
         assert_eq!(

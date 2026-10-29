@@ -16,7 +16,7 @@ use gpui_kit::{
 
 use crate::a11y_rules::rule_description;
 use crate::crawl::RenderMode;
-use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdSeverity};
+use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdItem, SdSeverity};
 use crate::ui::icon::Icon;
 use crate::ui::selectable_text::SelectableText;
 use crate::ui::tag::{Tone, indexability_tone, status_code_tone, tone_tag};
@@ -119,7 +119,7 @@ pub struct DetailsPanel {
     render_mode: RenderMode,
     /// Reads the selected page's backlinks. Replaced, and so cancelled, by the
     /// next selection.
-    backlinks_load: Option<Task<()>>,
+    on_demand_load: Option<Task<()>>,
 }
 
 impl DetailsPanel {
@@ -130,7 +130,7 @@ impl DetailsPanel {
             json_views: Vec::new(),
             html_views: Vec::new(),
             inlinks_scroll: VirtualListScrollHandle::new(),
-            backlinks_load: None,
+            on_demand_load: None,
             outlinks_scroll: VirtualListScrollHandle::new(),
             duplicates_scroll: VirtualListScrollHandle::new(),
             image_references_scroll: VirtualListScrollHandle::new(),
@@ -143,19 +143,21 @@ impl DetailsPanel {
         cx.notify();
     }
 
-    fn load_backlinks(&self, crawl_id: i64, url: String, cx: &mut Context<Self>) -> Task<()> {
+    /// Reads what a page's details show that the crawl was loaded without,
+    /// see [`crate::storage::load_page_on_demand`].
+    fn load_on_demand(&self, crawl_id: i64, url: String, cx: &mut Context<Self>) -> Task<()> {
         let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
         cx.spawn(async move |panel, cx| {
             let loaded = cx
                 .background_spawn({
                     let url = url.clone();
-                    async move { crate::storage::load_backlinks_for_page(&pool, crawl_id, &url).await }
+                    async move { crate::storage::load_page_on_demand(&pool, crawl_id, &url).await }
                 })
                 .await;
-            let backlinks = match loaded {
-                Ok(backlinks) => backlinks,
+            let loaded = match loaded {
+                Ok(loaded) => loaded,
                 Err(error) => {
-                    tracing::error!(%error, %url, "failed to read the page's backlinks");
+                    tracing::error!(%error, %url, "failed to read the page's backlinks and structured data");
                     return;
                 }
             };
@@ -163,28 +165,30 @@ impl DetailsPanel {
                 if let Some(DetailsSelection::Page { record, .. }) = &mut panel.selected
                     && record.url == url
                 {
-                    record.backlinks = backlinks;
+                    record.backlinks = loaded.backlinks.into();
+                    record.sd_items = loaded.sd_items.into();
+                    panel.json_views = json_views(&record.sd_items, cx);
                     cx.notify();
                 }
             });
             if let Err(error) = filled {
-                tracing::debug!(%error, "the details panel closed before its backlinks arrived");
+                tracing::debug!(%error, "the details panel closed before the page's details arrived");
             }
         })
     }
 
-    /// Shows `selection`, a row of crawl `crawl_id`. A page's backlinks are
-    /// not loaded with the crawl, so they are read for it here; without a
-    /// crawl the record's own list is shown.
+    /// Shows `selection`, a row of crawl `crawl_id`. A page's backlinks and
+    /// structured data JSON are not loaded with the crawl, so they are read
+    /// for it here. Without a crawl the record's own are shown.
     pub fn set_selected(
         &mut self,
         selection: Option<DetailsSelection>,
         crawl_id: Option<i64>,
         cx: &mut Context<Self>,
     ) {
-        self.backlinks_load = match (&selection, crawl_id) {
+        self.on_demand_load = match (&selection, crawl_id) {
             (Some(DetailsSelection::Page { record, .. }), Some(crawl_id)) => {
-                Some(self.load_backlinks(crawl_id, record.url.clone(), cx))
+                Some(self.load_on_demand(crawl_id, record.url.clone(), cx))
             }
             _ => None,
         };
@@ -193,18 +197,7 @@ impl DetailsPanel {
             _ => None,
         };
         self.json_views = match record {
-            Some(rec) => rec
-                .sd_items
-                .iter()
-                .enumerate()
-                .map(|(index, item)| {
-                    if item.raw_json.is_empty() {
-                        None
-                    } else {
-                        Some(JsonView::new(("sd-json", index), &item.raw_json, cx).copyable())
-                    }
-                })
-                .collect(),
+            Some(rec) => json_views(&rec.sd_items, cx),
             None => Vec::new(),
         };
         self.html_views = match record {
@@ -238,6 +231,19 @@ impl DetailsPanel {
         self.active_tab = DetailsTab::Overview;
         cx.notify();
     }
+}
+
+/// One JSON view per structured data item, `None` for an item whose JSON has
+/// not been read yet.
+fn json_views(items: &[SdItem], cx: &App) -> Vec<Option<JsonView>> {
+    items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            (!item.raw_json.is_empty())
+                .then(|| JsonView::new(("sd-json", index), &item.raw_json, cx).copyable())
+        })
+        .collect()
 }
 
 /// Asks the app to open a page's layout, which needs the crawl and its
@@ -340,9 +346,9 @@ fn format_bytes(bytes: u64) -> String {
 /// The same convention the grid uses. A row here carries its label, so an
 /// empty value column says "this page has no canonical" without spending a
 /// character on saying it.
-fn or_blank(value: &Option<String>) -> SharedString {
-    match value {
-        Some(v) if !v.is_empty() => SharedString::from(v.clone()),
+fn or_blank<T: AsRef<str>>(value: &Option<T>) -> SharedString {
+    match value.as_ref().map(AsRef::as_ref) {
+        Some(text) if !text.is_empty() => SharedString::from(text.to_string()),
         _ => SharedString::default(),
     }
 }

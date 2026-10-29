@@ -55,6 +55,7 @@ fn load_crawl() -> Option<Crawl> {
         .enable_all()
         .build()
         .expect("runtime");
+    crate::app_database::disable_sqlite_memory_statistics();
     runtime.block_on(async {
         let options = sqlx::sqlite::SqliteConnectOptions::from_str(&format!("sqlite://{path}"))
             .expect("database path")
@@ -68,23 +69,21 @@ fn load_crawl() -> Option<Crawl> {
             .await
             .expect("the crawl exists");
         let started = Instant::now();
-        let mut step_started = started;
-        let mut previous_step = None;
+        let last_read = std::cell::Cell::new(started);
         let pages =
             crate::storage::load_pages_for_crawl_reporting(&pool, crawl_id, &root_url, |step| {
-                if let Some(previous) = previous_step.replace(step) {
-                    eprintln!(
-                        "  {previous:?}: {:.0} ms",
-                        milliseconds(step_started.elapsed())
-                    );
-                }
-                step_started = Instant::now();
+                eprintln!(
+                    "  {step:?} read after {:.0} ms",
+                    milliseconds(started.elapsed())
+                );
+                last_read.set(Instant::now());
             })
             .await
             .expect("load the crawl");
-        if let Some(last) = previous_step {
-            eprintln!("  {last:?}: {:.0} ms", milliseconds(step_started.elapsed()));
-        }
+        eprintln!(
+            "  assembled the records in {:.0} ms",
+            milliseconds(last_read.get().elapsed())
+        );
         let resources = pages.iter().filter(|page| !page.is_page).count();
         eprintln!(
             "load_pages_for_crawl: {} rows ({} pages, {resources} resources) in {:.0} ms",

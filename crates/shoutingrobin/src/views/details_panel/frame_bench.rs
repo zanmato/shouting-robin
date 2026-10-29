@@ -63,14 +63,14 @@ fn heavy_page(variant: usize) -> PageRecord {
         hreflang_tags: (0..8)
             .map(|index| (format!("lang-{index}"), format!("{host}/{index}/produkt")))
             .collect(),
-        hreflang_issues: vec![
+        hreflang_issues: thin_vec::thin_vec![
             HreflangIssue::MissingXDefault,
             HreflangIssue::MissingReturnTag {
                 lang: "da".into(),
                 target_url: format!("{host}/dk/produkt-{variant}"),
             },
         ],
-        sd_types: vec!["Product".into(), "BreadcrumbList".into(), "Organization".into()],
+        sd_types: thin_vec::thin_vec!["Product".into(), "BreadcrumbList".into(), "Organization".into()],
         sd_jsonld_count: 3,
         sd_items: (0..3)
             .map(|index| SdItem {
@@ -105,16 +105,16 @@ fn heavy_page(variant: usize) -> PageRecord {
             .map(|index| A11yIssue {
                 rule: "color-contrast".into(),
                 impact: if index % 3 == 0 { "serious" } else { "moderate" }.into(),
-                target: Some(format!("main > section:nth-child({index}) > p")),
+                target: Some(format!("main > section:nth-child({index}) > p").into()),
                 html: Some(format!(
                     r#"<p class="lead muted">Kort text om produkt {index}</p>"#
-                )),
+                ).into()),
             })
             .collect(),
         images: (0..40)
             .map(|index| ImageRef {
-                src: format!("{host}/media/produkt-{variant}/bild-{index}.webp"),
-                alt: (index % 4 != 0).then(|| format!("Bild {index}")),
+                src: format!("{host}/media/produkt-{variant}/bild-{index}.webp").into(),
+                alt: (index % 4 != 0).then(|| format!("Bild {index}").into()),
                 width: Some(800),
                 height: (index % 5 != 0).then_some(600),
                 has_alt_attr: index % 7 != 0,
@@ -122,8 +122,8 @@ fn heavy_page(variant: usize) -> PageRecord {
             .collect(),
         outlinks: (0..300)
             .map(|index| Outlink {
-                dst_url: format!("{host}/se/kategori/sida-{index}"),
-                anchor: Some(format!("Länk {index}")),
+                dst_url: format!("{host}/se/kategori/sida-{index}").into(),
+                anchor: Some(format!("Länk {index}").into()),
                 rel: (index % 25 == 0).then(|| "nofollow".into()),
                 csr_only: index % 10 == 0,
             })

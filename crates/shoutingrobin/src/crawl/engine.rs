@@ -464,7 +464,8 @@ impl CrawlEngine {
                                 // Chrome's CDP can hand back header values still
                                 // wrapped in JSON quotes (e.g. "\"text/html\"").
                                 .trim_matches('"')
-                                .to_string(),
+                                .to_string()
+                                .into(),
                         );
                     }
                     // Subresources fetched via full-resource crawling arrive
@@ -473,7 +474,7 @@ impl CrawlEngine {
                     // to text/html, leaving the Internal tab's CSS/JS/Images
                     // filters empty.
                     if record.content_type.is_none() {
-                        record.content_type = content_type_from_url(&record.url);
+                        record.content_type = content_type_from_url(&record.url).map(Into::into);
                     }
                     if let Some(ref headers) = page.headers {
                         record.headers = headers
@@ -706,8 +707,8 @@ impl CrawlEngine {
                         .unwrap_or_else(|| record.url.clone());
                     if let Some((sm_url, lastmod, hreflang)) = sitemap_for_pump.get(&sitemap_key) {
                         record.in_sitemap = Some(true);
-                        record.sitemap_url = Some(sm_url.clone());
-                        record.sitemap_lastmod = lastmod.clone();
+                        record.sitemap_url = Some(sm_url.clone().into());
+                        record.sitemap_lastmod = lastmod.clone().map(Into::into);
                         if !skip_analysis {
                             crate::crawl::analyzers::merge_hreflang_tags(
                                 &mut record,
@@ -722,7 +723,7 @@ impl CrawlEngine {
                         tracing::warn!(error=%e, url=%record.url, "failed to persist page");
                     }
                     for image in &record.images {
-                        discovered_resources.push((image.src.clone(), ResourceKind::Image));
+                        discovered_resources.push((image.src.to_string(), ResourceKind::Image));
                     }
                     for subresource in &record.subresources {
                         let kind = match subresource.kind {
@@ -734,9 +735,9 @@ impl CrawlEngine {
                     for link in &record.outlinks {
                         if !is_same_domain(&root_for_pump, &link.dst_url) {
                             discovered_resources
-                                .push((link.dst_url.clone(), ResourceKind::ExternalLink));
+                                .push((link.dst_url.to_string(), ResourceKind::ExternalLink));
                         }
-                        let entry = inlink_counts.entry(link.dst_url.clone()).or_insert((
+                        let entry = inlink_counts.entry(link.dst_url.to_string()).or_insert((
                             0,
                             0,
                             std::collections::HashSet::new(),
@@ -805,20 +806,20 @@ impl CrawlEngine {
                             url: resource.url.clone(),
                             status: (resource.status > 0).then_some(resource.status),
                             size_bytes: resource.size,
-                            content_type,
+                            content_type: content_type.map(Into::into),
                             response_time: Duration::from_millis(resource.duration),
                             is_internal: is_same_domain(&root_for_pump, &resource.url),
                             is_resource: true,
                             resource_initiator: (!resource.initiator.is_empty())
-                                .then(|| resource.initiator.clone()),
+                                .then(|| resource.initiator.as_str().into()),
                             ..Default::default()
                         };
                         let sitemap_key = crate::crawl::url_norm::normalize_url(&resource.url)
                             .unwrap_or_else(|| resource.url.clone());
                         if let Some((sm_url, lastmod, _)) = sitemap_for_pump.get(&sitemap_key) {
                             resource_record.in_sitemap = Some(true);
-                            resource_record.sitemap_url = Some(sm_url.clone());
-                            resource_record.sitemap_lastmod = lastmod.clone();
+                            resource_record.sitemap_url = Some(sm_url.clone().into());
+                            resource_record.sitemap_lastmod = lastmod.clone().map(Into::into);
                         } else if !sitemap_for_pump.is_empty() {
                             resource_record.in_sitemap = Some(false);
                         }
@@ -968,8 +969,8 @@ impl CrawlEngine {
                     orphan_count += 1;
                     let record = PageRecord {
                         url: orphan.page_url.clone(),
-                        sitemap_url: Some(orphan.sitemap_url.clone()),
-                        sitemap_lastmod: orphan.lastmod.clone(),
+                        sitemap_url: Some(orphan.sitemap_url.clone().into()),
+                        sitemap_lastmod: orphan.lastmod.clone().map(Into::into),
                         in_sitemap: Some(true),
                         // A URL can be both listed and disallowed, and the one
                         // row should say so.
@@ -1102,12 +1103,12 @@ async fn check_discovered_resources(
                 url: check.url.clone(),
                 status: check.status,
                 size_bytes: check.size_bytes,
-                content_type: check.content_type.clone(),
-                headers: check.headers.clone(),
+                content_type: check.content_type.clone().map(Into::into),
+                headers: check.headers.clone().into(),
                 response_time: check.response_time,
                 is_internal: is_same_domain(root_url, &check.url),
                 is_resource: true,
-                resource_initiator: Some(check.kind.initiator().to_string()),
+                resource_initiator: Some(check.kind.initiator().to_string().into()),
                 redirect_url: check.redirect_url.clone(),
                 ..Default::default()
             };
@@ -1483,8 +1484,8 @@ async fn fetch_uncrawled_page(
         status: Some(status),
         size_bytes: body.len() as u64,
         response_time: started.elapsed(),
-        content_type,
-        headers,
+        content_type: content_type.map(Into::into),
+        headers: headers.into(),
         is_page: true,
         is_internal: is_same_domain(root_url, url),
         ..Default::default()
@@ -2602,16 +2603,16 @@ async fn collect_a11y_violations(page: &spider::page::Page, record: &mut PageRec
                     .and_then(|h| h.as_str())
                     .map(|s| s.to_string());
                 record.a11y_issues.push(A11yIssue {
-                    rule: rule.clone(),
-                    impact: impact.clone(),
-                    target,
-                    html,
+                    rule: rule.clone().into(),
+                    impact: impact.clone().into(),
+                    target: target.map(Into::into),
+                    html: html.map(Into::into),
                 });
             }
         } else {
             record.a11y_issues.push(A11yIssue {
-                rule,
-                impact,
+                rule: rule.into(),
+                impact: impact.into(),
                 target: None,
                 html: None,
             });

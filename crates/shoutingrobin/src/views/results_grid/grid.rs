@@ -15,14 +15,11 @@ use gpui_kit::{
 };
 
 use crate::crawl::event::PageRecord;
-use crate::storage::LoadStep;
 use crate::views::ResultTab;
 use crate::views::details_panel::DetailsSelection;
 
 use super::data_build::overview_issue_target;
-use super::delegate::{
-    CountedCrawl, CountsJob, CrawlSnapshot, ResultsDelegate, baseline_issue_counts,
-};
+use super::delegate::{Baseline, CountedCrawl, CountsJob, CrawlSnapshot, ResultsDelegate};
 use super::types::{FlatRow, IssueFilter, ResultsGridEvent, TabCounts};
 
 /// The least time between the starts of two counting passes. A pass over a
@@ -36,8 +33,7 @@ const COUNTS_INTERVAL: Duration = Duration::from_secs(1);
 /// the page set per filter, and the baseline's issue counts another.
 pub struct PreparedCrawl {
     pages: Vec<Arc<PageRecord>>,
-    baseline: Option<(Vec<Arc<PageRecord>>, i64)>,
-    baseline_issue_counts: HashMap<String, (usize, f32)>,
+    baseline: Option<Baseline>,
     counted: CountedCrawl,
 }
 
@@ -50,28 +46,17 @@ impl PreparedCrawl {
         root_url: &str,
     ) -> Self {
         let pages: Vec<Arc<PageRecord>> = pages.into_iter().map(Arc::new).collect();
+        // The baseline's full records are dropped here, once its issues are
+        // counted. Only what the comparison reads stays in memory.
         let baseline = baseline.map(|(baseline_pages, started_at)| {
-            (
-                baseline_pages.into_iter().map(Arc::new).collect::<Vec<_>>(),
-                started_at,
-            )
+            let baseline_pages: Vec<Arc<PageRecord>> =
+                baseline_pages.into_iter().map(Arc::new).collect();
+            Baseline::new(&baseline_pages, started_at)
         });
-        let counted = CountsJob::for_crawl(
-            pages.clone(),
-            baseline
-                .as_ref()
-                .map(|(baseline_pages, _)| baseline_pages.clone()),
-            root_url,
-        )
-        .run();
-        let baseline_issue_counts = match &baseline {
-            Some((baseline_pages, _)) => baseline_issue_counts(baseline_pages),
-            None => HashMap::new(),
-        };
+        let counted = CountsJob::for_crawl(pages.clone(), baseline.as_ref(), root_url).run();
         Self {
             pages,
             baseline,
-            baseline_issue_counts,
             counted,
         }
     }
@@ -80,41 +65,37 @@ impl PreparedCrawl {
 /// What opening a crawl is busy with, for the loading screen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LoadingStage {
-    Reading(LoadStep),
-    ReadingBaseline,
+    /// The crawl's reads, and its baseline's when there is one, run at once
+    /// and finish in any order, so the screen counts them off.
+    Reading {
+        finished: usize,
+        total: usize,
+        with_baseline: bool,
+    },
     Counting,
 }
 
 impl LoadingStage {
-    const ALL: [LoadingStage; 6] = [
-        LoadingStage::Reading(LoadStep::Links),
-        LoadingStage::Reading(LoadStep::PageDetails),
-        LoadingStage::Reading(LoadStep::Inlinks),
-        LoadingStage::Reading(LoadStep::Pages),
-        LoadingStage::ReadingBaseline,
-        LoadingStage::Counting,
-    ];
-
     fn label(self) -> &'static str {
         match self {
-            LoadingStage::Reading(LoadStep::Links) => "Reading links",
-            LoadingStage::Reading(LoadStep::PageDetails) => {
-                "Reading images, structured data and other page details"
-            }
-            LoadingStage::Reading(LoadStep::Inlinks) => "Counting inlinks",
-            LoadingStage::Reading(LoadStep::Pages) => "Reading pages",
-            LoadingStage::ReadingBaseline => "Reading the previous crawl to compare with",
+            LoadingStage::Reading {
+                with_baseline: true,
+                ..
+            } => "Reading the crawl and the previous one to compare with",
+            LoadingStage::Reading { .. } => "Reading the crawl",
             LoadingStage::Counting => "Counting issues",
         }
     }
 
-    /// How far along the load is, as a percentage of its steps done.
+    /// How far along the load is. On a large crawl counting takes about as
+    /// long as all the reads together, so the reads fill the first half.
     fn percent_done(self) -> f32 {
-        let position = Self::ALL
-            .iter()
-            .position(|stage| *stage == self)
-            .unwrap_or_default();
-        position as f32 * 100. / Self::ALL.len() as f32
+        match self {
+            LoadingStage::Reading {
+                finished, total, ..
+            } => finished as f32 * 50. / total.max(1) as f32,
+            LoadingStage::Counting => 50.,
+        }
     }
 }
 
@@ -279,12 +260,7 @@ impl ResultsGrid {
         self.update_rows(cx, |delegate| {
             delegate.clear();
             delegate.set_root_url(root_url);
-            delegate.apply_loaded_crawl(
-                prepared.pages,
-                prepared.baseline,
-                prepared.baseline_issue_counts,
-                prepared.counted,
-            );
+            delegate.apply_loaded_crawl(prepared.pages, prepared.baseline, prepared.counted);
         });
     }
 

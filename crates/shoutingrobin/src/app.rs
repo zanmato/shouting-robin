@@ -66,6 +66,13 @@ struct LiveCrawl {
     view: LiveView,
 }
 
+/// What the reads behind a crawl load tell the loading screen.
+#[derive(Clone, Copy, Debug)]
+enum LoadProgress {
+    ReadFinished,
+    Counting,
+}
+
 enum LiveView {
     Shown,
     /// Another crawl is on screen. Streamed pages are only stored, and the
@@ -602,13 +609,48 @@ impl ShoutingRobinApp {
         cx: &mut App,
     ) {
         cx.spawn(async move |cx| {
+            let previous =
+                match crate::storage::find_previous_crawl(&pool, &root_url, Some(crawl_id)).await {
+                    Ok(previous) => previous,
+                    Err(e) => {
+                        tracing::error!(error=%e, "failed to find previous crawl");
+                        None
+                    }
+                };
+
             // Reading and decoding a large crawl takes seconds, so it runs off
-            // the foreground thread and names each step as it starts.
-            let (steps, step_updates) = flume::unbounded::<LoadingStage>();
+            // the foreground thread and counts off each read as it finishes.
+            let with_baseline = previous.is_some();
+            let total = crate::storage::LoadStep::COUNT * if with_baseline { 2 } else { 1 };
+            let (progress, progress_updates) = flume::unbounded::<LoadProgress>();
             cx.spawn({
                 let results_grid = results_grid.clone();
                 async move |cx| {
-                    while let Ok(stage) = step_updates.recv_async().await {
+                    let mut finished = 0;
+                    cx.update(|cx| {
+                        results_grid.update(cx, |grid, cx| {
+                            grid.set_loading_stage(
+                                LoadingStage::Reading {
+                                    finished,
+                                    total,
+                                    with_baseline,
+                                },
+                                cx,
+                            )
+                        });
+                    });
+                    while let Ok(update) = progress_updates.recv_async().await {
+                        let stage = match update {
+                            LoadProgress::ReadFinished => {
+                                finished += 1;
+                                LoadingStage::Reading {
+                                    finished,
+                                    total,
+                                    with_baseline,
+                                }
+                            }
+                            LoadProgress::Counting => LoadingStage::Counting,
+                        };
                         cx.update(|cx| {
                             results_grid.update(cx, |grid, cx| grid.set_loading_stage(stage, cx));
                         });
@@ -616,28 +658,50 @@ impl ShoutingRobinApp {
                 }
             })
             .detach();
-            let report = move |stage: LoadingStage| {
-                if steps.send(stage).is_err() {
-                    tracing::debug!(?stage, "nothing is showing the load's progress");
+            let report = move |update: LoadProgress| {
+                if progress.send(update).is_err() {
+                    tracing::debug!(?update, "nothing is showing the load's progress");
                 }
             };
 
-            let pages = cx
-                .background_spawn({
+            // The baseline doesn't depend on the crawl, so both are read at once.
+            let pages = cx.background_spawn({
+                let pool = pool.clone();
+                let root_url = root_url.clone();
+                let report = report.clone();
+                async move {
+                    crate::storage::load_pages_for_crawl_reporting(
+                        &pool,
+                        crawl_id,
+                        &root_url,
+                        |_| report(LoadProgress::ReadFinished),
+                    )
+                    .await
+                }
+            });
+            let baseline = previous.as_ref().map(|previous| {
+                cx.background_spawn({
                     let pool = pool.clone();
-                    let root_url = root_url.clone();
+                    let previous_id = previous.id;
+                    let previous_root = previous.root_url.clone();
                     let report = report.clone();
                     async move {
                         crate::storage::load_pages_for_crawl_reporting(
                             &pool,
-                            crawl_id,
-                            &root_url,
-                            |step| report(LoadingStage::Reading(step)),
+                            previous_id,
+                            &previous_root,
+                            |_| report(LoadProgress::ReadFinished),
                         )
                         .await
                     }
                 })
-                .await;
+            });
+            let (pages, baseline) = futures::join!(pages, async move {
+                match baseline {
+                    Some(baseline) => Some(baseline.await),
+                    None => None,
+                }
+            });
             let pages = match pages {
                 Ok(pages) => pages,
                 Err(e) => {
@@ -649,42 +713,15 @@ impl ShoutingRobinApp {
                 }
             };
             tracing::info!(count = pages.len(), crawl_id, "loaded pages for crawl");
-
-            let previous =
-                match crate::storage::find_previous_crawl(&pool, &root_url, Some(crawl_id)).await {
-                    Ok(previous) => previous,
-                    Err(e) => {
-                        tracing::error!(error=%e, "failed to find previous crawl");
-                        None
-                    }
-                };
-            let baseline = match &previous {
-                Some(previous) => {
-                    report(LoadingStage::ReadingBaseline);
-                    let loaded = cx
-                        .background_spawn({
-                            let pool = pool.clone();
-                            let previous_id = previous.id;
-                            let previous_root = previous.root_url.clone();
-                            async move {
-                                crate::storage::load_pages_for_crawl(
-                                    &pool,
-                                    previous_id,
-                                    &previous_root,
-                                )
-                                .await
-                            }
-                        })
-                        .await;
-                    match loaded {
-                        Ok(baseline_pages) => Some((baseline_pages, previous.started_at)),
-                        Err(e) => {
-                            tracing::error!(error=%e, "failed to load baseline pages");
-                            None
-                        }
-                    }
+            let baseline = match (baseline, &previous) {
+                (Some(Ok(baseline_pages)), Some(previous)) => {
+                    Some((baseline_pages, previous.started_at))
                 }
-                None => None,
+                (Some(Err(e)), _) => {
+                    tracing::error!(error=%e, "failed to load baseline pages");
+                    None
+                }
+                _ => None,
             };
             let layout_capture = match crate::storage::load_crawl_config(&pool, crawl_id).await {
                 Ok(config) => config
@@ -700,7 +737,7 @@ impl ShoutingRobinApp {
 
             // Both crawls move into the task and back out, so nothing is
             // copied to get them there.
-            report(LoadingStage::Counting);
+            report(LoadProgress::Counting);
             let prepared = cx
                 .background_spawn({
                     let root_url = root_url.clone();

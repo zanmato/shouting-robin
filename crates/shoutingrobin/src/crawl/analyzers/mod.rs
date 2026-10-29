@@ -208,7 +208,7 @@ pub fn analyze_ssr(record: &mut PageRecord, raw_html: &str, content_selector: &s
             .collect()
     };
     for link in &mut record.outlinks {
-        if !ssr_link_dsts.contains(&link.dst_url) {
+        if !ssr_link_dsts.contains(&*link.dst_url) {
             link.csr_only = true;
         }
     }
@@ -735,13 +735,13 @@ fn extract_images(doc: &Html, record: &mut PageRecord) {
         sources.retain(|src| seen.insert(src.clone()));
 
         let has_alt_attr = el.value().attr("alt").is_some();
-        let alt = el.value().attr("alt").map(|a| a.to_string());
+        let alt: Option<std::sync::Arc<str>> = el.value().attr("alt").map(Into::into);
         let width = el.value().attr("width").and_then(|w| w.parse().ok());
         let height = el.value().attr("height").and_then(|h| h.parse().ok());
 
         for src in sources {
             record.images.push(ImageRef {
-                src,
+                src: src.into(),
                 alt: alt.clone(),
                 width,
                 height,
@@ -876,10 +876,10 @@ fn extract_anchors(doc: &Html, record: &mut PageRecord) {
             continue;
         };
         let anchor = anchor_text(&el, &image_alt);
-        let rel = el.value().attr("rel").map(|r| r.to_string());
+        let rel = el.value().attr("rel").map(Into::into);
         record.outlinks.push(Outlink {
-            dst_url: dst,
-            anchor,
+            dst_url: dst.into(),
+            anchor: anchor.map(Into::into),
             rel,
             csr_only: false,
         });
@@ -942,7 +942,7 @@ fn compute_ecommerce_audit(record: &mut PageRecord) {
         }
     }
 
-    record.ecommerce = Some(audit);
+    record.ecommerce = Some(Box::new(audit));
 }
 
 fn is_empty_value(value: &serde_json::Value) -> bool {
@@ -1879,7 +1879,7 @@ mod tests {
             </body></html>"#,
         );
         assert_eq!(r.images.len(), 1);
-        assert_eq!(r.images[0].src, "/logo.png");
+        assert_eq!(r.images[0].src, "/logo.png".into());
         assert_eq!(r.images[0].alt, Some("Logo".into()));
         assert_eq!(r.images[0].width, Some(200));
         assert_eq!(r.images[0].height, Some(50));
@@ -1930,7 +1930,7 @@ mod tests {
             </body></html>"#,
         );
         assert_eq!(r.images.len(), 3);
-        assert_eq!(r.images[0].src, "/a.jpg");
+        assert_eq!(r.images[0].src, "/a.jpg".into());
         assert!(!r.images[1].has_alt_attr);
         assert_eq!(r.images[2].width, Some(300));
         assert_eq!(r.images[2].height, Some(200));
@@ -2297,7 +2297,7 @@ mod tests {
             url: "https://example.com/page".into(),
             word_count: Some(200),
             h1: Some("Heading".into()),
-            outlinks: vec![
+            outlinks: thin_vec::thin_vec![
                 Outlink {
                     dst_url: "https://example.com/".into(),
                     anchor: Some("Home".into()),
@@ -2335,7 +2335,7 @@ mod tests {
             url: "https://example.com/page".into(),
             word_count: Some(50),
             h1: Some("Heading".into()),
-            outlinks: vec![Outlink {
+            outlinks: thin_vec::thin_vec![Outlink {
                 dst_url: "https://example.com/about".into(),
                 anchor: Some("About".into()),
                 rel: None,
@@ -2400,8 +2400,8 @@ mod tests {
     fn merging_another_source_dedups_and_records_it() {
         let mut record = PageRecord {
             url: "https://a.test/se/".into(),
-            hreflang_tags: vec![("sv".into(), "https://a.test/se/".into())],
-            hreflang_sources: vec![HreflangSource::Html],
+            hreflang_tags: thin_vec::thin_vec![("sv".into(), "https://a.test/se/".into())],
+            hreflang_sources: thin_vec::thin_vec![HreflangSource::Html],
             ..Default::default()
         };
         // Already known from the HTML: not a second tag, and not a second
@@ -2459,7 +2459,7 @@ mod tests {
         assert_eq!(r.images[0].src, r.images[1].src);
         assert_ne!(r.images[0].src, r.images[2].src);
         // A fetchable source is resolved against the page.
-        assert_eq!(r.images[3].src, "https://example.com/real.png");
+        assert_eq!(r.images[3].src, "https://example.com/real.png".into());
     }
 
     #[test]
@@ -2597,7 +2597,7 @@ mod tests {
             </picture>
             </body></html>"#,
         );
-        let sources: Vec<&str> = r.images.iter().map(|i| i.src.as_str()).collect();
+        let sources: Vec<&str> = r.images.iter().map(|i| i.src.as_ref()).collect();
         assert_eq!(
             sources,
             vec![
@@ -2624,7 +2624,7 @@ mod tests {
             <a href="/shoes?size=42&amp;colour=red#reviews">Shoes</a>
             </body></html>"##,
         );
-        let destinations: Vec<&str> = r.outlinks.iter().map(|o| o.dst_url.as_str()).collect();
+        let destinations: Vec<&str> = r.outlinks.iter().map(|o| o.dst_url.as_ref()).collect();
         assert_eq!(
             destinations,
             vec!["https://example.com/shoes?size=42&colour=red"]

@@ -597,7 +597,7 @@ pub(super) fn build_issues_entries(pages: &[Arc<PageRecord>]) -> Vec<IssueEntry>
         .filter(|p| {
             p.a11y_issues
                 .iter()
-                .any(|i| matches!(i.impact.as_str(), "critical" | "serious"))
+                .any(|i| matches!(i.impact.as_ref(), "critical" | "serious"))
         })
         .count();
     if a11y_critical > 0 {
@@ -1351,7 +1351,7 @@ fn filter_derived_entry(
 /// URL, producing one entry per page that was added, removed, or changed.
 pub(super) fn build_change_entries(
     current: &[Arc<PageRecord>],
-    baseline: &[Arc<PageRecord>],
+    baseline: &[super::delegate::BaselinePage],
     layout_changes: &HashMap<String, PageLayoutChange>,
 ) -> Vec<ChangeEntry> {
     let current_by_url: HashMap<&str, &PageRecord> = current
@@ -1359,11 +1359,8 @@ pub(super) fn build_change_entries(
         .filter(|p| p.is_internal)
         .map(|p| (p.url.as_str(), p.as_ref()))
         .collect();
-    let baseline_by_url: HashMap<&str, &PageRecord> = baseline
-        .iter()
-        .filter(|p| p.is_internal)
-        .map(|p| (p.url.as_str(), p.as_ref()))
-        .collect();
+    let baseline_by_url: HashMap<&str, &super::delegate::BaselinePage> =
+        baseline.iter().map(|p| (p.url.as_str(), p)).collect();
 
     let mut entries = Vec::new();
 
@@ -1514,7 +1511,7 @@ pub(super) fn layout_template_cell_text(row: &LayoutTemplateRow, col_key: &str) 
     }
 }
 
-fn describe_changes(before: &PageRecord, after: &PageRecord) -> Vec<String> {
+fn describe_changes(before: &super::delegate::BaselinePage, after: &PageRecord) -> Vec<String> {
     fn opt_num(value: Option<u32>) -> String {
         value.map(|v| v.to_string()).unwrap_or_else(|| "-".into())
     }
@@ -1629,14 +1626,14 @@ pub(super) fn build_image_aggregates(
             if is_inline_image(&image.src) {
                 continue;
             }
-            let entry = by_src.entry(image.src.as_str()).or_insert_with(|| {
-                order.push(image.src.as_str());
+            let entry = by_src.entry(image.src.as_ref()).or_insert_with(|| {
+                order.push(image.src.as_ref());
                 let (status, size_bytes) = checked
-                    .get(image.src.as_str())
+                    .get(image.src.as_ref())
                     .copied()
                     .unwrap_or((None, 0));
                 ImageAggregateRow {
-                    src: image.src.clone(),
+                    src: image.src.to_string(),
                     status,
                     size_bytes,
                     alt: None,
@@ -1656,7 +1653,11 @@ pub(super) fn build_image_aggregates(
                 entry.pages.push(page_index);
             }
             if entry.alt.is_none() {
-                entry.alt = image.alt.clone().filter(|alt| !alt.is_empty());
+                entry.alt = image
+                    .alt
+                    .as_deref()
+                    .filter(|alt| !alt.is_empty())
+                    .map(str::to_string);
             }
             entry.width = entry.width.or(image.width);
             entry.height = entry.height.or(image.height);
@@ -1797,6 +1798,15 @@ mod tests {
         assert_eq!(count_for(&entries, "Missing H1"), 0);
     }
 
+    /// What the Changes tab keeps of a baseline crawl.
+    fn compared(pages: &[PageRecord]) -> Vec<super::super::delegate::BaselinePage> {
+        pages
+            .iter()
+            .filter(|page| page.is_internal)
+            .map(super::super::delegate::BaselinePage::from_record)
+            .collect()
+    }
+
     fn change_for<'a>(entries: &'a [ChangeEntry], url: &str) -> Option<&'a ChangeEntry> {
         entries.iter().find(|e| e.url == url)
     }
@@ -1811,7 +1821,7 @@ mod tests {
         changed.status = Some(200);
         let current = vec![changed, page("https://a.test/new", Some("Heading"))];
 
-        let entries = build_change_entries(&shared(current), &shared(baseline), &HashMap::new());
+        let entries = build_change_entries(&shared(current), &compared(&baseline), &HashMap::new());
 
         assert_eq!(
             change_for(&entries, "https://a.test/new").unwrap().kind,
@@ -1831,7 +1841,8 @@ mod tests {
         let baseline = vec![page("https://a.test/keep", Some("Heading"))];
         let current = vec![page("https://a.test/keep", Some("Heading"))];
         assert!(
-            build_change_entries(&shared(current), &shared(baseline), &HashMap::new()).is_empty()
+            build_change_entries(&shared(current), &compared(&baseline), &HashMap::new())
+                .is_empty()
         );
     }
 
@@ -1853,7 +1864,7 @@ mod tests {
         )]
         .into_iter()
         .collect();
-        let entries = build_change_entries(&shared(current), &shared(baseline), &layout_changes);
+        let entries = build_change_entries(&shared(current), &compared(&baseline), &layout_changes);
         let entry = change_for(&entries, "https://a.test/keep").expect("a changed entry");
         assert_eq!(entry.kind, ChangeKind::Changed);
         assert_eq!(entry.detail_text(), "layout: h1.title restyled");
@@ -1867,11 +1878,11 @@ mod tests {
         template_type: Option<&str>,
     ) -> PageRecord {
         PageRecord {
-            layout: Some(crate::crawl::event::PageLayoutInfo {
+            layout: Some(Box::new(crate::crawl::event::PageLayoutInfo {
                 template: Some(template.into()),
                 template_type: template_type.map(str::to_string),
                 assignment: Some(assignment),
-            }),
+            })),
             ..page(url, None)
         }
     }
@@ -1997,15 +2008,16 @@ mod overview_denominator_tests {
     #[test]
     fn a_rules_count_is_the_number_of_rows_it_lands_on() {
         let mut offender = document("https://a.test/gallery");
-        offender.images = vec![
+        offender.images = thin_vec::thin_vec![
             image_without_alt("/one.png"),
             image_without_alt("/two.png"),
             image_without_alt("/three.png"),
         ];
-        offender.a11y_issues = vec![critical_issue("image-alt"), critical_issue("label")];
+        offender.a11y_issues =
+            thin_vec::thin_vec![critical_issue("image-alt"), critical_issue("label")];
         // A second page referencing one of the same images: still one image.
         let mut second = document("https://a.test/other");
-        second.images = vec![image_without_alt("/one.png")];
+        second.images = thin_vec::thin_vec![image_without_alt("/one.png")];
         let pages = vec![offender, second, document("https://a.test/clean")];
 
         let entries = build_issues_entries(&shared(pages));
@@ -2139,7 +2151,7 @@ mod filter_derived_rule_tests {
             word_count: Some(20),
             ..Default::default()
         };
-        offender.a11y_issues = vec![
+        offender.a11y_issues = thin_vec::thin_vec![
             A11yIssue {
                 rule: "link-name".into(),
                 impact: "serious".into(),
@@ -2153,7 +2165,7 @@ mod filter_derived_rule_tests {
                 html: None,
             },
         ];
-        offender.images = vec![ImageRef {
+        offender.images = thin_vec::thin_vec![ImageRef {
             src: "/one.png".into(),
             alt: None,
             width: None,
@@ -2255,7 +2267,7 @@ mod filter_derived_rule_tests {
             is_internal: true,
             is_page: true,
             status: Some(200),
-            headers: vec![("x-robots-tag".into(), "noindex".into())],
+            headers: thin_vec::thin_vec![("x-robots-tag".into(), "noindex".into())],
             ..Default::default()
         };
         header_noindex.compute_indexability();

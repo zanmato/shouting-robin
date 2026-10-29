@@ -713,7 +713,7 @@ fn page_has_image_matching(
 ) -> bool {
     page.images.iter().any(|image| {
         checked
-            .get(image.src.as_str())
+            .get(image.src.as_ref())
             .is_some_and(|&(status, size)| matches(status, size))
     })
 }
@@ -1297,38 +1297,44 @@ pub(super) fn filter_for_tab(
                         .is_some_and(|target| !target.is_indexable())
                 });
             }
-            IssueFilter::A11yImageAlt => {
-                indices.retain(|&idx| pages[idx].a11y_issues.iter().any(|i| i.rule == "image-alt"))
-            }
+            IssueFilter::A11yImageAlt => indices.retain(|&idx| {
+                pages[idx]
+                    .a11y_issues
+                    .iter()
+                    .any(|i| &*i.rule == "image-alt")
+            }),
             IssueFilter::A11yLabel => {
-                indices.retain(|&idx| pages[idx].a11y_issues.iter().any(|i| i.rule == "label"))
+                indices.retain(|&idx| pages[idx].a11y_issues.iter().any(|i| &*i.rule == "label"))
             }
-            IssueFilter::A11yLinkName => {
-                indices.retain(|&idx| pages[idx].a11y_issues.iter().any(|i| i.rule == "link-name"))
-            }
+            IssueFilter::A11yLinkName => indices.retain(|&idx| {
+                pages[idx]
+                    .a11y_issues
+                    .iter()
+                    .any(|i| &*i.rule == "link-name")
+            }),
             IssueFilter::A11yButtonName => indices.retain(|&idx| {
                 pages[idx]
                     .a11y_issues
                     .iter()
-                    .any(|i| i.rule == "button-name")
+                    .any(|i| &*i.rule == "button-name")
             }),
             IssueFilter::A11yColorContrast => indices.retain(|&idx| {
                 pages[idx]
                     .a11y_issues
                     .iter()
-                    .any(|i| i.rule == "color-contrast")
+                    .any(|i| &*i.rule == "color-contrast")
             }),
             IssueFilter::A11yHtmlHasLang => indices.retain(|&idx| {
                 pages[idx]
                     .a11y_issues
                     .iter()
-                    .any(|i| i.rule == "html-has-lang")
+                    .any(|i| &*i.rule == "html-has-lang")
             }),
             IssueFilter::A11yHeadingOrder => indices.retain(|&idx| {
                 pages[idx]
                     .a11y_issues
                     .iter()
-                    .any(|i| i.rule == "heading-order")
+                    .any(|i| &*i.rule == "heading-order")
             }),
             IssueFilter::ExactDuplicates => {
                 let mut hash_counts: HashMap<&str, usize> = HashMap::new();
@@ -1564,7 +1570,7 @@ fn link_matches_filter(
     // an external link apart parses both URLs, and a crawl has hundreds of
     // thousands of links.
     let dst_is_external = || !is_same_domain(&page.url, &link.dst_url);
-    let dst_status = || status_by_url.get(link.dst_url.as_str()).copied();
+    let dst_status = || status_by_url.get(link.dst_url.as_ref()).copied();
 
     match filter {
         IssueFilter::LinkExternal => dst_is_external(),
@@ -1631,13 +1637,13 @@ pub(super) fn image_aggregate_matches_filter(
 
 fn a11y_issue_matches_filter(issue: &A11yIssue, filter: IssueFilter) -> bool {
     match filter {
-        IssueFilter::A11yImageAlt => issue.rule == "image-alt",
-        IssueFilter::A11yLabel => issue.rule == "label",
-        IssueFilter::A11yLinkName => issue.rule == "link-name",
-        IssueFilter::A11yButtonName => issue.rule == "button-name",
-        IssueFilter::A11yColorContrast => issue.rule == "color-contrast",
-        IssueFilter::A11yHtmlHasLang => issue.rule == "html-has-lang",
-        IssueFilter::A11yHeadingOrder => issue.rule == "heading-order",
+        IssueFilter::A11yImageAlt => &*issue.rule == "image-alt",
+        IssueFilter::A11yLabel => &*issue.rule == "label",
+        IssueFilter::A11yLinkName => &*issue.rule == "link-name",
+        IssueFilter::A11yButtonName => &*issue.rule == "button-name",
+        IssueFilter::A11yColorContrast => &*issue.rule == "color-contrast",
+        IssueFilter::A11yHtmlHasLang => &*issue.rule == "html-has-lang",
+        IssueFilter::A11yHeadingOrder => &*issue.rule == "heading-order",
         _ => true,
     }
 }
@@ -1698,7 +1704,7 @@ mod counting_tests {
     fn image(src: &str, alt: Option<&str>, has_alt_attr: bool) -> ImageRef {
         ImageRef {
             src: src.into(),
-            alt: alt.map(|a| a.to_string()),
+            alt: alt.map(Into::into),
             width: Some(10),
             height: Some(10),
             has_alt_attr,
@@ -1735,32 +1741,32 @@ mod counting_tests {
                 robots: (index % 11 == 0).then(|| "noindex".into()),
                 word_count: Some((index * 37 % 600) as u32),
                 headers: if index % 4 == 0 {
-                    Vec::new()
+                    Vec::new().into()
                 } else {
-                    vec![("strict-transport-security".into(), "max-age=1".into())]
+                    vec![("strict-transport-security".into(), "max-age=1".into())].into()
                 },
-                images: vec![ImageRef {
-                    src: format!("{HOST}/image-{}.png", index % 8),
+                images: thin_vec::thin_vec![ImageRef {
+                    src: format!("{HOST}/image-{}.png", index % 8).into(),
                     alt: (index % 3 != 0).then(|| "An image".into()),
                     width: Some(10),
                     height: (index % 2 == 0).then_some(10),
                     has_alt_attr: index % 5 != 0,
                 }],
-                outlinks: vec![
+                outlinks: thin_vec::thin_vec![
                     Outlink {
-                        dst_url: format!("{HOST}/page-{}", (index + 13) % 48),
+                        dst_url: format!("{HOST}/page-{}", (index + 13) % 48).into(),
                         anchor: (index % 4 != 0).then(|| "Next".into()),
                         rel: (index % 6 == 0).then(|| "nofollow".into()),
                         csr_only: false,
                     },
                     Outlink {
-                        dst_url: format!("{HOST}/gone-{}", index % 5),
+                        dst_url: format!("{HOST}/gone-{}", index % 5).into(),
                         anchor: Some("Gone".into()),
                         rel: None,
                         csr_only: false,
                     },
                     Outlink {
-                        dst_url: format!("{HOST}/moved-{}", index % 3),
+                        dst_url: format!("{HOST}/moved-{}", index % 3).into(),
                         anchor: Some("Moved".into()),
                         rel: None,
                         csr_only: false,
@@ -1890,7 +1896,7 @@ mod counting_tests {
         let pages: Vec<PageRecord> = (0..3)
             .map(|i| {
                 let mut page = internal_page(&format!("https://a.test/page-{i}"));
-                page.images = vec![
+                page.images = thin_vec::thin_vec![
                     image(
                         "/logo.svg",
                         if i == 2 { Some("") } else { Some("Logo") },
@@ -1927,7 +1933,7 @@ mod counting_tests {
     #[test]
     fn an_images_status_and_size_come_from_the_resource_row() {
         let mut page = internal_page("https://a.test/gallery");
-        page.images = vec![
+        page.images = thin_vec::thin_vec![
             image("https://a.test/heavy.png", Some("Heavy"), true),
             image("https://a.test/gone.png", Some("Gone"), true),
             image("https://a.test/fine.png", Some("Fine"), true),
@@ -1984,7 +1990,7 @@ mod counting_tests {
         // One image trips both MissingAltAttribute and MissingSizeAttributes
         // (both Warn); the badge must count that row once, not twice.
         let mut page = internal_page("https://a.test/imgs");
-        page.images = vec![
+        page.images = thin_vec::thin_vec![
             ImageRef {
                 src: "/no-alt-no-size.png".into(),
                 alt: None,
@@ -2046,7 +2052,7 @@ mod counting_tests {
         // row, and a sub-filter counts the pages carrying such a link rather
         // than the links themselves.
         let mut source = internal_page("https://a.test/page");
-        source.outlinks = vec![
+        source.outlinks = thin_vec::thin_vec![
             Outlink {
                 dst_url: "https://a.test/broken".into(),
                 anchor: Some("broken".into()),
@@ -2074,14 +2080,14 @@ mod counting_tests {
     #[test]
     fn links_sub_filters_select_the_pages_carrying_the_link() {
         let mut with_broken = internal_page("https://a.test/has-broken");
-        with_broken.outlinks = vec![Outlink {
+        with_broken.outlinks = thin_vec::thin_vec![Outlink {
             dst_url: "https://a.test/broken".into(),
             anchor: Some("broken".into()),
             rel: None,
             csr_only: false,
         }];
         let mut with_external = internal_page("https://a.test/has-external");
-        with_external.outlinks = vec![Outlink {
+        with_external.outlinks = thin_vec::thin_vec![Outlink {
             dst_url: "https://other.test/elsewhere".into(),
             anchor: Some("elsewhere".into()),
             rel: None,
@@ -2380,7 +2386,7 @@ mod new_rule_tests {
             is_internal: true,
             is_page: true,
             status: Some(200),
-            headers: vec![("Referrer-Policy".into(), value.into())],
+            headers: thin_vec::thin_vec![("Referrer-Policy".into(), value.into())],
             ..Default::default()
         };
         let pages = vec![
@@ -2525,7 +2531,7 @@ mod security_membership_tests {
             is_internal: true,
             is_resource: true,
             status: Some(200),
-            headers,
+            headers: headers.into(),
             ..Default::default()
         }
     }

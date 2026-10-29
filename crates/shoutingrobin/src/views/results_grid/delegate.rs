@@ -56,7 +56,7 @@ struct CountsStamp {
 pub(super) struct CountsJob {
     stamp: CountsStamp,
     pages: Vec<Arc<PageRecord>>,
-    baseline: Option<Vec<Arc<PageRecord>>>,
+    baseline: Option<Arc<[BaselinePage]>>,
     layout_changes: HashMap<String, PageLayoutChange>,
     root_origin: Option<String>,
     progress: CountsProgress,
@@ -77,13 +77,13 @@ impl CountsJob {
     /// [`ResultsDelegate::apply_loaded_crawl`] to install with it.
     pub(super) fn for_crawl(
         pages: Vec<Arc<PageRecord>>,
-        baseline: Option<Vec<Arc<PageRecord>>>,
+        baseline: Option<&Baseline>,
         root_url: &str,
     ) -> Self {
         Self {
             stamp: CountsStamp::default(),
             pages,
-            baseline,
+            baseline: baseline.map(|baseline| baseline.pages.clone()),
             layout_changes: HashMap::new(),
             root_origin: root_origin_of(root_url),
             progress: CountsProgress::default(),
@@ -126,10 +126,82 @@ struct IssueEntriesCache {
     entries: Vec<IssueEntry>,
 }
 
+/// What the Changes tab compares a page on, for one internal page of the
+/// baseline crawl.
+#[derive(Debug, Clone)]
+pub(super) struct BaselinePage {
+    pub url: String,
+    pub status: Option<u16>,
+    pub title: Option<String>,
+    pub meta_description: Option<String>,
+    pub h1: Option<String>,
+    pub indexability: Option<Arc<str>>,
+    pub word_count: Option<u32>,
+}
+
+impl BaselinePage {
+    pub(super) fn from_record(record: &PageRecord) -> Self {
+        Self {
+            url: record.url.clone(),
+            status: record.status,
+            title: record.title.clone(),
+            meta_description: record.meta_description.clone(),
+            h1: record.h1.clone(),
+            indexability: record.indexability.clone(),
+            word_count: record.word_count,
+        }
+    }
+
+    /// A record for a page the current crawl no longer has, so selecting its
+    /// Changes row still shows what the baseline knew about it.
+    fn to_record(&self) -> PageRecord {
+        PageRecord {
+            url: self.url.clone(),
+            status: self.status,
+            title: self.title.clone(),
+            meta_description: self.meta_description.clone(),
+            h1: self.h1.clone(),
+            indexability: self.indexability.clone(),
+            word_count: self.word_count,
+            is_internal: true,
+            ..Default::default()
+        }
+    }
+}
+
+/// The previous crawl a crawl is compared with. Only what the comparison reads
+/// is kept: the Changes tab needs a few fields per internal page and the
+/// Overview needs the baseline's issue counts, which are counted once here.
+/// Holding every record of a second large crawl cost as much memory as the
+/// crawl on screen.
+#[derive(Clone)]
+pub struct Baseline {
+    pages: Arc<[BaselinePage]>,
+    started_at: i64,
+    issue_counts: Arc<HashMap<String, (usize, f32)>>,
+}
+
+impl Baseline {
+    /// Counts the baseline's issues and keeps its internal pages' compared
+    /// fields. Walks every record once per rule, so it belongs on a background
+    /// thread.
+    pub fn new(records: &[Arc<PageRecord>], started_at: i64) -> Self {
+        Self {
+            pages: records
+                .iter()
+                .filter(|record| record.is_internal)
+                .map(|record| BaselinePage::from_record(record))
+                .collect(),
+            started_at,
+            issue_counts: Arc::new(baseline_issue_counts(records)),
+        }
+    }
+}
+
 /// The baseline crawl's issue counts, keyed by rule name, which the Overview
 /// tab's delta column reads. Walks the baseline the same way the current crawl
 /// is walked, so it is worth the same background treatment.
-pub(super) fn baseline_issue_counts(pages: &[Arc<PageRecord>]) -> HashMap<String, (usize, f32)> {
+fn baseline_issue_counts(pages: &[Arc<PageRecord>]) -> HashMap<String, (usize, f32)> {
     build_issues_entries(pages)
         .into_iter()
         .map(|entry| (entry.name, (entry.count, entry.pct)))
@@ -170,9 +242,7 @@ pub struct ResultsDelegate {
     issue_filter: IssueFilter,
     pub(super) root_origin: Option<String>,
     root_url: Option<String>,
-    baseline_pages: Option<Vec<Arc<PageRecord>>>,
-    baseline_started_at: Option<i64>,
-    baseline_issue_counts: HashMap<String, (usize, f32)>,
+    baseline: Option<Baseline>,
     /// The Overview tab's issue entries, rebuilt whenever its rows are. Every
     /// Overview row, cell, sort comparison and drill-down reads this rather than
     /// rebuilding: building the entries walks the whole page set once per rule,
@@ -218,13 +288,13 @@ pub struct ResultsDelegate {
 /// The loaded crawl, detached from the grid.
 pub struct CrawlSnapshot {
     pages: Vec<Arc<PageRecord>>,
-    baseline: Option<(Vec<Arc<PageRecord>>, i64)>,
+    baseline: Option<Baseline>,
     root_url: String,
 }
 
 fn changes_between(
     pages: &[Arc<PageRecord>],
-    baseline: Option<&[Arc<PageRecord>]>,
+    baseline: Option<&[BaselinePage]>,
     layout_changes: &HashMap<String, PageLayoutChange>,
 ) -> Vec<ChangeEntry> {
     match baseline {
@@ -242,10 +312,10 @@ fn image_references<'a>(
         .flat_map(|page| {
             page.images
                 .iter()
-                .filter(|image| image.src == src)
+                .filter(|image| *image.src == *src)
                 .map(|image| ImageReference {
                     page_url: page.url.clone(),
-                    alt: image.alt.clone(),
+                    alt: image.alt.as_deref().map(str::to_string),
                     has_alt_attr: image.has_alt_attr,
                 })
         })
@@ -258,13 +328,9 @@ pub fn export_every_tab(snapshot: CrawlSnapshot) -> Vec<(ResultTab, Result<Strin
     let mut delegate = ResultsDelegate::new();
     delegate.set_root_url(&snapshot.root_url);
     delegate.set_pages(snapshot.pages);
-    if let Some((baseline_pages, started_at)) = snapshot.baseline {
-        delegate.baseline_issue_counts = baseline_issue_counts(&baseline_pages);
-        delegate.baseline_pages = Some(baseline_pages);
-        delegate.baseline_started_at = Some(started_at);
-    }
+    delegate.baseline = snapshot.baseline;
     delegate.invalidate_counts();
-    let has_baseline = delegate.baseline_pages.is_some();
+    let has_baseline = delegate.baseline.is_some();
     ResultTab::ALL
         .iter()
         .filter(|&&tab| tab != ResultTab::Changes || has_baseline)
@@ -288,9 +354,7 @@ impl ResultsDelegate {
             issue_filter: IssueFilter::All,
             root_origin: None,
             root_url: None,
-            baseline_pages: None,
-            baseline_started_at: None,
-            baseline_issue_counts: HashMap::new(),
+            baseline: None,
             issue_entries: Vec::new(),
             hreflang_columns: 0,
             pages_epoch: 0,
@@ -378,7 +442,10 @@ impl ResultsDelegate {
         Some(CountsJob {
             stamp: self.counts_stamp(),
             pages: self.all_pages.clone(),
-            baseline: self.baseline_pages.clone(),
+            baseline: self
+                .baseline
+                .as_ref()
+                .map(|baseline| baseline.pages.clone()),
             layout_changes: self.layout_changes.clone(),
             root_origin: self.root_origin.clone(),
             progress,
@@ -448,7 +515,7 @@ impl ResultsDelegate {
     fn rebuild_columns(&mut self) {
         self.columns = columns_for_tab_with_baseline(
             self.active_tab,
-            self.baseline_pages.is_some(),
+            self.baseline.is_some(),
             self.hreflang_columns,
         );
     }
@@ -460,8 +527,8 @@ impl ResultsDelegate {
         self.rebuild_filter();
     }
 
-    /// Installs a whole crawl at once, with the baseline's issue counts and a
-    /// counting pass over both already done. Records and baseline each rebuild
+    /// Installs a whole crawl at once, with its baseline and a counting pass
+    /// over both already done. Records and baseline each rebuild
     /// the filtered rows on their own, which on the Overview tab means building
     /// every issue entry, so setting them one after the other did that work
     /// twice. The counted pass goes in before the rows are built, so the
@@ -469,23 +536,11 @@ impl ResultsDelegate {
     pub(super) fn apply_loaded_crawl(
         &mut self,
         pages: Vec<Arc<PageRecord>>,
-        baseline: Option<(Vec<Arc<PageRecord>>, i64)>,
-        baseline_issue_counts: HashMap<String, (usize, f32)>,
+        baseline: Option<Baseline>,
         counted: CountedCrawl,
     ) {
         self.set_pages(pages);
-        match baseline {
-            Some((baseline_pages, started_at)) => {
-                self.baseline_pages = Some(baseline_pages);
-                self.baseline_started_at = Some(started_at);
-                self.baseline_issue_counts = baseline_issue_counts;
-            }
-            None => {
-                self.baseline_pages = None;
-                self.baseline_started_at = None;
-                self.baseline_issue_counts.clear();
-            }
-        }
+        self.baseline = baseline;
         self.invalidate_counts();
         let stamp = self.counts_stamp();
         self.install_counts(stamp, counted);
@@ -494,11 +549,22 @@ impl ResultsDelegate {
     }
 
     pub fn has_baseline(&self) -> bool {
-        self.baseline_pages.is_some()
+        self.baseline.is_some()
     }
 
     pub fn baseline_started_at(&self) -> Option<i64> {
-        self.baseline_started_at
+        self.baseline.as_ref().map(|baseline| baseline.started_at)
+    }
+
+    /// The baseline's count and share for an Overview rule, by rule name.
+    fn baseline_issue_count(&self, name: &str) -> Option<&(usize, f32)> {
+        self.baseline.as_ref()?.issue_counts.get(name)
+    }
+
+    fn baseline_pages(&self) -> Option<&[BaselinePage]> {
+        self.baseline
+            .as_ref()
+            .map(|baseline| baseline.pages.as_ref())
     }
 
     /// The Changes tab's entries, built on first use after the data changes.
@@ -507,11 +573,7 @@ impl ResultsDelegate {
     /// window on a large comparison.
     fn change_entries(&self) -> &[ChangeEntry] {
         self.change_entries.get_or_init(|| {
-            changes_between(
-                &self.all_pages,
-                self.baseline_pages.as_deref(),
-                &self.layout_changes,
-            )
+            changes_between(&self.all_pages, self.baseline_pages(), &self.layout_changes)
         })
     }
 
@@ -543,9 +605,7 @@ impl ResultsDelegate {
     #[cfg(test)]
     pub fn set_baseline(&mut self, pages: Vec<PageRecord>, started_at: i64) {
         let pages: Vec<Arc<PageRecord>> = pages.into_iter().map(Arc::new).collect();
-        self.baseline_issue_counts = baseline_issue_counts(&pages);
-        self.baseline_pages = Some(pages);
-        self.baseline_started_at = Some(started_at);
+        self.baseline = Some(Baseline::new(&pages, started_at));
         self.invalidate_counts();
         self.rebuild_columns();
         self.rebuild_filter();
@@ -553,9 +613,7 @@ impl ResultsDelegate {
 
     #[cfg(test)]
     pub fn clear_baseline(&mut self) {
-        self.baseline_pages = None;
-        self.baseline_started_at = None;
-        self.baseline_issue_counts.clear();
+        self.baseline = None;
         self.layout_changes.clear();
         self.invalidate_counts();
         self.rebuild_columns();
@@ -601,39 +659,43 @@ impl ResultsDelegate {
         self.occurrence_counts.clear();
         self.root_origin = None;
         self.root_url = None;
-        self.baseline_pages = None;
-        self.baseline_started_at = None;
-        self.baseline_issue_counts.clear();
+        self.baseline = None;
         self.layout_changes.clear();
         self.invalidate_counts();
         self.rebuild_columns();
     }
 
-    pub fn record_at(&self, index: usize) -> Option<&PageRecord> {
-        self.shared_record_at(index).map(Arc::as_ref)
-    }
-
-    fn shared_record_at(&self, index: usize) -> Option<&Arc<PageRecord>> {
+    /// The page behind a row. A removed page's Changes row is the one row
+    /// with no record in the crawl, so it gets one made from the baseline.
+    pub fn record_at(&self, index: usize) -> Option<std::borrow::Cow<'_, PageRecord>> {
+        use std::borrow::Cow;
         if tab_is_flattened(self.active_tab) {
             match self.flat_rows.get(index)? {
-                FlatRow::A11yIssue { page, .. } | FlatRow::SdItem { page, .. } => {
-                    self.all_pages.get(*page)
-                }
+                FlatRow::A11yIssue { page, .. } | FlatRow::SdItem { page, .. } => self
+                    .all_pages
+                    .get(*page)
+                    .map(|page| Cow::Borrowed(page.as_ref())),
                 FlatRow::ChangeRow { index } => {
                     let entries = self.change_entries();
                     let entry = entries.get(*index)?;
-                    let url = entry.url.clone();
+                    let url = entry.url.as_str();
                     match entry.kind {
                         ChangeKind::Removed => self
-                            .baseline_pages
-                            .as_ref()
-                            .and_then(|baseline| baseline.iter().find(|p| p.url == url)),
-                        _ => self.all_pages.iter().find(|p| p.url == url),
+                            .baseline_pages()?
+                            .iter()
+                            .find(|page| page.url == url)
+                            .map(|page| Cow::Owned(page.to_record())),
+                        _ => self
+                            .all_pages
+                            .iter()
+                            .find(|page| page.url == url)
+                            .map(|page| Cow::Borrowed(page.as_ref())),
                     }
                 }
                 FlatRow::LayoutTemplate(template) => template
                     .example_page()
-                    .and_then(|page_index| self.all_pages.get(page_index)),
+                    .and_then(|page_index| self.all_pages.get(page_index))
+                    .map(|page| Cow::Borrowed(page.as_ref())),
                 FlatRow::IssuesRow { .. }
                 | FlatRow::ImageAggregate(_)
                 | FlatRow::DirectoryAggregate { .. } => None,
@@ -642,6 +704,7 @@ impl ResultsDelegate {
             self.filtered_indices
                 .get(index)
                 .and_then(|&idx| self.all_pages.get(idx))
+                .map(|page| Cow::Borrowed(page.as_ref()))
         }
     }
 
@@ -668,7 +731,7 @@ impl ResultsDelegate {
         // pass over the crawl's image lists, and only on selection.
         let references = image_references(self.all_pages.iter(), &record.url);
         Some(DetailsSelection::Page {
-            record: Box::new(record.clone()),
+            record: Box::new(record.into_owned()),
             references,
         })
     }
@@ -867,7 +930,9 @@ impl ResultsDelegate {
             let entries = self.change_entries.get_or_init(|| {
                 changes_between(
                     &self.all_pages,
-                    self.baseline_pages.as_deref(),
+                    self.baseline
+                        .as_ref()
+                        .map(|baseline| baseline.pages.as_ref()),
                     &self.layout_changes,
                 )
             });
@@ -994,7 +1059,7 @@ impl ResultsDelegate {
     pub fn snapshot(&self) -> CrawlSnapshot {
         CrawlSnapshot {
             pages: self.all_pages.clone(),
-            baseline: self.baseline_pages.clone().zip(self.baseline_started_at),
+            baseline: self.baseline.clone(),
             root_url: self.root_url.clone().unwrap_or_default(),
         }
     }
@@ -1012,14 +1077,12 @@ impl ResultsDelegate {
                     "count" => entry.count.to_string(),
                     "pct" => format!("{:.1}%", entry.pct),
                     "count_prev" => self
-                        .baseline_issue_counts
-                        .get(&entry.name)
+                        .baseline_issue_count(&entry.name)
                         .map(|(count, _)| count.to_string())
                         .unwrap_or_default(),
                     "count_delta" => {
                         let previous = self
-                            .baseline_issue_counts
-                            .get(&entry.name)
+                            .baseline_issue_count(&entry.name)
                             .map(|(count, _)| *count)
                             .unwrap_or(0);
                         format_delta(entry.count as i64 - previous as i64)
@@ -1181,7 +1244,7 @@ impl TableDelegate for ResultsDelegate {
                     let Some(entry) = self.issue_entries.get(*index) else {
                         return cell;
                     };
-                    let previous = self.baseline_issue_counts.get(&entry.name).map(|(c, _)| *c);
+                    let previous = self.baseline_issue_count(&entry.name).map(|(c, _)| *c);
                     let delta = entry.count as i64 - previous.unwrap_or(0) as i64;
                     let text = match key.as_ref() {
                         "issue_name" => SharedString::from(entry.name.clone()),
@@ -1382,12 +1445,24 @@ impl TableDelegate for ResultsDelegate {
                 self.change_entries.get_or_init(|| {
                     changes_between(
                         &self.all_pages,
-                        self.baseline_pages.as_deref(),
+                        self.baseline
+                            .as_ref()
+                            .map(|baseline| baseline.pages.as_ref()),
                         &self.layout_changes,
                     )
                 })
             } else {
                 &[]
+            };
+            let baseline_issue_counts = self
+                .baseline
+                .as_ref()
+                .map(|baseline| baseline.issue_counts.clone());
+            let previous_count = |name: &str| {
+                baseline_issue_counts
+                    .as_ref()
+                    .and_then(|counts| counts.get(name))
+                    .map_or(0, |(count, _)| *count)
             };
             let issue_entries = std::mem::take(&mut self.issue_entries);
             self.flat_rows.sort_by(|a, b| {
@@ -1407,32 +1482,10 @@ impl TableDelegate for ResultsDelegate {
                             "issue_type" => ae.issue_type.cmp(&be.issue_type),
                             "description" => ae.description.cmp(&be.description),
                             "hint" => ae.hint.cmp(&be.hint),
-                            "count_prev" => {
-                                let ap = self
-                                    .baseline_issue_counts
-                                    .get(&ae.name)
-                                    .map(|(c, _)| *c)
-                                    .unwrap_or(0);
-                                let bp = self
-                                    .baseline_issue_counts
-                                    .get(&be.name)
-                                    .map(|(c, _)| *c)
-                                    .unwrap_or(0);
-                                ap.cmp(&bp)
-                            }
+                            "count_prev" => previous_count(&ae.name).cmp(&previous_count(&be.name)),
                             "count_delta" => {
-                                let ad = ae.count as i64
-                                    - self
-                                        .baseline_issue_counts
-                                        .get(&ae.name)
-                                        .map(|(c, _)| *c as i64)
-                                        .unwrap_or(0);
-                                let bd = be.count as i64
-                                    - self
-                                        .baseline_issue_counts
-                                        .get(&be.name)
-                                        .map(|(c, _)| *c as i64)
-                                        .unwrap_or(0);
+                                let ad = ae.count as i64 - previous_count(&ae.name) as i64;
+                                let bd = be.count as i64 - previous_count(&be.name) as i64;
                                 ad.cmp(&bd)
                             }
                             _ => ae.name.cmp(&be.name),
@@ -1651,6 +1704,34 @@ mod cache_tests {
         assert!(delegate.flat_rows().is_empty());
     }
 
+    /// The baseline keeps only what the comparison reads, so selecting a page
+    /// the current crawl no longer has shows a record built from that.
+    #[test]
+    fn a_removed_page_is_selectable_from_the_slim_baseline() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.replace_records(vec![internal_page("https://a.test/kept")]);
+        let mut gone = internal_page("https://a.test/gone");
+        gone.status = Some(404);
+        gone.title = Some("Gone".into());
+        gone.outlinks = thin_vec::thin_vec![crate::crawl::event::Outlink {
+            dst_url: "https://a.test/kept".into(),
+            anchor: None,
+            rel: None,
+            csr_only: false,
+        }];
+        delegate.set_baseline(vec![internal_page("https://a.test/kept"), gone], 0);
+        delegate.switch_tab(ResultTab::Changes);
+
+        let record = delegate.record_at(0).expect("the removed page's row");
+        assert_eq!(record.url, "https://a.test/gone");
+        assert_eq!(record.status, Some(404));
+        assert_eq!(record.title.as_deref(), Some("Gone"));
+        assert!(
+            record.outlinks.is_empty(),
+            "only the compared fields are kept"
+        );
+    }
+
     #[test]
     fn counts_cache_invalidates_on_push_and_clear() {
         let mut delegate = ResultsDelegate::new();
@@ -1771,7 +1852,7 @@ mod image_aggregate_tests {
             is_internal: true,
             is_page: true,
             status: Some(200),
-            images,
+            images: images.into(),
             ..Default::default()
         }
     }
@@ -1779,7 +1860,7 @@ mod image_aggregate_tests {
     fn image(src: &str, alt: Option<&str>) -> ImageRef {
         ImageRef {
             src: src.into(),
-            alt: alt.map(|a| a.to_string()),
+            alt: alt.map(Into::into),
             width: Some(10),
             height: Some(10),
             has_alt_attr: alt.is_some(),

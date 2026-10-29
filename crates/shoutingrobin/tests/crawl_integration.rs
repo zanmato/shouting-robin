@@ -374,13 +374,13 @@ fn test_chrome_crawl() {
         .outlinks
         .iter()
         .filter(|link| link.csr_only)
-        .map(|link| link.dst_url.as_str())
+        .map(|link| link.dst_url.as_ref())
         .collect();
     let external_csr_out: Vec<&str> = spa
         .outlinks
         .iter()
         .filter(|link| link.csr_only && !link.dst_url.contains(&format!("127.0.0.1:{port}")))
-        .map(|link| link.dst_url.as_str())
+        .map(|link| link.dst_url.as_ref())
         .collect();
     assert_eq!(csr_out, 3, "three links are written by the script");
     assert_eq!(
@@ -662,9 +662,9 @@ fn test_inlink_counts_reflect_the_whole_link_graph() {
     let mut unique: HashMap<&str, HashSet<&str>> = HashMap::new();
     for page in &pages {
         for link in &page.outlinks {
-            *total.entry(link.dst_url.as_str()).or_default() += 1;
+            *total.entry(link.dst_url.as_ref()).or_default() += 1;
             unique
-                .entry(link.dst_url.as_str())
+                .entry(link.dst_url.as_ref())
                 .or_default()
                 .insert(page.url.as_str());
         }

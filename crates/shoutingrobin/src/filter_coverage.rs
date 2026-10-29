@@ -926,7 +926,7 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
     // basis for the Internal tab's resource-type filters, but they are not
     // navigated documents, so they must not surface in document tabs.
     let with_ct = |path: &str, ct: &str| PageRecord {
-        content_type: Some(ct.to_string()),
+        content_type: Some(ct.to_string().into()),
         is_page: false,
         is_resource: true,
         ..internal(format!("{base}{path}"))
@@ -960,7 +960,7 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         PageRecord {
             is_page: false,
             is_resource: true,
-            resource_initiator: Some("fetch".to_string()),
+            resource_initiator: Some("fetch".to_string().into()),
             ..internal(format!("{base}/syn-xhr"))
         },
         // A redirect the crawler did not follow: a 3xx with no final URL, which
@@ -993,7 +993,7 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         // Products: one out of stock and indexable, one with a GTIN whose
         // check digit is wrong.
         PageRecord {
-            ecommerce: Some(EcommerceAudit {
+            ecommerce: Some(Box::new(EcommerceAudit {
                 price: Some("10".into()),
                 currency: Some("EUR".into()),
                 availability: Some("outofstock".into()),
@@ -1003,12 +1003,12 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
                 has_image: true,
                 has_description: true,
                 has_review_or_rating: true,
-            }),
-            sd_types: vec!["Product".into(), "BreadcrumbList".into()],
+            })),
+            sd_types: thin_vec::thin_vec!["Product".into(), "BreadcrumbList".into()],
             ..internal(format!("{base}/syn-out-of-stock"))
         },
         PageRecord {
-            ecommerce: Some(EcommerceAudit {
+            ecommerce: Some(Box::new(EcommerceAudit {
                 price: Some("10".into()),
                 currency: Some("EUR".into()),
                 availability: Some("instock".into()),
@@ -1018,8 +1018,8 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
                 has_image: true,
                 has_description: true,
                 has_review_or_rating: true,
-            }),
-            sd_types: vec!["Product".into(), "BreadcrumbList".into()],
+            })),
+            sd_types: thin_vec::thin_vec!["Product".into(), "BreadcrumbList".into()],
             ..internal(format!("{base}/syn-bad-gtin"))
         },
         PageRecord {
@@ -1036,8 +1036,8 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             a11y_issues: a11y_rules
                 .iter()
                 .map(|rule| A11yIssue {
-                    rule: rule.to_string(),
-                    impact: "serious".to_string(),
+                    rule: rule.to_string().into(),
+                    impact: "serious".to_string().into(),
                     target: None,
                     html: None,
                 })
@@ -1047,7 +1047,7 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         PageRecord {
             status: None,
             in_sitemap: Some(true),
-            sitemap_url: Some(format!("{base}/sitemap.xml")),
+            sitemap_url: Some(format!("{base}/sitemap.xml").into()),
             ..internal(format!("{base}/sitemap-orphan"))
         },
         // Response headers are not captured in HTTP render mode, so the
@@ -1071,7 +1071,7 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             // Headers, because the Security tab only judges a row whose
             // headers it has: a real page answering 200 always has some, and a
             // fixture without them is not the thing it stands in for.
-            headers: vec![("content-type".to_string(), "text/html".to_string())],
+            headers: thin_vec::thin_vec![("content-type".to_string(), "text/html".to_string())],
             ..internal(format!("{base}/syn-mixed"))
         },
         // External resources/URLs (other origin) are recorded with
@@ -1080,7 +1080,7 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         PageRecord {
             url: "https://cdn.example.net/asset.png".to_string(),
             status: Some(200),
-            content_type: Some("image/png".to_string()),
+            content_type: Some("image/png".to_string().into()),
             is_internal: false,
             ..Default::default()
         },
@@ -1090,17 +1090,17 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         // loopback fixture cannot be made to serve a 100 kB image cheaply.
         PageRecord {
             size_bytes: 250_000,
-            content_type: Some("image/png".to_string()),
+            content_type: Some("image/png".to_string().into()),
             is_page: false,
             is_resource: true,
-            resource_initiator: Some("img".to_string()),
+            resource_initiator: Some("img".to_string().into()),
             ..internal(format!("{base}/syn-heavy.png"))
         },
         PageRecord {
             status: Some(404),
             is_page: false,
             is_resource: true,
-            resource_initiator: Some("img".to_string()),
+            resource_initiator: Some("img".to_string().into()),
             ..internal(format!("{base}/syn-gone.png"))
         },
         // A bundler's output, named by the bundler: the content hash is
@@ -1108,36 +1108,36 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         // one from the fixture would make it an asset of the site under test,
         // so it is synthetic like the other resource rows.
         PageRecord {
-            content_type: Some("text/css".to_string()),
+            content_type: Some("text/css".to_string().into()),
             is_page: false,
             is_resource: true,
-            resource_initiator: Some("css".to_string()),
+            resource_initiator: Some("css".to_string().into()),
             ..internal(format!("{base}/assets/index-CCBwS7WZ.css"))
         },
         // An XHR the page makes: a request, not an address, and its arguments
         // are what a query string is for. Chrome reports these through the
         // Resource Timing API, which the coverage fixture cannot provoke.
         PageRecord {
-            content_type: Some("application/json".to_string()),
+            content_type: Some("application/json".to_string().into()),
             is_page: false,
             is_resource: true,
-            resource_initiator: Some("fetch".to_string()),
+            resource_initiator: Some("fetch".to_string().into()),
             ..internal(format!(
                 "{base}/api/v1/pages/by-slug/privacy?locale=sv&sid=1"
             ))
         },
         PageRecord {
-            images: vec![
+            images: thin_vec::thin_vec![
                 ImageRef {
-                    src: format!("{base}/syn-heavy.png"),
-                    alt: Some("Heavy".to_string()),
+                    src: format!("{base}/syn-heavy.png").into(),
+                    alt: Some("Heavy".to_string().into()),
                     width: Some(10),
                     height: Some(10),
                     has_alt_attr: true,
                 },
                 ImageRef {
-                    src: format!("{base}/syn-gone.png"),
-                    alt: Some("Gone".to_string()),
+                    src: format!("{base}/syn-gone.png").into(),
+                    alt: Some("Gone".to_string().into()),
                     width: Some(10),
                     height: Some(10),
                     has_alt_attr: true,
@@ -1150,7 +1150,7 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         // redirect cannot be produced against loopback (see `/syn-redirect`),
         // so the whole set is covered here where the destinations are known.
         PageRecord {
-            outlinks: vec![
+            outlinks: thin_vec::thin_vec![
                 link(&format!("{base}/not-found"), Some("broken"), None),
                 link(&format!("{base}/syn-3xx"), Some("redirected"), None),
                 link(&format!("{base}/large"), Some("nofollow"), Some("nofollow")),
@@ -1164,9 +1164,9 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
 
 fn link(dst_url: &str, anchor: Option<&str>, rel: Option<&str>) -> Outlink {
     Outlink {
-        dst_url: dst_url.to_string(),
-        anchor: anchor.map(|a| a.to_string()),
-        rel: rel.map(|r| r.to_string()),
+        dst_url: dst_url.to_string().into(),
+        anchor: anchor.map(Into::into),
+        rel: rel.map(Into::into),
         csr_only: false,
     }
 }

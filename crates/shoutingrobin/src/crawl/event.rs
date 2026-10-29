@@ -1,10 +1,18 @@
 use std::time::Duration;
 
+use thin_vec::ThinVec;
+
+/// A crawled URL and everything learned about it. A large crawl holds hundreds
+/// of thousands of these, most of them resources or sitemap URLs with every
+/// list empty, so the lists are `ThinVec`s: a third the size of a `Vec` while
+/// empty, and still no allocation. Text that repeats across rows, such as a
+/// MIME type or the sitemap a URL came from, is an `Arc<str>` the loader
+/// shares between them.
 #[derive(Debug, Clone, Default)]
 pub struct PageRecord {
     pub url: String,
     pub status: Option<u16>,
-    pub content_type: Option<String>,
+    pub content_type: Option<std::sync::Arc<str>>,
     pub size_bytes: u64,
     pub response_time: Duration,
     pub title: Option<String>,
@@ -34,8 +42,8 @@ pub struct PageRecord {
     /// "script", "css", "img", "fetch", "xmlhttprequest"). `None` for
     /// navigated documents. Used to single out Fetch/XHR requests, which have
     /// no usable content type.
-    pub resource_initiator: Option<String>,
-    pub indexability: Option<String>,
+    pub resource_initiator: Option<std::sync::Arc<str>>,
+    pub indexability: Option<std::sync::Arc<str>>,
     pub h1_count: u32,
     pub h2_count: u32,
     /// Whether an H2 opens the document before its first H1. `None` for a row
@@ -43,8 +51,8 @@ pub struct PageRecord {
     /// nothing was fetched for.
     pub h2_non_sequential: Option<bool>,
     pub title_count: u32,
-    pub hreflang_tags: Vec<(String, String)>,
-    pub sd_types: Vec<String>,
+    pub hreflang_tags: ThinVec<(String, String)>,
+    pub sd_types: ThinVec<String>,
     pub sd_errors: u32,
     pub sd_warnings: u32,
     pub ttfb_ms: Option<u64>,
@@ -53,32 +61,34 @@ pub struct PageRecord {
     pub fcp_ms: Option<u64>,
     pub sd_jsonld_count: u32,
     pub sd_microdata_count: u32,
-    pub sd_items: Vec<SdItem>,
-    pub sd_issues: Vec<SdIssue>,
-    pub images: Vec<ImageRef>,
+    pub sd_items: ThinVec<SdItem>,
+    pub sd_issues: ThinVec<SdIssue>,
+    pub images: ThinVec<ImageRef>,
     pub content_hash: Option<String>,
     pub simhash: Option<u64>,
     pub closest_similarity: Option<u8>,
     pub near_duplicate_count: Option<u32>,
-    pub near_duplicate_urls: Vec<String>,
+    pub near_duplicate_urls: ThinVec<String>,
     /// Where this page's hreflang tags were found, in the order the sources are
     /// consulted. Search engines accept all three and treat them as one set, so
     /// the tags themselves are merged; this records which sources contributed.
-    pub hreflang_sources: Vec<HreflangSource>,
+    pub hreflang_sources: ThinVec<HreflangSource>,
     pub in_sitemap: Option<bool>,
-    pub sitemap_url: Option<String>,
+    pub sitemap_url: Option<std::sync::Arc<str>>,
     /// The `<lastmod>` the sitemap claims for this URL, verbatim. Sitemaps are
     /// free to give a date or a full timestamp, so it is not parsed.
-    pub sitemap_lastmod: Option<String>,
+    pub sitemap_lastmod: Option<std::sync::Arc<str>>,
     pub og_type: Option<String>,
-    pub ecommerce: Option<EcommerceAudit>,
-    pub outlinks: Vec<Outlink>,
+    /// Boxed, like `layout`: most rows have none, and inline it made every
+    /// record 150 bytes larger.
+    pub ecommerce: Option<Box<EcommerceAudit>>,
+    pub outlinks: ThinVec<Outlink>,
     /// Stylesheet and script URLs the page pulls in, absolute and resolved.
     ///
     /// Not persisted: these exist so the post-crawl resource pass knows what to
     /// status-check, and the resources it finds are recorded as rows of their
     /// own. A record loaded back from storage carries an empty list.
-    pub subresources: Vec<Subresource>,
+    pub subresources: ThinVec<Subresource>,
     pub inlinks_count: u32,
     /// Number of distinct source URLs linking here. A page linking to this one
     /// three times counts as three inlinks but one unique inlink.
@@ -89,19 +99,19 @@ pub struct PageRecord {
     pub unique_csr_inlinks_count: u32,
     pub a11y_errors: u32,
     pub a11y_warnings: u32,
-    pub a11y_issues: Vec<A11yIssue>,
-    pub headers: Vec<(String, String)>,
+    pub a11y_issues: ThinVec<A11yIssue>,
+    pub headers: ThinVec<(String, String)>,
     pub redirect_url: Option<String>,
     pub redirect_status: Option<u16>,
     pub link_score: Option<f32>,
-    pub backlinks: Vec<Backlink>,
+    pub backlinks: ThinVec<Backlink>,
     pub title_2: Option<String>,
     pub meta_description_2: Option<String>,
     pub h1_2: Option<String>,
     pub h2_2: Option<String>,
     pub title_pixel_width: Option<u32>,
     pub meta_description_pixel_width: Option<u32>,
-    pub hreflang_issues: Vec<HreflangIssue>,
+    pub hreflang_issues: ThinVec<HreflangIssue>,
     pub ssr_word_count: Option<u32>,
     pub ssr_h1: Option<String>,
     pub ssr_content_missing: Option<bool>,
@@ -115,7 +125,7 @@ pub struct PageRecord {
     /// fetched for, neither of which has markup to be missing anything.
     pub has_body_tag: Option<bool>,
     /// Set when the crawl captured this page's layout.
-    pub layout: Option<PageLayoutInfo>,
+    pub layout: Option<Box<PageLayoutInfo>>,
 }
 
 /// Where a page with a captured layout landed in the crawl's templates.
@@ -219,8 +229,10 @@ pub enum SubresourceKind {
 
 #[derive(Debug, Clone)]
 pub struct ImageRef {
-    pub src: String,
-    pub alt: Option<String>,
+    /// Shared, as are a link's texts: a crawl's million image tags name a
+    /// tenth as many sources, and the loader gives each one copy.
+    pub src: std::sync::Arc<str>,
+    pub alt: Option<std::sync::Arc<str>>,
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub has_alt_attr: bool,
@@ -241,18 +253,19 @@ pub struct EcommerceAudit {
 
 #[derive(Debug, Clone)]
 pub struct Outlink {
-    pub dst_url: String,
-    pub anchor: Option<String>,
-    pub rel: Option<String>,
+    pub dst_url: std::sync::Arc<str>,
+    pub anchor: Option<std::sync::Arc<str>>,
+    pub rel: Option<std::sync::Arc<str>>,
     pub csr_only: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct A11yIssue {
-    pub rule: String,
-    pub impact: String,
-    pub target: Option<String>,
-    pub html: Option<String>,
+    pub rule: std::sync::Arc<str>,
+    pub impact: std::sync::Arc<str>,
+    pub target: Option<std::sync::Arc<str>>,
+    /// Shared: one template's violation repeats the same snippet on every page.
+    pub html: Option<std::sync::Arc<str>>,
 }
 
 #[derive(Debug, Clone)]
@@ -446,9 +459,9 @@ impl PageRecord {
 
     pub fn compute_indexability(&mut self) {
         self.indexability = Some(match self.indexability_status().as_str() {
-            "Indexable" => "Indexable".to_string(),
-            "N/A" => "N/A".to_string(),
-            _ => "Non-Indexable".to_string(),
+            "Indexable" => "Indexable".to_string().into(),
+            "N/A" => "N/A".to_string().into(),
+            _ => "Non-Indexable".to_string().into(),
         });
     }
 }
@@ -477,7 +490,11 @@ mod tests {
         record.compute_indexability();
         (
             record.indexability_status(),
-            record.indexability.clone().unwrap_or_default(),
+            record
+                .indexability
+                .as_deref()
+                .unwrap_or_default()
+                .to_string(),
         )
     }
 
@@ -543,7 +560,7 @@ mod tests {
     #[test]
     fn an_x_robots_tag_header_counts_as_noindex() {
         let mut record = page("https://example.com/a");
-        record.headers = vec![("X-Robots-Tag".into(), "NOINDEX".into())];
+        record.headers = thin_vec::thin_vec![("X-Robots-Tag".into(), "NOINDEX".into())];
         assert!(record.is_noindex());
         assert_eq!(
             status_of(&mut record),
@@ -576,7 +593,7 @@ mod tests {
     #[test]
     fn every_x_robots_tag_header_is_read() {
         let mut record = page("https://example.com/a");
-        record.headers = vec![
+        record.headers = thin_vec::thin_vec![
             ("x-robots-tag".into(), "googlebot: nosnippet".into()),
             ("x-robots-tag".into(), "otherbot: noindex, nofollow".into()),
         ];

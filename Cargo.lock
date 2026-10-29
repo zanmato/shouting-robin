@@ -7732,6 +7732,7 @@ name = "shoutingrobin"
 version = "0.2.3"
 dependencies = [
  "anyhow",
+ "async-std",
  "chrono",
  "criterion",
  "csv",
@@ -7768,6 +7769,7 @@ dependencies = [
  "takumi-core",
  "takumi-html",
  "takumi-pdf",
+ "thin-vec",
  "thiserror 1.0.69",
  "tikv-jemallocator",
  "tokio",
@@ -8796,6 +8798,12 @@ checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
 dependencies = [
  "winapi-util",
 ]
+
+[[package]]
+name = "thin-vec"
+version = "0.2.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d6a4b9ba8738cb4a4f399d37e266becfd475e75eb73425b87a05a2f2039ba63e"
 
 [[package]]
 name = "thiserror"
