@@ -38,7 +38,10 @@ awk -v ver="$version" '
       s = substr(s, 1, RSTART - 1) "<code>" substr(s, RSTART + 1, RLENGTH - 2) "</code>" substr(s, RSTART + RLENGTH)
     return s
   }
-  function close_section() { if (open) print "</ul></details>"; open = 0 }
+  # A bullet wraps onto lines indented by two spaces, so it is printed once
+  # whatever follows it is not one of those lines.
+  function flush_item() { if (item != "") print "<li>" code(esc(item)) "</li>"; item = "" }
+  function close_section() { flush_item(); if (open) print "</ul></details>"; open = 0 }
   $0 ~ "^## \\[" ver "\\]" { in_section = 1; next }
   in_section && /^## \[/ { exit }
   !in_section { next }
@@ -48,7 +51,9 @@ awk -v ver="$version" '
     open = 1
     next
   }
-  /^- / { print "<li>" code(esc(substr($0, 3))) "</li>" }
+  /^- / { flush_item(); item = substr($0, 3); next }
+  item != "" && /^  +[^ ]/ { sub(/^ +/, ""); item = item " " $0; next }
+  { flush_item() }
   END { close_section() }
 ' CHANGELOG.md > "$notes"
 

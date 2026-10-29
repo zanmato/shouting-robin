@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Features
+
+- Searched and filtered a tab's rows from a bar under its filters, opened
+  with Ctrl+F or the Filter button. It takes column conditions such as
+  Code = 200 joined by Match All or Match Any, and a cell's context menu
+  filters by its value or excludes it
+- Showed the Shouting Robin bird shouting while a crawl loads, in place of
+  the spinner
+
+### Performance
+
+- Kept large crawls small in memory and quick to open. A crawl of 409k rows
+  compared with one of 269k now holds 1.2 GB in place of 3.5 GB and reads
+  in 7.5 s in place of 28.5 s
+- Stored a finished crawl's tab and filter counts, so opening it again skips
+  counting (6.9 s to 0.3 s on that crawl)
+- Stored each crawl's page counts when it finishes, so the crawl history
+  lists quickly
+- Stored each URL and repeated text once per crawl, which shrank a 2.4 GB
+  database to 750 MB. The first start after updating converts the database
+  once, which takes about a minute for one that size
+
+### Fixes
+
+- Counted sitemap orphans and URLs blocked by robots.txt in the crawl
+  history
+- Removed the Total Types, JSON-LD and Microdata columns from the Structured
+  Data tab, which were always empty, and the empty badges of cells with no
+  value
+
 ## [0.2.3] - 2026-10-28
 
 ### Features
