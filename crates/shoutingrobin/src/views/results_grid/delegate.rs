@@ -32,8 +32,8 @@ use super::data_build::{
     layout_template_matches, overview_issue_target,
 };
 use super::filter::{
-    CountsProgress, count_every_tab, filter_for_tab, flat_row_matches_filter,
-    image_aggregate_matches_filter,
+    BASELINE_TABS, CountsProgress, count_baseline_tabs, count_every_tab, filter_for_tab,
+    flat_row_matches_filter, image_aggregate_matches_filter,
 };
 use super::types::{
     ChangeEntry, ChangeKind, FlatRow, IssueEntry, IssueFilter, IssueType, TabFilterCounts,
@@ -60,6 +60,9 @@ pub(super) struct CountsJob {
     layout_changes: HashMap<String, PageLayoutChange>,
     root_origin: Option<String>,
     progress: CountsProgress,
+    /// Counts still valid for these pages, when only the comparison with the
+    /// baseline changed. The pass then counts just [`BASELINE_TABS`].
+    kept: Option<StoredCounts>,
 }
 
 /// A finished counting pass: every tab's counts and the Overview's issue
@@ -70,15 +73,61 @@ pub(super) struct CountedCrawl {
     counts: HashMap<ResultTab, TabFilterCounts>,
     issue_entries: Vec<IssueEntry>,
     progress: CountsProgress,
+    /// Whether every tab was counted here, rather than taken from stored or
+    /// kept counts.
+    counted_in_full: bool,
+}
+
+/// What a finished crawl stores of a counting pass, so opening it again skips
+/// the count: every tab's counts except [`BASELINE_TABS`], which depend on
+/// what the crawl is compared with, and the Overview's issue entries. Tabs
+/// are written by variant name, so reordering `ResultTab` or `IssueFilter`
+/// does not misread stored counts. What the counts mean is versioned by
+/// [`FILTER_VERSION`](super::filter::FILTER_VERSION).
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StoredCounts {
+    tab_counts: Vec<(ResultTab, TabFilterCounts)>,
+    issue_entries: Vec<IssueEntry>,
+}
+
+impl StoredCounts {
+    fn new(counts: &HashMap<ResultTab, TabFilterCounts>, issue_entries: &[IssueEntry]) -> Self {
+        Self {
+            tab_counts: ResultTab::ALL
+                .iter()
+                .filter(|tab| !BASELINE_TABS.contains(tab))
+                .filter_map(|&tab| Some((tab, counts.get(&tab)?.clone())))
+                .collect(),
+            issue_entries: issue_entries.to_vec(),
+        }
+    }
+
+    pub fn to_json(&self) -> serde_json::Result<String> {
+        serde_json::to_string(self)
+    }
+
+    /// Fails on counts written by a build whose tabs or filters were renamed
+    /// since, which then count again.
+    pub fn from_json(json: &str) -> serde_json::Result<Self> {
+        serde_json::from_str(json)
+    }
+
+    /// The issue entries, for a crawl opened as another's baseline.
+    pub fn into_issue_entries(self) -> Vec<IssueEntry> {
+        self.issue_entries
+    }
 }
 
 impl CountsJob {
     /// A pass over a crawl that is not on screen yet, for
     /// [`ResultsDelegate::apply_loaded_crawl`] to install with it.
+    /// `stored` are the counts the crawl stored when it was last opened, if
+    /// any, which leaves only the baseline's tabs to count.
     pub(super) fn for_crawl(
         pages: Vec<Arc<PageRecord>>,
         baseline: Option<&Baseline>,
         root_url: &str,
+        stored: Option<StoredCounts>,
     ) -> Self {
         Self {
             stamp: CountsStamp::default(),
@@ -87,27 +136,44 @@ impl CountsJob {
             layout_changes: HashMap::new(),
             root_origin: root_origin_of(root_url),
             progress: CountsProgress::default(),
+            kept: stored,
         }
     }
 
     pub(super) fn run(self) -> CountedCrawl {
         let change_entries =
             changes_between(&self.pages, self.baseline.as_deref(), &self.layout_changes);
-        let issue_entries = build_issues_entries(&self.pages);
         let mut progress = self.progress;
-        let counts = count_every_tab(
-            &self.pages,
-            &change_entries,
-            &issue_entries,
-            self.root_origin.as_deref(),
-            &mut progress,
-        );
+        let (counts, issue_entries, counted_in_full) = match self.kept {
+            Some(kept) => {
+                let mut counts: HashMap<ResultTab, TabFilterCounts> =
+                    kept.tab_counts.into_iter().collect();
+                counts.extend(count_baseline_tabs(
+                    &self.pages,
+                    &change_entries,
+                    self.root_origin.as_deref(),
+                ));
+                (counts, kept.issue_entries, false)
+            }
+            None => {
+                let issue_entries = build_issues_entries(&self.pages);
+                let counts = count_every_tab(
+                    &self.pages,
+                    &change_entries,
+                    &issue_entries,
+                    self.root_origin.as_deref(),
+                    &mut progress,
+                );
+                (counts, issue_entries, true)
+            }
+        };
         CountedCrawl {
             stamp: self.stamp,
             pages_counted: self.pages.len(),
             counts,
             issue_entries,
             progress,
+            counted_in_full,
         }
     }
 }
@@ -116,6 +182,12 @@ impl CountedCrawl {
     #[cfg(test)]
     pub(super) fn counts(&self) -> &HashMap<ResultTab, TabFilterCounts> {
         &self.counts
+    }
+
+    /// What to store for the crawl, when this pass counted it in full.
+    pub(super) fn to_store(&self) -> Option<StoredCounts> {
+        self.counted_in_full
+            .then(|| StoredCounts::new(&self.counts, &self.issue_entries))
     }
 }
 
@@ -182,10 +254,16 @@ pub struct Baseline {
 }
 
 impl Baseline {
-    /// Counts the baseline's issues and keeps its internal pages' compared
-    /// fields. Walks every record once per rule, so it belongs on a background
-    /// thread.
-    pub fn new(records: &[Arc<PageRecord>], started_at: i64) -> Self {
+    /// Keeps the baseline's internal pages' compared fields, and counts its
+    /// issues unless `stored_entries`, the baseline crawl's own stored issue
+    /// entries, already have them. Counting walks every record once per rule,
+    /// so this belongs on a background thread.
+    pub fn new(
+        records: &[Arc<PageRecord>],
+        started_at: i64,
+        stored_entries: Option<Vec<IssueEntry>>,
+    ) -> Self {
+        let entries = stored_entries.unwrap_or_else(|| build_issues_entries(records));
         Self {
             pages: records
                 .iter()
@@ -193,19 +271,14 @@ impl Baseline {
                 .map(|record| BaselinePage::from_record(record))
                 .collect(),
             started_at,
-            issue_counts: Arc::new(baseline_issue_counts(records)),
+            issue_counts: Arc::new(
+                entries
+                    .into_iter()
+                    .map(|entry| (entry.name, (entry.count, entry.pct)))
+                    .collect(),
+            ),
         }
     }
-}
-
-/// The baseline crawl's issue counts, keyed by rule name, which the Overview
-/// tab's delta column reads. Walks the baseline the same way the current crawl
-/// is walked, so it is worth the same background treatment.
-fn baseline_issue_counts(pages: &[Arc<PageRecord>]) -> HashMap<String, (usize, f32)> {
-    build_issues_entries(pages)
-        .into_iter()
-        .map(|entry| (entry.name, (entry.count, entry.pct)))
-        .collect()
 }
 
 /// The origin a root URL belongs to, as the delegate derives it.
@@ -265,6 +338,10 @@ pub struct ResultsDelegate {
     /// What the last pass learned about the pages it saw, so the next one only
     /// looks at pages added since. Out while a pass is running.
     counts_progress: Option<(u64, CountsProgress)>,
+    /// The counts that stay valid while only the comparison with the baseline
+    /// is behind, so the next pass counts just the baseline's tabs. Cleared by
+    /// any other change.
+    kept_counts: Option<StoredCounts>,
     /// The Overview's issue entries from the latest pass or rebuild. Kept when
     /// another tab is open, so opening the Overview does not rebuild them.
     issue_entries_cache: Option<IssueEntriesCache>,
@@ -361,6 +438,7 @@ impl ResultsDelegate {
             counts_version: 0,
             counts: None,
             counts_progress: None,
+            kept_counts: None,
             issue_entries_cache: None,
             defer_aggregates: false,
             has_layouts: false,
@@ -374,7 +452,7 @@ impl ResultsDelegate {
     /// baseline's, which changes the Changes and Layout tabs.
     pub fn set_layout_changes(&mut self, layout_changes: HashMap<String, PageLayoutChange>) {
         self.layout_changes = layout_changes;
-        self.invalidate_counts();
+        self.invalidate_baseline_counts();
         self.rebuild_filter();
     }
 
@@ -395,7 +473,26 @@ impl ResultsDelegate {
     /// replaces them.
     fn invalidate_counts(&mut self) {
         self.counts_version += 1;
+        self.kept_counts = None;
         self.change_entries.take();
+    }
+
+    /// Like `invalidate_counts`, for a change only [`BASELINE_TABS`] read.
+    /// When the other counts are up to date they are kept, and the next pass
+    /// counts the baseline's tabs alone, a fraction of a full count.
+    fn invalidate_baseline_counts(&mut self) {
+        let kept = match (&self.counts, &self.issue_entries_cache) {
+            (Some((stamp, counts)), Some(entries))
+                if *stamp == self.counts_stamp()
+                    && entries.pages_epoch == self.pages_epoch
+                    && entries.pages_len == self.all_pages.len() =>
+            {
+                Some(StoredCounts::new(counts, &entries.entries))
+            }
+            _ => self.kept_counts.take(),
+        };
+        self.invalidate_counts();
+        self.kept_counts = kept;
     }
 
     /// Swaps in a different set of pages: a loaded crawl, or none.
@@ -449,6 +546,7 @@ impl ResultsDelegate {
             layout_changes: self.layout_changes.clone(),
             root_origin: self.root_origin.clone(),
             progress,
+            kept: self.kept_counts.clone(),
         })
     }
 
@@ -462,6 +560,9 @@ impl ResultsDelegate {
     }
 
     fn install_counts(&mut self, stamp: CountsStamp, counted: CountedCrawl) {
+        if stamp == self.counts_stamp() {
+            self.kept_counts = None;
+        }
         self.counts = Some((stamp, counted.counts));
         self.counts_progress = Some((stamp.pages_epoch, counted.progress));
         let entries_are_newer = self.issue_entries_cache.as_ref().is_none_or(|cache| {
@@ -605,7 +706,7 @@ impl ResultsDelegate {
     #[cfg(test)]
     pub fn set_baseline(&mut self, pages: Vec<PageRecord>, started_at: i64) {
         let pages: Vec<Arc<PageRecord>> = pages.into_iter().map(Arc::new).collect();
-        self.baseline = Some(Baseline::new(&pages, started_at));
+        self.baseline = Some(Baseline::new(&pages, started_at, None));
         self.invalidate_counts();
         self.rebuild_columns();
         self.rebuild_filter();
@@ -1730,6 +1831,132 @@ mod cache_tests {
             record.outlinks.is_empty(),
             "only the compared fields are kept"
         );
+    }
+
+    fn crawl_and_baseline() -> (Vec<Arc<PageRecord>>, Vec<Arc<PageRecord>>) {
+        let mut titled = internal_page("https://a.test/titled");
+        titled.title = Some("A title".into());
+        let mut missing = internal_page("https://a.test/missing");
+        missing.status = Some(404);
+        let current = vec![
+            internal_page("https://a.test/kept"),
+            titled.clone(),
+            missing,
+            internal_page("https://a.test/added"),
+        ];
+        let baseline = vec![
+            internal_page("https://a.test/kept"),
+            titled,
+            internal_page("https://a.test/gone"),
+        ];
+        (
+            current.into_iter().map(Arc::new).collect(),
+            baseline.into_iter().map(Arc::new).collect(),
+        )
+    }
+
+    /// Opening a crawl again reads its stored counts instead of counting, so
+    /// they have to come out as a fresh count would, through the JSON they are
+    /// stored as.
+    #[test]
+    fn stored_counts_give_the_counts_of_a_fresh_count() {
+        let (current, baseline_pages) = crawl_and_baseline();
+        let baseline = Baseline::new(&baseline_pages, 0, None);
+        let fresh =
+            CountsJob::for_crawl(current.clone(), Some(&baseline), "https://a.test/", None).run();
+        let stored = fresh.to_store().expect("a full count is stored");
+        assert!(
+            BASELINE_TABS
+                .iter()
+                .all(|tab| stored.tab_counts.iter().all(|(stored, _)| stored != tab)),
+            "the baseline's tabs depend on the baseline and are not stored"
+        );
+        assert!(!stored.issue_entries.is_empty());
+        let json = stored.to_json().expect("encode");
+        let read_back = StoredCounts::from_json(&json).expect("decode");
+        assert_eq!(read_back, stored);
+
+        let reused =
+            CountsJob::for_crawl(current, Some(&baseline), "https://a.test/", Some(read_back))
+                .run();
+        assert_eq!(reused.counts, fresh.counts);
+        assert_eq!(reused.issue_entries, fresh.issue_entries);
+        assert!(
+            reused.to_store().is_none(),
+            "counts read back are not stored again"
+        );
+    }
+
+    /// A baseline crawl opened before has its issue entries stored, which
+    /// spare counting them when it is the baseline.
+    #[test]
+    fn a_baseline_takes_its_issue_counts_from_its_stored_entries() {
+        let (_, baseline_pages) = crawl_and_baseline();
+        let counted = Baseline::new(&baseline_pages, 0, None);
+        let entries = build_issues_entries(&baseline_pages);
+        assert!(!entries.is_empty());
+        let stored = Baseline::new(&baseline_pages, 0, Some(entries));
+        assert_eq!(stored.issue_counts, counted.issue_counts);
+    }
+
+    /// Layout changes arrive after the crawl is on screen and only change the
+    /// tabs comparing it with its baseline, so only those are counted again,
+    /// to the same counts a full pass gives.
+    #[test]
+    fn layout_changes_count_only_the_baseline_tabs_again() {
+        let (current, baseline_pages) = crawl_and_baseline();
+        let layout_changes: HashMap<String, PageLayoutChange> = HashMap::from([(
+            "https://a.test/kept".to_string(),
+            PageLayoutChange {
+                layout_changes: 2,
+                content_changes: 0,
+                summary: "h1 resized".into(),
+            },
+        )]);
+        let mut delegate = ResultsDelegate::new();
+        delegate.set_root_url("https://a.test/");
+        delegate.set_pages(current.clone());
+        delegate.baseline = Some(Baseline::new(&baseline_pages, 0, None));
+        delegate.invalidate_counts();
+        let before = delegate.tab_filter_counts().clone();
+
+        delegate.set_layout_changes(layout_changes.clone());
+        let job = delegate.counts_job().expect("the counts are behind");
+        assert!(job.kept.is_some(), "only the baseline's tabs are counted");
+        let counted = job.run();
+        delegate.finish_counts(counted);
+        assert!(delegate.counts_are_current());
+        let after = delegate.displayed_counts().expect("counts").clone();
+        assert_ne!(
+            after.get(&ResultTab::Changes),
+            before.get(&ResultTab::Changes),
+            "the layout change is a change"
+        );
+
+        let mut full = ResultsDelegate::new();
+        full.set_root_url("https://a.test/");
+        full.set_pages(current);
+        full.baseline = Some(Baseline::new(&baseline_pages, 0, None));
+        full.set_layout_changes(layout_changes);
+        let job = full.counts_job().expect("nothing counted yet");
+        assert!(job.kept.is_none());
+        full.finish_counts(job.run());
+        assert_eq!(full.displayed_counts(), Some(&after));
+    }
+
+    /// Kept counts are only valid until anything else changes.
+    #[test]
+    fn a_push_after_layout_changes_counts_in_full() {
+        let (current, baseline_pages) = crawl_and_baseline();
+        let mut delegate = ResultsDelegate::new();
+        delegate.set_pages(current);
+        delegate.baseline = Some(Baseline::new(&baseline_pages, 0, None));
+        delegate.invalidate_counts();
+        delegate.tab_filter_counts();
+        delegate.set_layout_changes(HashMap::new());
+        delegate.push(internal_page("https://a.test/late"));
+        let job = delegate.counts_job().expect("the counts are behind");
+        assert!(job.kept.is_none());
     }
 
     #[test]

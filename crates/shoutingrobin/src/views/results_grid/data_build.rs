@@ -222,6 +222,9 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
     }
 }
 
+/// The Overview's rules. Finished crawls store what this returns, so a change
+/// to a rule or its wording needs a bump of
+/// [`FILTER_VERSION`](super::filter::FILTER_VERSION).
 pub(super) fn build_issues_entries(pages: &[Arc<PageRecord>]) -> Vec<IssueEntry> {
     // Only URLs we actually requested. Sitemap orphans and robots-blocked URLs
     // are recorded so they can be reported, but nothing was fetched for them,

@@ -138,6 +138,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0034_crawl_counts",
         include_str!("../../migrations/0034_crawl_counts.sql"),
     ),
+    (
+        "0035_crawl_filter_counts",
+        include_str!("../../migrations/0035_crawl_filter_counts.sql"),
+    ),
 ];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
@@ -459,6 +463,53 @@ pub async fn finish_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::
     .execute(pool)
     .await?;
     Ok(())
+}
+
+/// The filter counts stored for a finished crawl under `filter_version`, as the
+/// JSON the grid wrote. `None` for a crawl that has not finished, has none
+/// stored, or has them under another version.
+pub async fn load_filter_counts(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    filter_version: i64,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        SELECT f.counts_json FROM crawl_filter_counts f
+        JOIN crawls c ON c.id = f.crawl_id
+        WHERE f.crawl_id = ? AND f.filter_version = ? AND c.finished_at IS NOT NULL
+        "#,
+    )
+    .bind(crawl_id)
+    .bind(filter_version)
+    .fetch_optional(pool)
+    .await
+}
+
+/// Stores a crawl's filter counts, replacing any under another version. Only a
+/// finished crawl's are kept: until then its rows can still change. Returns
+/// whether they were stored.
+pub async fn store_filter_counts(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    filter_version: i64,
+    counts_json: &str,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        INSERT INTO crawl_filter_counts (crawl_id, filter_version, counts_json)
+        SELECT id, ?, ? FROM crawls WHERE id = ? AND finished_at IS NOT NULL
+        ON CONFLICT(crawl_id) DO UPDATE SET
+            filter_version = excluded.filter_version,
+            counts_json = excluded.counts_json
+        "#,
+    )
+    .bind(filter_version)
+    .bind(counts_json)
+    .bind(crawl_id)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
 }
 
 pub async fn delete_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
@@ -2231,5 +2282,67 @@ mod tests {
         });
         assert_eq!(finished, Some((2, 1, 1)));
         assert_eq!(running, Some((3, 2, 1)));
+    }
+
+    /// Stored counts are only for a finished crawl, only under the version
+    /// they were counted with, and go with the crawl.
+    #[test]
+    fn filter_counts_are_stored_per_finished_crawl_and_version() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            let pool = test_pool().await;
+            let crawl_id = create_crawl(&pool, "https://a.test/", "http", &config())
+                .await
+                .expect("crawl");
+
+            let stored = store_filter_counts(&pool, crawl_id, 1, "{}")
+                .await
+                .expect("store");
+            assert!(!stored, "a running crawl's counts can still change");
+            assert_eq!(
+                load_filter_counts(&pool, crawl_id, 1).await.expect("load"),
+                None
+            );
+
+            finish_crawl(&pool, crawl_id).await.expect("finish");
+            assert!(
+                store_filter_counts(&pool, crawl_id, 1, "{\"v\":1}")
+                    .await
+                    .expect("store")
+            );
+            assert_eq!(
+                load_filter_counts(&pool, crawl_id, 1).await.expect("load"),
+                Some("{\"v\":1}".to_string())
+            );
+            assert_eq!(
+                load_filter_counts(&pool, crawl_id, 2).await.expect("load"),
+                None,
+                "counts from another version are counted again"
+            );
+
+            assert!(
+                store_filter_counts(&pool, crawl_id, 2, "{\"v\":2}")
+                    .await
+                    .expect("store")
+            );
+            assert_eq!(
+                load_filter_counts(&pool, crawl_id, 1).await.expect("load"),
+                None
+            );
+            assert_eq!(
+                load_filter_counts(&pool, crawl_id, 2).await.expect("load"),
+                Some("{\"v\":2}".to_string())
+            );
+
+            delete_crawl(&pool, crawl_id).await.expect("delete");
+            let (left,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM crawl_filter_counts")
+                .fetch_one(&pool)
+                .await
+                .expect("count");
+            assert_eq!(left, 0);
+        });
     }
 }

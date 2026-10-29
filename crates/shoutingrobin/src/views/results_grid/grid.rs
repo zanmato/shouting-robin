@@ -19,7 +19,9 @@ use crate::views::ResultTab;
 use crate::views::details_panel::DetailsSelection;
 
 use super::data_build::overview_issue_target;
-use super::delegate::{Baseline, CountedCrawl, CountsJob, CrawlSnapshot, ResultsDelegate};
+use super::delegate::{
+    Baseline, CountedCrawl, CountsJob, CrawlSnapshot, ResultsDelegate, StoredCounts,
+};
 use super::types::{FlatRow, IssueFilter, ResultsGridEvent, TabCounts};
 
 /// The least time between the starts of two counting passes. A pass over a
@@ -37,28 +39,51 @@ pub struct PreparedCrawl {
     counted: CountedCrawl,
 }
 
+/// A crawl's baseline as read for [`PreparedCrawl::prepare`].
+pub struct BaselineInput {
+    pub pages: Vec<PageRecord>,
+    pub started_at: i64,
+    /// The baseline crawl's stored counts, whose issue entries spare counting
+    /// its issues.
+    pub stored: Option<StoredCounts>,
+}
+
 impl PreparedCrawl {
     /// Builds the aggregates. Pure and self-contained, so it belongs on a
     /// background thread; the result goes to [`ResultsGrid::load_prepared`].
+    /// `stored` are the counts the crawl stored on an earlier open, which leave
+    /// only the tabs comparing it with its baseline to count.
     pub fn prepare(
         pages: Vec<PageRecord>,
-        baseline: Option<(Vec<PageRecord>, i64)>,
+        baseline: Option<BaselineInput>,
         root_url: &str,
+        stored: Option<StoredCounts>,
     ) -> Self {
         let pages: Vec<Arc<PageRecord>> = pages.into_iter().map(Arc::new).collect();
         // The baseline's full records are dropped here, once its issues are
         // counted. Only what the comparison reads stays in memory.
-        let baseline = baseline.map(|(baseline_pages, started_at)| {
+        let baseline = baseline.map(|baseline| {
             let baseline_pages: Vec<Arc<PageRecord>> =
-                baseline_pages.into_iter().map(Arc::new).collect();
-            Baseline::new(&baseline_pages, started_at)
+                baseline.pages.into_iter().map(Arc::new).collect();
+            Baseline::new(
+                &baseline_pages,
+                baseline.started_at,
+                baseline.stored.map(StoredCounts::into_issue_entries),
+            )
         });
-        let counted = CountsJob::for_crawl(pages.clone(), baseline.as_ref(), root_url).run();
+        let counted =
+            CountsJob::for_crawl(pages.clone(), baseline.as_ref(), root_url, stored).run();
         Self {
             pages,
             baseline,
             counted,
         }
+    }
+
+    /// The counts to store for the crawl, when they were counted here rather
+    /// than read back.
+    pub fn counts_to_store(&self) -> Option<StoredCounts> {
+        self.counted.to_store()
     }
 }
 
@@ -505,8 +530,13 @@ mod tests {
 
         let prepared = PreparedCrawl::prepare(
             current.clone(),
-            Some((baseline_pages.clone(), started_at)),
+            Some(BaselineInput {
+                pages: baseline_pages.clone(),
+                started_at,
+                stored: None,
+            }),
             ROOT,
+            None,
         );
 
         let mut lazy = ResultsDelegate::new();

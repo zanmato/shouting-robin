@@ -2,7 +2,7 @@ use gpui_kit::SharedString;
 
 use crate::ui::icon::Icon;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum ResultTab {
     Internal,
     External,

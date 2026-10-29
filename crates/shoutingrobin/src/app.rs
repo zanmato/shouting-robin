@@ -33,7 +33,8 @@ use crate::views::{
     details_panel::DetailsPanelEvent,
     layout_view::LayoutView,
     results_grid::{
-        IssueFilter, LayoutContext, LoadingStage, PreparedCrawl, ResultsGridEvent, filters_for_tab,
+        BaselineInput, FILTER_VERSION, IssueFilter, LayoutContext, LoadingStage, PreparedCrawl,
+        ResultsGridEvent, StoredCounts, filters_for_tab,
     },
 };
 
@@ -618,6 +619,14 @@ impl ShoutingRobinApp {
                     }
                 };
 
+            // A finished crawl opened before has its counts stored, and so may
+            // its baseline, which spares counting either again.
+            let stored = read_stored_counts(&pool, crawl_id).await;
+            let baseline_stored = match &previous {
+                Some(previous) => read_stored_counts(&pool, previous.id).await,
+                None => None,
+            };
+
             // Reading and decoding a large crawl takes seconds, so it runs off
             // the foreground thread and counts off each read as it finishes.
             let with_baseline = previous.is_some();
@@ -714,9 +723,11 @@ impl ShoutingRobinApp {
             };
             tracing::info!(count = pages.len(), crawl_id, "loaded pages for crawl");
             let baseline = match (baseline, &previous) {
-                (Some(Ok(baseline_pages)), Some(previous)) => {
-                    Some((baseline_pages, previous.started_at))
-                }
+                (Some(Ok(baseline_pages)), Some(previous)) => Some(BaselineInput {
+                    pages: baseline_pages,
+                    started_at: previous.started_at,
+                    stored: baseline_stored,
+                }),
                 (Some(Err(e)), _) => {
                     tracing::error!(error=%e, "failed to load baseline pages");
                     None
@@ -741,9 +752,10 @@ impl ShoutingRobinApp {
             let prepared = cx
                 .background_spawn({
                     let root_url = root_url.clone();
-                    async move { PreparedCrawl::prepare(pages, baseline, &root_url) }
+                    async move { PreparedCrawl::prepare(pages, baseline, &root_url, stored) }
                 })
                 .await;
+            let counts_to_store = prepared.counts_to_store();
 
             let installed = cx.update(|cx| {
                 let Some(app) = app.upgrade() else {
@@ -767,6 +779,9 @@ impl ShoutingRobinApp {
                     true
                 })
             });
+            if let Some(counts) = counts_to_store {
+                store_counts(&pool, crawl_id, &counts).await;
+            }
             if !installed {
                 return;
             }
@@ -1864,6 +1879,42 @@ fn init_keys(cx: &mut App) {
         #[cfg(not(target_os = "macos"))]
         gpui_kit::KeyBinding::new("ctrl-,", OpenSettings, None),
     ]);
+}
+
+/// A finished crawl's stored counts under the current [`FILTER_VERSION`].
+/// Counts that cannot be read are counted again, so a failure only costs time.
+async fn read_stored_counts(pool: &sqlx::SqlitePool, crawl_id: i64) -> Option<StoredCounts> {
+    let json = match crate::storage::load_filter_counts(pool, crawl_id, FILTER_VERSION).await {
+        Ok(json) => json?,
+        Err(e) => {
+            tracing::warn!(error=%e, crawl_id, "failed to read the stored counts");
+            return None;
+        }
+    };
+    match StoredCounts::from_json(&json) {
+        Ok(counts) => Some(counts),
+        Err(e) => {
+            tracing::warn!(error=%e, crawl_id, "stored counts do not parse, counting again");
+            None
+        }
+    }
+}
+
+/// Stores a crawl's counts for later opens. Only a finished crawl's are kept,
+/// which `store_filter_counts` checks.
+async fn store_counts(pool: &sqlx::SqlitePool, crawl_id: i64, counts: &StoredCounts) {
+    let json = match counts.to_json() {
+        Ok(json) => json,
+        Err(e) => {
+            tracing::warn!(error=%e, crawl_id, "failed to encode the counts");
+            return;
+        }
+    };
+    match crate::storage::store_filter_counts(pool, crawl_id, FILTER_VERSION, &json).await {
+        Ok(true) => tracing::debug!(crawl_id, "stored the crawl's counts"),
+        Ok(false) => tracing::debug!(crawl_id, "the crawl has not finished, counts not stored"),
+        Err(e) => tracing::warn!(error=%e, crawl_id, "failed to store the counts"),
+    }
 }
 
 /// The layout context for a crawl and, when its layouts can be compared with

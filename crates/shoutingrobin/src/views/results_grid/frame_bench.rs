@@ -1,18 +1,20 @@
 //! Cost of the results grid on a large crawl read from a copy of the app
-//! database. Ignored by default: both tests want a release build and a real
+//! database. Ignored by default: these tests want a release build and a real
 //! crawl, which is not part of the repository.
 //!
 //! Take a consistent copy of a live database first (the app keeps it in WAL
 //! mode, so copying the file alone can miss committed pages):
 //!
 //! ```sh
-//! sqlite3 -readonly ~/.local/share/shoutingrobin/shoutingrobin.db ".backup snapshot.db"
-//! GRID_BENCH_DB=snapshot.db GRID_BENCH_CRAWL=95 \
+//! sqlite3 -readonly ~/.local/share/shoutingrobin/shoutingrobin.db ".backup target/bench-db/snapshot.db"
+//! GRID_BENCH_DB=target/bench-db/snapshot.db GRID_BENCH_CRAWL=95 \
 //!     cargo test --release -p shoutingrobin --bin shoutingrobin results_grid_ \
 //!     -- --ignored --nocapture --test-threads=1
 //! ```
 //!
 //! `results_grid_costs` times the steps a streamed batch triggers, tab by tab.
+//! `results_grid_open_costs` times counting a finished crawl as it opens,
+//! afresh and from stored counts, against `GRID_BENCH_BASELINE` when set.
 //! `results_grid_frames` measures whole frames with GPUI's bench harness;
 //! `GRID_BENCH=<substring>` runs only the scenarios whose name contains it.
 
@@ -26,7 +28,7 @@ use gpui_kit::{
 };
 
 use super::data_build::build_issues_entries;
-use super::delegate::{ResultsDelegate, root_origin_of};
+use super::delegate::{Baseline, CountsJob, ResultsDelegate, StoredCounts, root_origin_of};
 use super::filter::{CountsProgress, compute_tab_filter_counts, count_every_tab};
 use super::grid::ResultsGrid;
 use super::types::shared;
@@ -396,4 +398,76 @@ fn results_grid_frames() {
         });
         report.print(scenario.name);
     }
+}
+
+/// What opening a finished crawl costs after its reads, counted afresh and
+/// from the counts stored on an earlier open, which must agree.
+/// `GRID_BENCH_BASELINE` names a crawl to compare with, as the app would.
+#[test]
+#[ignore = "needs GRID_BENCH_DB and a release build"]
+fn results_grid_open_costs() {
+    let Some(crawl) = load_crawl() else {
+        return;
+    };
+    let baseline_records = std::env::var("GRID_BENCH_BASELINE")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .map(|baseline_id| {
+            let path = std::env::var("GRID_BENCH_DB").expect("GRID_BENCH_DB is set");
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("runtime");
+            runtime.block_on(async {
+                let options =
+                    sqlx::sqlite::SqliteConnectOptions::from_str(&format!("sqlite://{path}"))
+                        .expect("database path")
+                        .read_only(true);
+                let pool = sqlx::SqlitePool::connect_with(options)
+                    .await
+                    .expect("open the database copy");
+                crate::storage::load_pages_for_crawl_reporting(
+                    &pool,
+                    baseline_id,
+                    &crawl.root_url,
+                    |_| {},
+                )
+                .await
+                .expect("load the baseline")
+            })
+        });
+    let pages = shared(crawl.pages.iter().cloned());
+    let baseline_pages = baseline_records.map(shared);
+
+    let started = Instant::now();
+    let baseline = baseline_pages
+        .as_deref()
+        .map(|records| Baseline::new(records, 0, None));
+    let baseline_counted = started.elapsed();
+    let started = Instant::now();
+    let fresh = CountsJob::for_crawl(pages.clone(), baseline.as_ref(), &crawl.root_url, None).run();
+    let fresh_elapsed = started.elapsed();
+    let stored = fresh.to_store().expect("a full count is stored");
+    let json = stored.to_json().expect("encode");
+
+    let started = Instant::now();
+    let read_back = StoredCounts::from_json(&json).expect("decode");
+    let baseline = baseline_pages
+        .as_deref()
+        .map(|records| Baseline::new(records, 0, Some(read_back.clone().into_issue_entries())));
+    let reused =
+        CountsJob::for_crawl(pages, baseline.as_ref(), &crawl.root_url, Some(read_back)).run();
+    let reused_elapsed = started.elapsed();
+
+    eprintln!(
+        "\ncounted afresh: {:.0} ms, plus {:.0} ms for the baseline's issues",
+        milliseconds(fresh_elapsed),
+        milliseconds(baseline_counted)
+    );
+    eprintln!(
+        "from stored counts ({} bytes of JSON): {:.0} ms, the baseline's included",
+        json.len(),
+        milliseconds(reused_elapsed)
+    );
+    assert_eq!(reused.counts(), fresh.counts());
 }

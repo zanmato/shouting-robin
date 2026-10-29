@@ -104,7 +104,7 @@ pub(crate) fn tab_is_flattened(tab: ResultTab) -> bool {
     )
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TabCounts {
     pub total: usize,
     pub errors: usize,
@@ -115,7 +115,7 @@ pub struct TabCounts {
 /// so a tab's badge is always a pure function of the same per-filter data that
 /// renders its sub-filter counts. `filter_counts` is in `filters_for_tab`
 /// order; `badge` is the aggregate shown on the tab.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TabFilterCounts {
     pub filter_counts: Vec<(IssueFilter, usize)>,
     pub badge: TabCounts,
@@ -140,7 +140,7 @@ pub enum ResultsGridEvent {
     OverviewDrillDown { tab: ResultTab, filter: IssueFilter },
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum IssueFilter {
     All,
     Missing,
@@ -564,7 +564,9 @@ impl IssueFilter {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum IssueType {
     Issue,
     Opportunity,
@@ -589,7 +591,9 @@ impl IssueType {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 pub enum IssuePriority {
     High,
     Medium,
@@ -614,7 +618,7 @@ impl IssuePriority {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct IssueEntry {
     pub name: String,
     pub issue_type: IssueType,

@@ -24,6 +24,35 @@ use super::types::{
     flat_row_page_index, tab_is_flattened,
 };
 
+/// The version of what the counts mean. A finished crawl's counts are stored
+/// under it and read back on later opens instead of counted again, so bump it
+/// by hand whenever a crawl's counts could come out differently: a filter
+/// added, removed or changed here or in `filter_for_tab`, an Overview rule in
+/// `build_issues_entries` added, removed or reworded, or anything those read
+/// counting differently. Stored counts under another version are counted
+/// again. `the_filter_version_moves_with_the_counting_code` fails when the
+/// main counting functions change, as a reminder.
+pub const FILTER_VERSION: i64 = 1;
+
+/// The tabs whose counts depend on the baseline and on the layout changes
+/// found against it. They are not stored, since the baseline can change, and
+/// counting them is quick next to the rest.
+pub(super) const BASELINE_TABS: [ResultTab; 2] = [ResultTab::Changes, ResultTab::Layout];
+
+/// Counts only the tabs that read the comparison with the baseline.
+pub(super) fn count_baseline_tabs(
+    pages: &[Arc<PageRecord>],
+    change_entries: &[ChangeEntry],
+    root_origin: Option<&str>,
+) -> impl Iterator<Item = (ResultTab, TabFilterCounts)> {
+    BASELINE_TABS.into_iter().map(move |tab| {
+        (
+            tab,
+            compute_tab_filter_counts(tab, pages, change_entries, root_origin),
+        )
+    })
+}
+
 pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
     match tab {
         ResultTab::Internal => &[
@@ -2678,5 +2707,63 @@ mod url_quality_tests {
                 "{filter:?} judged a subresource"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod filter_version_tests {
+    use sha2::{Digest as _, Sha256};
+
+    /// The functions whose every change can change a crawl's counts, by file.
+    /// Helpers they call are not covered, so a change to those still needs
+    /// a deliberate bump.
+    const COUNTING_FUNCTIONS: &[(&str, &str)] = &[
+        (include_str!("filter.rs"), "pub fn filters_for_tab("),
+        (include_str!("filter.rs"), "pub(super) fn filter_for_tab("),
+        (
+            include_str!("data_build.rs"),
+            "pub(super) fn build_issues_entries(",
+        ),
+    ];
+
+    /// The filter version and the fingerprint of the counting functions it was
+    /// set for.
+    const COUNTED_WITH: (i64, &str) = (
+        1,
+        "0decae153c605dac0fe9810c6d8030885ef97e6d618f0d63550fd5df6629d85c",
+    );
+
+    /// A function's text from its signature to its closing brace, without
+    /// indentation or blank lines, so reformatting alone does not count.
+    fn function_text<'a>(source: &'a str, signature: &str) -> Vec<&'a str> {
+        let start = source
+            .find(signature)
+            .unwrap_or_else(|| panic!("`{signature}` is not in its file any more"));
+        source[start..]
+            .lines()
+            .take_while(|line| *line != "}")
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .collect()
+    }
+
+    #[test]
+    fn the_filter_version_moves_with_the_counting_code() {
+        let mut hasher = Sha256::new();
+        for (source, signature) in COUNTING_FUNCTIONS {
+            for line in function_text(source, signature) {
+                hasher.update(line.as_bytes());
+                hasher.update(b"\n");
+            }
+        }
+        let fingerprint = hex::encode(hasher.finalize());
+        assert_eq!(
+            (super::FILTER_VERSION, fingerprint.as_str()),
+            COUNTED_WITH,
+            "The counting code changed. Finished crawls store their counts under \
+             FILTER_VERSION, so if counts can come out differently now, bump \
+             FILTER_VERSION. Either way, set COUNTED_WITH to the version and the \
+             new fingerprint."
+        );
     }
 }
