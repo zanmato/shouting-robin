@@ -3,15 +3,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::component::{
-    ActiveTheme, Sizable as _, Size,
+    ActiveTheme,
     progress::Progress,
-    spinner::Spinner,
     table::{DataTable, TableEvent, TableState},
 };
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
-    AnyElement, App, AppContext, Context, Entity, EventEmitter, IntoElement, ParentElement, Render,
-    SharedString, Styled, Subscription, Task, Window, div,
+    Animation, AnimationExt as _, AnyElement, App, AppContext, Context, Entity, EventEmitter, Hsla,
+    IntoElement, ParentElement, Render, SharedString, Styled, Subscription, Task, Window, div, svg,
 };
 
 use crate::crawl::event::PageRecord;
@@ -468,6 +467,51 @@ impl ResultsGrid {
 
 impl EventEmitter<ResultsGridEvent> for ResultsGrid {}
 
+/// One shout of the loading bird: the beak opens, three lines come out one
+/// after another, then it closes again.
+const SHOUT: Duration = Duration::from_millis(1600);
+/// When the beak is open, as parts of a shout.
+const BEAK_OPEN: std::ops::Range<f32> = 0.12..0.88;
+/// When the first line comes out, and how far apart the lines come.
+const FIRST_LINE: f32 = 0.25;
+const LINE_GAP: f32 = 0.12;
+const LINE_FADE: f32 = 0.08;
+
+/// The loading animation: the bird of the logo shouting, drawn as layers on
+/// one canvas, each faded in and out as the shout goes.
+fn shouting_bird(color: Hsla) -> impl IntoElement {
+    let layer = |name: &'static str, opacity: fn(f32) -> f32| {
+        svg()
+            .absolute()
+            .size_full()
+            .path(format!("img/shouting-bird/{name}.svg"))
+            .text_color(color)
+            .with_animation(name, Animation::new(SHOUT).repeat(), move |layer, delta| {
+                layer.opacity(opacity(delta))
+            })
+    };
+    fn line(index: f32, delta: f32) -> f32 {
+        let appears = FIRST_LINE + index * LINE_GAP;
+        let shown = ((delta - appears) / LINE_FADE).clamp(0., 1.);
+        let hidden = ((BEAK_OPEN.end - delta) / LINE_FADE).clamp(0., 1.);
+        shown.min(hidden)
+    }
+    div()
+        .relative()
+        .w(gpui_kit::px(60.))
+        .h(gpui_kit::px(48.))
+        .child(layer("body", |_| 1.))
+        .child(layer("beak-closed", |delta| {
+            if BEAK_OPEN.contains(&delta) { 0. } else { 1. }
+        }))
+        .child(layer("beak-open", |delta| {
+            if BEAK_OPEN.contains(&delta) { 1. } else { 0. }
+        }))
+        .child(layer("shout-1", |delta| line(0., delta)))
+        .child(layer("shout-2", |delta| line(1., delta)))
+        .child(layer("shout-3", |delta| line(2., delta)))
+}
+
 impl Render for ResultsGrid {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let content: AnyElement = if self.loading {
@@ -479,7 +523,7 @@ impl Render for ResultsGrid {
                 .justify_center()
                 .gap_3()
                 .text_color(cx.theme().muted_foreground)
-                .child(Spinner::new().with_size(Size::Large))
+                .child(shouting_bird(cx.theme().muted_foreground))
                 .child(
                     div().text_sm().child(
                         self.loading_stage
