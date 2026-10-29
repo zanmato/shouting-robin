@@ -258,7 +258,10 @@ impl SettingsView {
                             },
                         )
                     )
-                    .description("Maximum pages to crawl (0 = unlimited)."),
+                    .description(
+                        "Maximum pages to crawl (0 = unlimited). New sites start with this, and \
+                         the crawl settings change it for a site.",
+                    ),
                     SettingItem::new(
                         "Max Concurrent Requests",
                         SettingField::number_input(
@@ -288,7 +291,8 @@ impl SettingsView {
                         )
                     )
                     .description(
-                        "Maximum concurrent requests (HTTP) or Chrome tabs (Chrome mode).",
+                        "Maximum concurrent requests (HTTP) or Chrome tabs (Chrome mode). New \
+                         sites start with this, and the crawl settings change it for a site.",
                     ),
                     SettingItem::new(
                         "Request Timeout (seconds)",
@@ -423,7 +427,8 @@ impl SettingsView {
                     )
                     .description(
                         "In Chrome mode, skip downloading images, media and fonts during \
-                         render to speed up crawls.",
+                         render to speed up crawls. New sites start with this, and the crawl \
+                         settings change it for a site.",
                     ),
                     SettingItem::new(
                         "Capture Layout",
@@ -448,7 +453,8 @@ impl SettingsView {
                     )
                     .description(
                         "In Chrome mode, record the boxes each page renders, to group \
-                         pages by template and find layout changes between crawls.",
+                         pages by template and find layout changes between crawls. New sites \
+                         start with this, and the crawl settings change it for a site.",
                     ),
                     SettingItem::new(
                         "Scroll for Layout",
@@ -474,7 +480,8 @@ impl SettingsView {
                     .description(
                         "Scroll through each page before recording its layout, so content \
                          that loads on scroll is included. Seconds slower a page. Only \
-                         applies while Capture Layout is on.",
+                         applies while Capture Layout is on. New sites start with this, and \
+                         the crawl settings change it for a site.",
                     ),
                     SettingItem::new(
                         "Near Duplicate Threshold (%)",

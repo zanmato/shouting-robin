@@ -421,7 +421,8 @@ impl ShoutingRobinApp {
     }
 
     /// Fills in the config fields the crawl bar leaves at their defaults from the
-    /// app settings. A recrawl skips this: it replays the config the earlier
+    /// app settings. The page limit, images and layout capture are the crawl
+    /// settings panel's, which starts a new site from the app settings. A recrawl skips this: it replays the config the earlier
     /// crawl was recorded with, which is already fully resolved.
     fn resolve_config(
         config: crate::crawl::CrawlConfig,
@@ -429,11 +430,6 @@ impl ShoutingRobinApp {
     ) -> crate::crawl::CrawlConfig {
         let crawl_settings = &crate::app_settings::AppSettings::global(cx).settings.crawl;
         crate::crawl::CrawlConfig {
-            max_pages: if config.max_pages > 0 {
-                config.max_pages
-            } else {
-                crawl_settings.max_pages
-            },
             max_concurrent: if config.max_concurrent > 0 {
                 config.max_concurrent
             } else {
@@ -451,11 +447,6 @@ impl ShoutingRobinApp {
             },
             respect_robots_txt: crawl_settings.respect_robots_txt,
             follow_sitemaps: crawl_settings.follow_sitemaps,
-            block_images: crawl_settings.block_images,
-            layout_capture: crate::crawl::LayoutCapture::from_switches(
-                crawl_settings.capture_layout,
-                crawl_settings.scroll_for_layout,
-            ),
             near_duplicate_threshold: crawl_settings.near_duplicate_threshold,
             content_selector: crawl_settings.content_selector.clone(),
             user_agent: config.user_agent.clone().or_else(|| {
@@ -2005,6 +1996,7 @@ fn init_keys(cx: &mut App) {
         gpui_kit::KeyBinding::new("ctrl-,", OpenSettings, None),
     ]);
     cx.bind_keys(crate::views::filter_bar::key_bindings());
+    cx.bind_keys(crate::views::crawl_bar::key_bindings());
 }
 
 /// A finished crawl's stored counts under the current [`FILTER_VERSION`].

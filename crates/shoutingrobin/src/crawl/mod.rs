@@ -8,6 +8,7 @@ pub mod render_mode;
 pub mod resources;
 pub mod similarity;
 pub mod site_icon;
+pub mod site_settings;
 pub mod sitemap;
 pub mod url_norm;
 

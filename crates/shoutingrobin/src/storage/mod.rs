@@ -146,6 +146,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         TEXTS_MIGRATION,
         include_str!("../../migrations/0036_texts.sql"),
     ),
+    (
+        "0037_site_settings",
+        include_str!("../../migrations/0037_site_settings.sql"),
+    ),
 ];
 
 /// Stores every URL and repeated text once per crawl, in `texts`, and points
@@ -390,6 +394,58 @@ pub async fn load_site_icons(pool: &SqlitePool) -> Result<Vec<StoredSiteIcon>, s
             fetched_at,
         })
         .collect())
+}
+
+/// The crawl settings remembered for a site, with when they were saved.
+pub async fn load_site_settings(
+    pool: &SqlitePool,
+    host: &str,
+) -> Result<Option<(crate::crawl::site_settings::SiteSettings, i64)>, sqlx::Error> {
+    let row = sqlx::query_as::<_, (String, i64)>(
+        "SELECT settings_json, saved_at FROM site_settings WHERE host = ?",
+    )
+    .bind(host)
+    .fetch_optional(pool)
+    .await?;
+    let Some((json, saved_at)) = row else {
+        return Ok(None);
+    };
+    match serde_json::from_str(&json) {
+        Ok(settings) => Ok(Some((settings, saved_at))),
+        Err(error) => {
+            tracing::warn!(%error, host, "remembered site settings could not be parsed");
+            Ok(None)
+        }
+    }
+}
+
+pub async fn save_site_settings(
+    pool: &SqlitePool,
+    host: &str,
+    settings: &crate::crawl::site_settings::SiteSettings,
+    saved_at: i64,
+) -> Result<(), sqlx::Error> {
+    let json =
+        serde_json::to_string(settings).map_err(|error| sqlx::Error::Encode(Box::new(error)))?;
+    sqlx::query(
+        "INSERT INTO site_settings (host, settings_json, saved_at) VALUES (?, ?, ?) \
+         ON CONFLICT(host) DO UPDATE SET \
+         settings_json = excluded.settings_json, saved_at = excluded.saved_at",
+    )
+    .bind(host)
+    .bind(json)
+    .bind(saved_at)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+pub async fn forget_site_settings(pool: &SqlitePool, host: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM site_settings WHERE host = ?")
+        .bind(host)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 /// Stores one page's layout with the key and style table entries it added,
@@ -2207,6 +2263,64 @@ mod tests {
             rel: None,
             csr_only: false,
         }
+    }
+
+    /// A site's crawl settings come back as they were saved, a later save
+    /// replaces them, and forgetting them leaves nothing to restore.
+    #[test]
+    fn site_settings_are_remembered_per_host_until_forgotten() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        runtime.block_on(async {
+            let pool = test_pool().await;
+            let settings = crate::crawl::site_settings::SiteSettings {
+                exclude_patterns: vec!["/tag/".to_string()],
+                max_pages: 500,
+                header_names: vec!["Authorization".to_string()],
+                ..Default::default()
+            };
+            save_site_settings(&pool, "books.toscrape.com", &settings, 10)
+                .await
+                .expect("save");
+            assert_eq!(
+                load_site_settings(&pool, "books.toscrape.com")
+                    .await
+                    .expect("load"),
+                Some((settings.clone(), 10))
+            );
+            assert_eq!(
+                load_site_settings(&pool, "shop.books.toscrape.com")
+                    .await
+                    .expect("load"),
+                None
+            );
+
+            let changed = crate::crawl::site_settings::SiteSettings {
+                max_pages: 0,
+                ..settings
+            };
+            save_site_settings(&pool, "books.toscrape.com", &changed, 20)
+                .await
+                .expect("save again");
+            assert_eq!(
+                load_site_settings(&pool, "books.toscrape.com")
+                    .await
+                    .expect("load"),
+                Some((changed, 20))
+            );
+
+            forget_site_settings(&pool, "books.toscrape.com")
+                .await
+                .expect("forget");
+            assert_eq!(
+                load_site_settings(&pool, "books.toscrape.com")
+                    .await
+                    .expect("load"),
+                None
+            );
+        });
     }
 
     /// The details panel reads one page's backlinks when it is selected, so

@@ -12,6 +12,14 @@ All notable changes to this project will be documented in this file.
   filters by its value or excludes it
 - Showed the Shouting Robin bird shouting while a crawl loads, in place of
   the spinner
+- Redesigned the crawl settings as a panel over the results, grouped into
+  What to crawl, Chrome rendering and Requests, with help under each option
+  and the page limit moved in from Settings. Settings that differ from a new
+  site's show as tags in the address field
+- Remembered the crawl settings for each site and restored them on its next
+  crawl, with Forget for this site. Header values are not kept
+- Tested a URL against the include and exclude patterns, and entered headers
+  as name and value rows with the values hidden
 
 ### Performance
 
@@ -37,6 +45,9 @@ All notable changes to this project will be documented in this file.
   other files, which have no page to describe
 - Gave Filter by This Value and Exclude This Value icons in a cell's context
   menu
+- Kept a crawl with an invalid include or exclude pattern, or a header that
+  can't be sent, from starting. One invalid pattern used to drop the whole
+  list without a word
 - Filled most of the loading bar with the reads when a crawl's counts are
   stored, since restoring them takes a moment
 
