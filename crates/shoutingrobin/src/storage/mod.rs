@@ -142,7 +142,16 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0035_crawl_filter_counts",
         include_str!("../../migrations/0035_crawl_filter_counts.sql"),
     ),
+    (
+        TEXTS_MIGRATION,
+        include_str!("../../migrations/0036_texts.sql"),
+    ),
 ];
+
+/// Stores every URL and repeated text once per crawl, in `texts`, and points
+/// to it by id. It rewrites most of the database, which only gets smaller on
+/// disk once it is vacuumed.
+const TEXTS_MIGRATION: &str = "0036_texts";
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query(
@@ -176,9 +185,113 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             .await?;
         tx.commit().await?;
         tracing::info!("Applied migration {}", name);
+        if *name == TEXTS_MIGRATION {
+            // The migration's result is kept whether or not this works: the
+            // space only stays unused until a later vacuum.
+            let started = std::time::Instant::now();
+            match sqlx::query("VACUUM").execute(pool).await {
+                Ok(_) => tracing::info!(
+                    seconds = started.elapsed().as_secs_f64(),
+                    "vacuumed the database"
+                ),
+                Err(e) => tracing::warn!(error=%e, "failed to vacuum the database"),
+            }
+            // In WAL mode the vacuum writes the whole database to the log, and
+            // the log file keeps that size until it is truncated.
+            if let Err(e) = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+                .execute(pool)
+                .await
+            {
+                tracing::warn!(error=%e, "failed to truncate the write-ahead log");
+            }
+        }
     }
 
     Ok(())
+}
+
+/// The ids of the texts one write stores. A page repeats its own URL on every
+/// side table row and often the same anchor or alt text, so each is looked up
+/// once per write.
+struct TextIds<'a> {
+    crawl_id: i64,
+    known: std::collections::HashMap<&'a str, i64>,
+}
+
+impl<'a> TextIds<'a> {
+    fn new(crawl_id: i64) -> Self {
+        Self {
+            crawl_id,
+            known: std::collections::HashMap::new(),
+        }
+    }
+
+    /// The text's id, stored first if the crawl has not met it yet. The
+    /// insert comes first so the write holds SQLite's write lock before it
+    /// reads, which keeps a concurrent write from slipping in between.
+    async fn id(
+        &mut self,
+        conn: &mut sqlx::SqliteConnection,
+        text: &'a str,
+    ) -> Result<i64, sqlx::Error> {
+        if let Some(&id) = self.known.get(text) {
+            return Ok(id);
+        }
+        sqlx::query("INSERT OR IGNORE INTO texts (crawl_id, text) VALUES (?, ?)")
+            .bind(self.crawl_id)
+            .bind(text)
+            .execute(&mut *conn)
+            .await?;
+        let id: i64 = sqlx::query_scalar("SELECT id FROM texts WHERE crawl_id = ? AND text = ?")
+            .bind(self.crawl_id)
+            .bind(text)
+            .fetch_one(&mut *conn)
+            .await?;
+        self.known.insert(text, id);
+        Ok(id)
+    }
+
+    async fn optional_id(
+        &mut self,
+        conn: &mut sqlx::SqliteConnection,
+        text: Option<&'a str>,
+    ) -> Result<Option<i64>, sqlx::Error> {
+        match text {
+            Some(text) => Ok(Some(self.id(conn, text).await?)),
+            None => Ok(None),
+        }
+    }
+}
+
+/// Every text of one crawl by id, read once when the crawl loads so the large
+/// tables are read as integers. One `Arc` per text: on a 400k row crawl, 1.5M
+/// links pointed at 51k URLs.
+struct CrawlTexts(std::collections::HashMap<i64, std::sync::Arc<str>>);
+
+impl CrawlTexts {
+    async fn load(pool: &SqlitePool, crawl_id: i64) -> Result<Self, sqlx::Error> {
+        use futures::TryStreamExt as _;
+        let mut rows =
+            sqlx::query_as::<_, (i64, String)>("SELECT id, text FROM texts WHERE crawl_id = ?")
+                .bind(crawl_id)
+                .fetch(pool);
+        let mut texts = std::collections::HashMap::new();
+        while let Some((id, text)) = rows.try_next().await? {
+            texts.insert(id, text.into());
+        }
+        Ok(Self(texts))
+    }
+
+    fn get(&self, id: i64) -> Result<std::sync::Arc<str>, sqlx::Error> {
+        self.0
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| sqlx::Error::Decode(format!("text {id} is not stored").into()))
+    }
+
+    fn optional(&self, id: Option<i64>) -> Result<Option<std::sync::Arc<str>>, sqlx::Error> {
+        id.map(|id| self.get(id)).transpose()
+    }
 }
 
 pub async fn create_crawl(
@@ -552,10 +665,12 @@ pub async fn insert_page(
     // is otherwise two hundred autocommits, each its own fsync, and a crash
     // mid-page leaves a row with half its links.
     let mut transaction = pool.begin().await?;
+    let mut texts = TextIds::new(crawl_id);
+    let url_id = texts.id(&mut transaction, &record.url).await?;
     let inserted = sqlx::query(
         r#"
         INSERT INTO pages (
-            crawl_id, url, status, content_type, size_bytes, response_time_ms,
+            crawl_id, url_id, status, content_type, size_bytes, response_time_ms,
             depth, title, meta_description, h1, h2, canonical, robots,
             indexability, word_count, hash, crawled_at,
             sd_errors, sd_warnings, hreflang_tags_json, sd_types_json,
@@ -568,11 +683,11 @@ pub async fn insert_page(
             has_mixed_content, hreflang_sources_json, has_body_tag,
             h2_non_sequential
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(crawl_id, url) DO NOTHING
+        ON CONFLICT(crawl_id, url_id) DO NOTHING
         "#,
     )
     .bind(crawl_id)
-    .bind(&record.url)
+    .bind(url_id)
     .bind(record.status.map(|s| s as i64))
     .bind(record.content_type.as_deref())
     .bind(record.size_bytes as i64)
@@ -625,13 +740,13 @@ pub async fn insert_page(
         return Ok(());
     }
 
-    insert_structured_data(&mut transaction, crawl_id, record).await?;
-    insert_performance(&mut transaction, crawl_id, record).await?;
-    insert_images(&mut transaction, crawl_id, record).await?;
-    insert_ecommerce(&mut transaction, crawl_id, record).await?;
-    insert_links(&mut transaction, crawl_id, record).await?;
-    insert_a11y_violations(&mut transaction, crawl_id, record).await?;
-    insert_sd_issues(&mut transaction, crawl_id, record).await?;
+    insert_structured_data(&mut transaction, crawl_id, url_id, record).await?;
+    insert_performance(&mut transaction, crawl_id, url_id, record).await?;
+    insert_images(&mut transaction, url_id, record, &mut texts).await?;
+    insert_ecommerce(&mut transaction, crawl_id, url_id, record).await?;
+    insert_links(&mut transaction, url_id, record, &mut texts).await?;
+    insert_a11y_violations(&mut transaction, url_id, record, &mut texts).await?;
+    insert_sd_issues(&mut transaction, crawl_id, url_id, record).await?;
 
     transaction.commit().await
 }
@@ -639,6 +754,7 @@ pub async fn insert_page(
 async fn insert_structured_data(
     conn: &mut sqlx::SqliteConnection,
     crawl_id: i64,
+    url_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
     use crate::crawl::event::SdFormat;
@@ -648,10 +764,10 @@ async fn insert_structured_data(
             SdFormat::Microdata => "microdata",
         };
         sqlx::query(
-            "INSERT INTO structured_data (crawl_id, page_url, format, type_name, json, errors) VALUES (?, ?, ?, ?, ?, NULL)",
+            "INSERT INTO structured_data (crawl_id, page_url_id, format, type_name, json, errors) VALUES (?, ?, ?, ?, ?, NULL)",
         )
         .bind(crawl_id)
-        .bind(&record.url)
+        .bind(url_id)
         .bind(format_str)
         .bind(&item.type_name)
         .bind(&item.raw_json)
@@ -664,6 +780,7 @@ async fn insert_structured_data(
 async fn insert_performance(
     conn: &mut sqlx::SqliteConnection,
     crawl_id: i64,
+    url_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
     if record.ttfb_ms.is_none()
@@ -674,10 +791,10 @@ async fn insert_performance(
         return Ok(());
     }
     sqlx::query(
-        "INSERT INTO performance (crawl_id, page_url, lcp_ms, cls, fcp_ms, ttfb_ms, transfer_kb) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+        "INSERT INTO performance (crawl_id, page_url_id, lcp_ms, cls, fcp_ms, ttfb_ms, transfer_kb) VALUES (?, ?, ?, ?, ?, ?, NULL)",
     )
     .bind(crawl_id)
-    .bind(&record.url)
+    .bind(url_id)
     .bind(record.lcp_ms.map(|ms| ms as i64))
     .bind(record.cls)
     .bind(record.fcp_ms.map(|ms| ms as i64))
@@ -687,19 +804,22 @@ async fn insert_performance(
     Ok(())
 }
 
-async fn insert_images(
+async fn insert_images<'a>(
     conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
-    record: &PageRecord,
+    url_id: i64,
+    record: &'a PageRecord,
+    texts: &mut TextIds<'a>,
 ) -> Result<(), sqlx::Error> {
     for img in &record.images {
+        let src_id = texts.id(conn, &img.src).await?;
+        let alt_id = texts.optional_id(conn, img.alt.as_deref()).await?;
         sqlx::query(
-            "INSERT INTO images (crawl_id, page_url, src, alt, width, height, has_alt_attr) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO images (crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(crawl_id)
-        .bind(&record.url)
-        .bind(&*img.src)
-        .bind(img.alt.as_deref())
+        .bind(texts.crawl_id)
+        .bind(url_id)
+        .bind(src_id)
+        .bind(alt_id)
         .bind(img.width.map(|w| w as i64))
         .bind(img.height.map(|h| h as i64))
         .bind(img.has_alt_attr as i64)
@@ -712,6 +832,7 @@ async fn insert_images(
 async fn insert_ecommerce(
     conn: &mut sqlx::SqliteConnection,
     crawl_id: i64,
+    url_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
     let Some(ref audit) = record.ecommerce else {
@@ -720,13 +841,13 @@ async fn insert_ecommerce(
     sqlx::query(
         r#"
         INSERT INTO ecommerce (
-            crawl_id, page_url, page_type, price, currency, availability,
+            crawl_id, page_url_id, page_type, price, currency, availability,
             sku, gtin, brand, has_image, has_description, has_review_or_rating
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
     .bind(crawl_id)
-    .bind(&record.url)
+    .bind(url_id)
     .bind(record.og_type.as_deref())
     .bind(audit.price.as_deref().and_then(|p| p.parse::<f64>().ok()))
     .bind(audit.currency.as_deref())
@@ -742,26 +863,26 @@ async fn insert_ecommerce(
     Ok(())
 }
 
-async fn insert_links(
+async fn insert_links<'a>(
     conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
-    record: &PageRecord,
+    url_id: i64,
+    record: &'a PageRecord,
+    texts: &mut TextIds<'a>,
 ) -> Result<(), sqlx::Error> {
     for link in &record.outlinks {
-        let kind = if crate::crawl::engine::is_same_domain(&record.url, &link.dst_url) {
-            "internal"
-        } else {
-            "external"
-        };
+        let internal = crate::crawl::engine::is_same_domain(&record.url, &link.dst_url);
+        let dst_id = texts.id(conn, &link.dst_url).await?;
+        let anchor_id = texts.optional_id(conn, link.anchor.as_deref()).await?;
+        let rel_id = texts.optional_id(conn, link.rel.as_deref()).await?;
         sqlx::query(
-            "INSERT INTO links (crawl_id, src_url, dst_url, anchor, rel, kind, csr_only) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO links (crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (?, ?, ?, ?, ?, ?, ?)",
         )
-        .bind(crawl_id)
-        .bind(&record.url)
-        .bind(&*link.dst_url)
-        .bind(link.anchor.as_deref())
-        .bind(link.rel.as_deref())
-        .bind(kind)
+        .bind(texts.crawl_id)
+        .bind(url_id)
+        .bind(dst_id)
+        .bind(anchor_id)
+        .bind(rel_id)
+        .bind(internal as i64)
         .bind(link.csr_only as i64)
         .execute(&mut *conn)
         .await?;
@@ -775,10 +896,12 @@ pub async fn load_page_urls(
     pool: &SqlitePool,
     crawl_id: i64,
 ) -> Result<std::collections::HashSet<String>, sqlx::Error> {
-    let rows: Vec<(String,)> = sqlx::query_as("SELECT url FROM pages WHERE crawl_id = ?")
-        .bind(crawl_id)
-        .fetch_all(pool)
-        .await?;
+    let rows: Vec<(String,)> = sqlx::query_as(
+        "SELECT t.text FROM pages p JOIN texts t ON t.id = p.url_id WHERE p.crawl_id = ?",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await?;
     Ok(rows.into_iter().map(|(url,)| url).collect())
 }
 
@@ -793,9 +916,9 @@ pub async fn load_described_page_urls(
 ) -> Result<std::collections::HashSet<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"
-        SELECT url FROM pages
-        WHERE crawl_id = ?
-          AND NOT (is_resource = 1 AND size_bytes = 0 AND headers_json IS NULL)
+        SELECT t.text FROM pages p JOIN texts t ON t.id = p.url_id
+        WHERE p.crawl_id = ?
+          AND NOT (p.is_resource = 1 AND p.size_bytes = 0 AND p.headers_json IS NULL)
         "#,
     )
     .bind(crawl_id)
@@ -812,9 +935,10 @@ pub async fn load_undescribed_resources(
 ) -> Result<Vec<(String, String)>, sqlx::Error> {
     let rows: Vec<(String, Option<String>)> = sqlx::query_as(
         r#"
-        SELECT url, resource_initiator FROM pages
-        WHERE crawl_id = ? AND is_resource = 1 AND size_bytes = 0 AND headers_json IS NULL
-        ORDER BY id
+        SELECT t.text, p.resource_initiator FROM pages p JOIN texts t ON t.id = p.url_id
+        WHERE p.crawl_id = ? AND p.is_resource = 1 AND p.size_bytes = 0
+          AND p.headers_json IS NULL
+        ORDER BY p.id
         "#,
     )
     .bind(crawl_id)
@@ -848,7 +972,8 @@ pub async fn record_resource_check(
             redirect_url = COALESCE(?, redirect_url),
             redirect_status = COALESCE(?, redirect_status),
             indexability = ?
-        WHERE crawl_id = ? AND url = ? AND is_resource = 1
+        WHERE crawl_id = ? AND is_resource = 1
+          AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)
         "#,
     )
     .bind(record.status.map(|s| s as i64))
@@ -859,6 +984,7 @@ pub async fn record_resource_check(
     .bind(record.redirect_url.as_deref())
     .bind(record.redirect_status.map(|s| s as i64))
     .bind(record.indexability.as_deref().unwrap_or("N/A"))
+    .bind(crawl_id)
     .bind(crawl_id)
     .bind(&record.url)
     .execute(pool)
@@ -877,8 +1003,9 @@ pub async fn load_declared_canonicals(
     crawl_id: i64,
 ) -> Result<Vec<(String, String)>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT url, canonical FROM pages
-         WHERE crawl_id = ? AND is_page = 1 AND canonical IS NOT NULL AND trim(canonical) != ''",
+        "SELECT t.text, p.canonical FROM pages p JOIN texts t ON t.id = p.url_id
+         WHERE p.crawl_id = ? AND p.is_page = 1 AND p.canonical IS NOT NULL
+           AND trim(p.canonical) != ''",
     )
     .bind(crawl_id)
     .fetch_all(pool)
@@ -895,10 +1022,10 @@ pub async fn load_declared_canonicals(
 /// redirect.
 pub async fn load_redirects(pool: &SqlitePool, crawl_id: i64) -> Result<Vec<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT url FROM pages
-         WHERE crawl_id = ?
-           AND (redirect_url IS NOT NULL OR (status >= 300 AND status < 400))
-         ORDER BY url",
+        "SELECT t.text FROM pages p JOIN texts t ON t.id = p.url_id
+         WHERE p.crawl_id = ?
+           AND (p.redirect_url IS NOT NULL OR (p.status >= 300 AND p.status < 400))
+         ORDER BY t.text",
     )
     .bind(crawl_id)
     .fetch_all(pool)
@@ -915,10 +1042,12 @@ pub async fn set_redirect_target(
     status: u16,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
-        "UPDATE pages SET redirect_url = ?, redirect_status = ? WHERE crawl_id = ? AND url = ?",
+        "UPDATE pages SET redirect_url = ?, redirect_status = ?
+         WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
     )
     .bind(target)
     .bind(status as i64)
+    .bind(crawl_id)
     .bind(crawl_id)
     .bind(url)
     .execute(pool)
@@ -926,21 +1055,26 @@ pub async fn set_redirect_target(
     Ok(())
 }
 
-async fn insert_a11y_violations(
+async fn insert_a11y_violations<'a>(
     conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
-    record: &PageRecord,
+    url_id: i64,
+    record: &'a PageRecord,
+    texts: &mut TextIds<'a>,
 ) -> Result<(), sqlx::Error> {
     for issue in &record.a11y_issues {
+        let rule_id = texts.id(conn, &issue.rule).await?;
+        let impact_id = texts.id(conn, &issue.impact).await?;
+        let target_id = texts.optional_id(conn, issue.target.as_deref()).await?;
+        let html_id = texts.optional_id(conn, issue.html.as_deref()).await?;
         sqlx::query(
-            "INSERT INTO a11y_violations (crawl_id, page_url, rule, impact, target, html) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO a11y_violations (crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (?, ?, ?, ?, ?, ?)",
         )
-        .bind(crawl_id)
-        .bind(&record.url)
-        .bind(&*issue.rule)
-        .bind(&*issue.impact)
-        .bind(issue.target.as_deref())
-        .bind(issue.html.as_deref())
+        .bind(texts.crawl_id)
+        .bind(url_id)
+        .bind(rule_id)
+        .bind(impact_id)
+        .bind(target_id)
+        .bind(html_id)
         .execute(&mut *conn)
         .await?;
     }
@@ -950,6 +1084,7 @@ async fn insert_a11y_violations(
 async fn insert_sd_issues(
     conn: &mut sqlx::SqliteConnection,
     crawl_id: i64,
+    url_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
     for issue in &record.sd_issues {
@@ -958,10 +1093,10 @@ async fn insert_sd_issues(
             SdSeverity::Warning => "warning",
         };
         sqlx::query(
-            "INSERT INTO sd_issues (crawl_id, page_url, severity, type_name, code, message) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sd_issues (crawl_id, page_url_id, severity, type_name, code, message) VALUES (?, ?, ?, ?, ?, ?)",
         )
         .bind(crawl_id)
-        .bind(&record.url)
+        .bind(url_id)
         .bind(severity_str)
         .bind(&issue.type_name)
         .bind(&issue.code)
@@ -979,10 +1114,14 @@ pub async fn update_link_scores(
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     for (url, score) in scores {
-        sqlx::query("UPDATE pages SET link_score = ? WHERE crawl_id = ? AND url = ?")
-            .bind(*score)
-            .bind(crawl_id)
-            .bind(url)
+        sqlx::query(
+            "UPDATE pages SET link_score = ?
+             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
+        )
+        .bind(*score)
+        .bind(crawl_id)
+        .bind(crawl_id)
+        .bind(url)
             .execute(&mut *tx)
             .await?;
     }
@@ -997,10 +1136,14 @@ pub async fn update_crawl_depths(
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     for (url, depth) in depths {
-        sqlx::query("UPDATE pages SET depth = ? WHERE crawl_id = ? AND url = ?")
-            .bind(*depth as i64)
-            .bind(crawl_id)
-            .bind(url)
+        sqlx::query(
+            "UPDATE pages SET depth = ?
+             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
+        )
+        .bind(*depth as i64)
+        .bind(crawl_id)
+        .bind(crawl_id)
+        .bind(url)
             .execute(&mut *tx)
             .await?;
     }
@@ -1020,10 +1163,14 @@ pub async fn update_hreflang_issues(
         } else {
             serde_json::to_string(page_issues).ok()
         };
-        sqlx::query("UPDATE pages SET hreflang_issues_json = ? WHERE crawl_id = ? AND url = ?")
-            .bind(json)
-            .bind(crawl_id)
-            .bind(url)
+        sqlx::query(
+            "UPDATE pages SET hreflang_issues_json = ?
+             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
+        )
+        .bind(json)
+        .bind(crawl_id)
+        .bind(crawl_id)
+        .bind(url)
             .execute(&mut *tx)
             .await?;
     }
@@ -1051,8 +1198,17 @@ pub async fn load_page_on_demand(
     url: &str,
 ) -> Result<PageOnDemand, sqlx::Error> {
     let backlinks = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
-        "SELECT src_url, anchor, rel FROM links WHERE crawl_id = ? AND dst_url = ? ORDER BY id",
+        r#"
+        SELECT s.text, a.text, r.text FROM links l
+        JOIN texts s ON s.id = l.src_url_id
+        LEFT JOIN texts a ON a.id = l.anchor_id
+        LEFT JOIN texts r ON r.id = l.rel_id
+        WHERE l.crawl_id = ?
+          AND l.dst_url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)
+        ORDER BY l.id
+        "#,
     )
+    .bind(crawl_id)
     .bind(crawl_id)
     .bind(url)
     .fetch_all(pool)
@@ -1066,8 +1222,11 @@ pub async fn load_page_on_demand(
     .collect();
     let sd_items = sqlx::query_as::<_, (String, String, String)>(
         "SELECT format, type_name, json FROM structured_data \
-         WHERE crawl_id = ? AND page_url = ? ORDER BY id",
+         WHERE crawl_id = ? \
+           AND page_url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?) \
+         ORDER BY id",
     )
+    .bind(crawl_id)
     .bind(crawl_id)
     .bind(url)
     .fetch_all(pool)
@@ -1248,10 +1407,12 @@ pub async fn find_previous_crawl(
     Ok(row.map(crawl_row))
 }
 
-/// The parts of reading a crawl back. They run at the same time and finish in
-/// any order, so a loading screen can count them off as they arrive.
+/// The parts of reading a crawl back. After the crawl's texts, they run at the
+/// same time and finish in any order, so a loading screen can count them off
+/// as they arrive.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LoadStep {
+    Texts,
     Links,
     PageDetails,
     Inlinks,
@@ -1259,7 +1420,7 @@ pub enum LoadStep {
 }
 
 impl LoadStep {
-    pub const COUNT: usize = 4;
+    pub const COUNT: usize = 5;
 }
 
 /// The app shows progress while it reads, so only the library's users and the
@@ -1275,10 +1436,12 @@ pub async fn load_pages_for_crawl(
 
 /// [`load_pages_for_crawl`], calling `report` as each step finishes.
 ///
-/// The reads are independent, and on a crawl with a million links each takes
-/// seconds, so they run at once on separate pool connections. Each is its own
-/// task because turning SQLite rows into Rust values costs as much as reading
-/// them, and in one task that work would still run one read at a time.
+/// The crawl's texts are read first, so the large tables after them are read
+/// as integers and every URL and repeated text is one shared copy. Those reads
+/// are independent, and on a crawl with a million links each takes seconds,
+/// so they run at once on separate pool connections. Each is its own task
+/// because turning SQLite rows into Rust values costs as much as reading them,
+/// and in one task that work would still run one read at a time.
 pub async fn load_pages_for_crawl_reporting(
     pool: &SqlitePool,
     crawl_id: i64,
@@ -1286,28 +1449,29 @@ pub async fn load_pages_for_crawl_reporting(
     report: impl Fn(LoadStep),
 ) -> Result<Vec<PageRecord>, sqlx::Error> {
     let report = &report;
+    let texts = std::sync::Arc::new(CrawlTexts::load(pool, crawl_id).await?);
+    report(LoadStep::Texts);
     let links = async_std::task::spawn({
         let pool = pool.clone();
+        let texts = texts.clone();
         async move {
             use futures::TryStreamExt as _;
-            let mut rows =
-                sqlx::query_as::<_, (String, String, Option<String>, Option<String>, i64)>(
-                    r#"
-                    SELECT src_url, dst_url, anchor, rel, csr_only
-                    FROM links WHERE crawl_id = ?
-                    ORDER BY id
-                    "#,
-                )
-                .bind(crawl_id)
-                .fetch(&pool);
-            let mut outlinks_by_url: std::collections::HashMap<String, Vec<Outlink>> =
+            let mut rows = sqlx::query_as::<_, (i64, i64, Option<i64>, Option<i64>, i64)>(
+                r#"
+                SELECT src_url_id, dst_url_id, anchor_id, rel_id, csr_only
+                FROM links WHERE crawl_id = ?
+                ORDER BY id
+                "#,
+            )
+            .bind(crawl_id)
+            .fetch(&pool);
+            let mut outlinks_by_url: std::collections::HashMap<i64, Vec<Outlink>> =
                 std::collections::HashMap::new();
-            let mut texts = SharedTexts::default();
-            while let Some((src_url, dst_url, anchor, rel, csr_only)) = rows.try_next().await? {
-                outlinks_by_url.entry(src_url).or_default().push(Outlink {
-                    dst_url: texts.share(dst_url),
-                    anchor: anchor.map(|anchor| texts.share(anchor)),
-                    rel: rel.map(|rel| texts.share(rel)),
+            while let Some((src_id, dst_id, anchor_id, rel_id, csr_only)) = rows.try_next().await? {
+                outlinks_by_url.entry(src_id).or_default().push(Outlink {
+                    dst_url: texts.get(dst_id)?,
+                    anchor: texts.optional(anchor_id)?,
+                    rel: texts.optional(rel_id)?,
                     csr_only: csr_only != 0,
                 });
             }
@@ -1316,6 +1480,7 @@ pub async fn load_pages_for_crawl_reporting(
     });
     let page_details = async_std::task::spawn({
         let pool = pool.clone();
+        let texts = texts.clone();
         async move {
             let (
                 perf_rows,
@@ -1329,8 +1494,8 @@ pub async fn load_pages_for_crawl_reporting(
             ) = futures::try_join!(
                 load_performance_rows(&pool, crawl_id),
                 load_structured_data_rows(&pool, crawl_id),
-                load_images_by_url(&pool, crawl_id),
-                load_a11y_by_url(&pool, crawl_id),
+                load_images_by_url(&pool, crawl_id, &texts),
+                load_a11y_by_url(&pool, crawl_id, &texts),
                 load_sd_issue_rows(&pool, crawl_id),
                 load_layout_rows(&pool, crawl_id),
                 load_sitemap_rows(&pool, crawl_id),
@@ -1355,61 +1520,54 @@ pub async fn load_pages_for_crawl_reporting(
 
             #[allow(clippy::type_complexity)]
             let mut perf_by_url: std::collections::HashMap<
-                String,
+                i64,
                 (Option<i64>, Option<i64>, Option<f64>, Option<i64>),
             > = std::collections::HashMap::new();
-            for (url, ttfb, lcp, cls, fcp) in &perf_rows {
-                perf_by_url.insert(url.clone(), (*ttfb, *lcp, *cls, *fcp));
+            for (url_id, ttfb, lcp, cls, fcp) in &perf_rows {
+                perf_by_url.insert(*url_id, (*ttfb, *lcp, *cls, *fcp));
             }
 
-            let mut sd_items_by_url: std::collections::HashMap<String, Vec<SdItem>> =
+            let mut sd_items_by_url: std::collections::HashMap<i64, Vec<SdItem>> =
                 std::collections::HashMap::new();
-            for (url, format, type_name) in sd_type_rows {
-                sd_items_by_url.entry(url).or_default().push(SdItem {
+            for (url_id, format, type_name) in sd_type_rows {
+                sd_items_by_url.entry(url_id).or_default().push(SdItem {
                     format: sd_format(&format),
                     type_name,
                     raw_json: String::new(),
                 });
             }
 
-            let mut sd_issues_by_url: std::collections::HashMap<String, Vec<SdIssue>> =
+            let mut sd_issues_by_url: std::collections::HashMap<i64, Vec<SdIssue>> =
                 std::collections::HashMap::new();
-            for (page_url, severity, type_name, code, message) in &sd_issue_rows {
-                let sd_severity = match severity.as_str() {
+            for (url_id, severity, type_name, code, message) in sd_issue_rows {
+                let severity = match severity.as_str() {
                     "error" => SdSeverity::Error,
                     _ => SdSeverity::Warning,
                 };
-                sd_issues_by_url
-                    .entry(page_url.clone())
-                    .or_default()
-                    .push(SdIssue {
-                        severity: sd_severity,
-                        type_name: type_name.clone(),
-                        code: code.clone(),
-                        message: message.clone(),
-                    });
+                sd_issues_by_url.entry(url_id).or_default().push(SdIssue {
+                    severity,
+                    type_name,
+                    code,
+                    message,
+                });
             }
 
-            let mut sitemap_by_url: std::collections::HashMap<String, SitemapEntry> =
+            let mut sitemap_by_url: std::collections::HashMap<i64, SitemapEntry> =
                 std::collections::HashMap::new();
-            let mut texts = SharedTexts::default();
-            for (page_url, sitemap_url, lastmod) in sitemap_rows {
+            for (url_id, sitemap_id, lastmod_id) in sitemap_rows {
                 if let std::collections::hash_map::Entry::Vacant(entry) =
-                    sitemap_by_url.entry(page_url)
+                    sitemap_by_url.entry(url_id)
                 {
-                    entry.insert((
-                        texts.share(sitemap_url),
-                        lastmod.map(|lastmod| texts.share(lastmod)),
-                    ));
+                    entry.insert((texts.get(sitemap_id)?, texts.optional(lastmod_id)?));
                 }
             }
 
             let mut ecom_by_url: std::collections::HashMap<
-                String,
+                i64,
                 crate::crawl::event::EcommerceAudit,
             > = std::collections::HashMap::new();
             for (
-                page_url,
+                url_id,
                 _page_type,
                 price,
                 currency,
@@ -1420,20 +1578,20 @@ pub async fn load_pages_for_crawl_reporting(
                 has_image,
                 has_description,
                 has_review_or_rating,
-            ) in &ecom_rows
+            ) in ecom_rows
             {
                 ecom_by_url.insert(
-                    page_url.clone(),
+                    url_id,
                     crate::crawl::event::EcommerceAudit {
                         price: price.map(|p| p.to_string()),
-                        currency: currency.clone(),
-                        availability: availability.clone(),
-                        sku: sku.clone(),
-                        gtin: gtin.clone(),
-                        brand: brand.clone(),
-                        has_image: *has_image != 0,
-                        has_description: *has_description != 0,
-                        has_review_or_rating: *has_review_or_rating != 0,
+                        currency,
+                        availability,
+                        sku,
+                        gtin,
+                        brand,
+                        has_image: has_image != 0,
+                        has_description: has_description != 0,
+                        has_review_or_rating: has_review_or_rating != 0,
                     },
                 );
             }
@@ -1452,14 +1610,14 @@ pub async fn load_pages_for_crawl_reporting(
     let inlinks = async_std::task::spawn({
         let pool = pool.clone();
         async move {
-            let rows = sqlx::query_as::<_, (String, i64, i64, i64, i64)>(
+            let rows = sqlx::query_as::<_, (i64, i64, i64, i64, i64)>(
                 r#"
-                SELECT dst_url,
+                SELECT dst_url_id,
                        COUNT(*),
-                       COUNT(DISTINCT src_url),
+                       COUNT(DISTINCT src_url_id),
                        COALESCE(SUM(csr_only), 0),
-                       COUNT(DISTINCT CASE WHEN csr_only = 1 THEN src_url END)
-                FROM links WHERE crawl_id = ? GROUP BY dst_url
+                       COUNT(DISTINCT CASE WHEN csr_only = 1 THEN src_url_id END)
+                FROM links WHERE crawl_id = ? GROUP BY dst_url_id
                 "#,
             )
             .bind(crawl_id)
@@ -1468,11 +1626,11 @@ pub async fn load_pages_for_crawl_reporting(
             // (total, unique sources, rendered-only links, unique rendered-only
             // sources). The unique rendered-only figure is the one that says how
             // much of a page's discoverability depends on a JavaScript nav running.
-            let counts: std::collections::HashMap<String, (u32, u32, u32, u32)> = rows
+            let counts: std::collections::HashMap<i64, (u32, u32, u32, u32)> = rows
                 .into_iter()
-                .map(|(url, total, unique, csr, unique_csr)| {
+                .map(|(url_id, total, unique, csr, unique_csr)| {
                     (
-                        url,
+                        url_id,
                         (total as u32, unique as u32, csr as u32, unique_csr as u32),
                     )
                 })
@@ -1485,12 +1643,13 @@ pub async fn load_pages_for_crawl_reporting(
     // WHERE clause.
     let pages = async_std::task::spawn({
         let pool = pool.clone();
+        let texts = texts.clone();
         let root_url = root_url.to_string();
         async move {
             use futures::TryStreamExt as _;
             let mut rows = sqlx::query(
                 r#"
-                SELECT url, status, title, size_bytes, content_type, meta_description, h1, h2,
+                SELECT url_id, status, title, size_bytes, content_type, meta_description, h1, h2,
                        canonical, word_count, depth, indexability, response_time_ms, og_type,
                        a11y_errors, a11y_warnings, headers_json, robots, is_resource,
                        resource_initiator, is_page, has_mixed_content, has_body_tag, redirect_url,
@@ -1507,9 +1666,14 @@ pub async fn load_pages_for_crawl_reporting(
             .bind(crawl_id)
             .fetch(&pool);
             let mut records = Vec::new();
-            let mut texts = SharedTexts::default();
+            let mut shared = SharedTexts::default();
             while let Some(row) = rows.try_next().await? {
-                records.push(page_record_from_row(&row, &root_url, &mut texts)?);
+                let url_id: i64 = row.try_get("url_id")?;
+                let url = texts.get(url_id)?.to_string();
+                records.push((
+                    url_id,
+                    page_record_from_row(&row, url, &root_url, &mut shared)?,
+                ));
             }
             Ok::<_, sqlx::Error>(records)
         }
@@ -1531,12 +1695,11 @@ pub async fn load_pages_for_crawl_reporting(
         ecommerce: mut ecom_by_url,
     } = details;
 
-    let mut records = page_rows;
     let sitemap_known = !sitemap_by_url.is_empty();
-    for record in &mut records {
-        let url = record.url.as_str();
+    let mut records = Vec::with_capacity(page_rows.len());
+    for (url_id, mut record) in page_rows {
         (record.ttfb_ms, record.lcp_ms, record.cls, record.fcp_ms) = perf_by_url
-            .get(url)
+            .get(&url_id)
             .map(|(ttfb, lcp, cls, fcp)| {
                 (
                     ttfb.map(|ms| ms as u64),
@@ -1546,7 +1709,7 @@ pub async fn load_pages_for_crawl_reporting(
                 )
             })
             .unwrap_or_default();
-        let page_sitemap = sitemap_by_url.remove(url);
+        let page_sitemap = sitemap_by_url.remove(&url_id);
         record.in_sitemap = if page_sitemap.is_some() {
             Some(true)
         } else if sitemap_known {
@@ -1562,13 +1725,13 @@ pub async fn load_pages_for_crawl_reporting(
             record.unique_inlinks_count,
             record.csr_inlinks_count,
             record.unique_csr_inlinks_count,
-        ) = inlink_counts.get(url).copied().unwrap_or_default();
-        record.layout = layout_by_url.remove(url).map(Box::new);
-        record.outlinks = outlinks_by_url.remove(url).unwrap_or_default().into();
-        record.images = images_by_url.remove(url).unwrap_or_default().into();
-        record.ecommerce = ecom_by_url.remove(url).map(Box::new);
-        record.a11y_issues = a11y_by_url.remove(url).unwrap_or_default().into();
-        record.sd_items = sd_items_by_url.remove(url).unwrap_or_default().into();
+        ) = inlink_counts.get(&url_id).copied().unwrap_or_default();
+        record.layout = layout_by_url.remove(&record.url).map(Box::new);
+        record.outlinks = outlinks_by_url.remove(&url_id).unwrap_or_default().into();
+        record.images = images_by_url.remove(&url_id).unwrap_or_default().into();
+        record.ecommerce = ecom_by_url.remove(&url_id).map(Box::new);
+        record.a11y_issues = a11y_by_url.remove(&url_id).unwrap_or_default().into();
+        record.sd_items = sd_items_by_url.remove(&url_id).unwrap_or_default().into();
         record.sd_jsonld_count = record
             .sd_items
             .iter()
@@ -1579,9 +1742,10 @@ pub async fn load_pages_for_crawl_reporting(
             .iter()
             .filter(|item| item.format == SdFormat::Microdata)
             .count() as u32;
-        record.sd_issues = sd_issues_by_url.remove(url).unwrap_or_default().into();
+        record.sd_issues = sd_issues_by_url.remove(&url_id).unwrap_or_default().into();
         // Backlinks and structured data JSON are read per page on selection,
         // see `load_page_on_demand`.
+        records.push(record);
     }
 
     Ok(records)
@@ -1591,6 +1755,7 @@ pub async fn load_pages_for_crawl_reporting(
 /// on in [`load_pages_for_crawl_reporting`].
 fn page_record_from_row(
     row: &sqlx::sqlite::SqliteRow,
+    url: String,
     root_url: &str,
     texts: &mut SharedTexts,
 ) -> Result<PageRecord, sqlx::Error> {
@@ -1606,7 +1771,6 @@ fn page_record_from_row(
             .unwrap_or_default()
     }
 
-    let url: String = row.try_get("url")?;
     let is_internal = crate::crawl::engine::is_same_domain(root_url, &url);
     let status: Option<i64> = row.try_get("status")?;
     let size_bytes: i64 = row.try_get("size_bytes")?;
@@ -1688,17 +1852,18 @@ fn page_record_from_row(
 /// The sitemap a URL was listed in, and the `<lastmod>` it gave.
 type SitemapEntry = (std::sync::Arc<str>, Option<std::sync::Arc<str>>);
 
-/// A crawl's per-page side tables, each grouped by page URL.
+/// A crawl's per-page side tables, each grouped by the id of the page's URL,
+/// except layouts, which their own tables key by the URL itself.
 struct PageDetailsByUrl {
     layout: std::collections::HashMap<String, crate::crawl::event::PageLayoutInfo>,
     performance:
-        std::collections::HashMap<String, (Option<i64>, Option<i64>, Option<f64>, Option<i64>)>,
-    sd_items: std::collections::HashMap<String, Vec<SdItem>>,
-    images: std::collections::HashMap<String, Vec<ImageRef>>,
-    a11y: std::collections::HashMap<String, Vec<A11yIssue>>,
-    sd_issues: std::collections::HashMap<String, Vec<SdIssue>>,
-    sitemap: std::collections::HashMap<String, SitemapEntry>,
-    ecommerce: std::collections::HashMap<String, crate::crawl::event::EcommerceAudit>,
+        std::collections::HashMap<i64, (Option<i64>, Option<i64>, Option<f64>, Option<i64>)>,
+    sd_items: std::collections::HashMap<i64, Vec<SdItem>>,
+    images: std::collections::HashMap<i64, Vec<ImageRef>>,
+    a11y: std::collections::HashMap<i64, Vec<A11yIssue>>,
+    sd_issues: std::collections::HashMap<i64, Vec<SdIssue>>,
+    sitemap: std::collections::HashMap<i64, SitemapEntry>,
+    ecommerce: std::collections::HashMap<i64, crate::crawl::event::EcommerceAudit>,
 }
 
 /// Waits for one of a crawl load's reads and reports its step once it is in.
@@ -1712,17 +1877,10 @@ async fn reported<T>(
     Ok(rows)
 }
 
-type PerformanceRow = (String, Option<i64>, Option<i64>, Option<f64>, Option<i64>);
-type ImageRow = (
-    String,
-    String,
-    Option<String>,
-    Option<i64>,
-    Option<i64>,
-    i64,
-);
+type PerformanceRow = (i64, Option<i64>, Option<i64>, Option<f64>, Option<i64>);
+type ImageRow = (i64, i64, Option<i64>, Option<i64>, Option<i64>, i64);
 type EcommerceRow = (
-    String,
+    i64,
     Option<String>,
     Option<f64>,
     Option<String>,
@@ -1740,7 +1898,7 @@ async fn load_performance_rows(
     crawl_id: i64,
 ) -> Result<Vec<PerformanceRow>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT page_url, ttfb_ms, lcp_ms, cls, fcp_ms FROM performance WHERE crawl_id = ?",
+        "SELECT page_url_id, ttfb_ms, lcp_ms, cls, fcp_ms FROM performance WHERE crawl_id = ?",
     )
     .bind(crawl_id)
     .fetch_all(pool)
@@ -1752,18 +1910,17 @@ async fn load_performance_rows(
 async fn load_structured_data_rows(
     pool: &SqlitePool,
     crawl_id: i64,
-) -> Result<Vec<(String, String, String)>, sqlx::Error> {
+) -> Result<Vec<(i64, String, String)>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT page_url, format, type_name FROM structured_data WHERE crawl_id = ? ORDER BY id",
+        "SELECT page_url_id, format, type_name FROM structured_data WHERE crawl_id = ? ORDER BY id",
     )
     .bind(crawl_id)
     .fetch_all(pool)
     .await
 }
 
-/// One copy of each distinct text a read meets. A crawl's links and images
-/// repeat the same few URLs and anchor and alt texts across every page: on a
-/// 400k row crawl, 1.5M links pointed at 51k URLs.
+/// One copy of each distinct text the `pages` read meets in the columns that
+/// repeat across rows, such as a MIME type.
 #[derive(Default)]
 struct SharedTexts(std::collections::HashSet<std::sync::Arc<str>>);
 
@@ -1784,20 +1941,21 @@ impl SharedTexts {
 async fn load_images_by_url(
     pool: &SqlitePool,
     crawl_id: i64,
-) -> Result<std::collections::HashMap<String, Vec<ImageRef>>, sqlx::Error> {
+    texts: &CrawlTexts,
+) -> Result<std::collections::HashMap<i64, Vec<ImageRef>>, sqlx::Error> {
     use futures::TryStreamExt as _;
     let mut rows = sqlx::query_as::<_, ImageRow>(
-        "SELECT page_url, src, alt, width, height, has_alt_attr FROM images WHERE crawl_id = ?",
+        "SELECT page_url_id, src_id, alt_id, width, height, has_alt_attr FROM images \
+         WHERE crawl_id = ? ORDER BY id",
     )
     .bind(crawl_id)
     .fetch(pool);
-    let mut images_by_url: std::collections::HashMap<String, Vec<ImageRef>> =
+    let mut images_by_url: std::collections::HashMap<i64, Vec<ImageRef>> =
         std::collections::HashMap::new();
-    let mut texts = SharedTexts::default();
-    while let Some((page_url, src, alt, width, height, has_alt_attr)) = rows.try_next().await? {
-        images_by_url.entry(page_url).or_default().push(ImageRef {
-            src: texts.share(src),
-            alt: alt.map(|alt| texts.share(alt)),
+    while let Some((url_id, src_id, alt_id, width, height, has_alt_attr)) = rows.try_next().await? {
+        images_by_url.entry(url_id).or_default().push(ImageRef {
+            src: texts.get(src_id)?,
+            alt: texts.optional(alt_id)?,
             width: width.map(|w| w as u32),
             height: height.map(|h| h as u32),
             has_alt_attr: has_alt_attr != 0,
@@ -1809,22 +1967,23 @@ async fn load_images_by_url(
 async fn load_a11y_by_url(
     pool: &SqlitePool,
     crawl_id: i64,
-) -> Result<std::collections::HashMap<String, Vec<A11yIssue>>, sqlx::Error> {
+    texts: &CrawlTexts,
+) -> Result<std::collections::HashMap<i64, Vec<A11yIssue>>, sqlx::Error> {
     use futures::TryStreamExt as _;
-    let mut rows = sqlx::query_as::<_, (String, String, String, Option<String>, Option<String>)>(
-        "SELECT page_url, rule, impact, target, html FROM a11y_violations WHERE crawl_id = ?",
+    let mut rows = sqlx::query_as::<_, (i64, i64, i64, Option<i64>, Option<i64>)>(
+        "SELECT page_url_id, rule_id, impact_id, target_id, html_id FROM a11y_violations \
+         WHERE crawl_id = ? ORDER BY id",
     )
     .bind(crawl_id)
     .fetch(pool);
-    let mut a11y_by_url: std::collections::HashMap<String, Vec<A11yIssue>> =
+    let mut a11y_by_url: std::collections::HashMap<i64, Vec<A11yIssue>> =
         std::collections::HashMap::new();
-    let mut texts = SharedTexts::default();
-    while let Some((page_url, rule, impact, target, html)) = rows.try_next().await? {
-        a11y_by_url.entry(page_url).or_default().push(A11yIssue {
-            rule: texts.share(rule),
-            impact: texts.share(impact),
-            target: target.map(|target| texts.share(target)),
-            html: html.map(|html| texts.share(html)),
+    while let Some((url_id, rule_id, impact_id, target_id, html_id)) = rows.try_next().await? {
+        a11y_by_url.entry(url_id).or_default().push(A11yIssue {
+            rule: texts.get(rule_id)?,
+            impact: texts.get(impact_id)?,
+            target: texts.optional(target_id)?,
+            html: texts.optional(html_id)?,
         });
     }
     Ok(a11y_by_url)
@@ -1833,9 +1992,10 @@ async fn load_a11y_by_url(
 async fn load_sd_issue_rows(
     pool: &SqlitePool,
     crawl_id: i64,
-) -> Result<Vec<(String, String, String, String, String)>, sqlx::Error> {
+) -> Result<Vec<(i64, String, String, String, String)>, sqlx::Error> {
     sqlx::query_as(
-        "SELECT page_url, severity, type_name, code, message FROM sd_issues WHERE crawl_id = ?",
+        "SELECT page_url_id, severity, type_name, code, message FROM sd_issues \
+         WHERE crawl_id = ? ORDER BY id",
     )
     .bind(crawl_id)
     .fetch_all(pool)
@@ -1862,11 +2022,14 @@ async fn load_layout_rows(
 async fn load_sitemap_rows(
     pool: &SqlitePool,
     crawl_id: i64,
-) -> Result<Vec<(String, String, Option<String>)>, sqlx::Error> {
-    sqlx::query_as("SELECT page_url, sitemap_url, lastmod FROM sitemap_urls WHERE crawl_id = ?")
-        .bind(crawl_id)
-        .fetch_all(pool)
-        .await
+) -> Result<Vec<(i64, i64, Option<i64>)>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT page_url_id, sitemap_url_id, lastmod_id FROM sitemap_urls \
+         WHERE crawl_id = ? ORDER BY id",
+    )
+    .bind(crawl_id)
+    .fetch_all(pool)
+    .await
 }
 
 async fn load_ecommerce_rows(
@@ -1875,7 +2038,7 @@ async fn load_ecommerce_rows(
 ) -> Result<Vec<EcommerceRow>, sqlx::Error> {
     sqlx::query_as(
         r#"
-        SELECT page_url, page_type, price, currency, availability,
+        SELECT page_url_id, page_type, price, currency, availability,
                sku, gtin, brand, has_image, has_description, has_review_or_rating
         FROM ecommerce WHERE crawl_id = ?
         "#,
@@ -1891,10 +2054,10 @@ pub async fn load_simhashes_for_crawl(
 ) -> Result<Vec<(String, u64, Option<String>)>, sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, Option<i64>, Option<String>)>(
         r#"
-        SELECT url, simhash, hash
-        FROM pages
-        WHERE crawl_id = ? AND simhash IS NOT NULL
-        ORDER BY id
+        SELECT t.text, p.simhash, p.hash
+        FROM pages p JOIN texts t ON t.id = p.url_id
+        WHERE p.crawl_id = ? AND p.simhash IS NOT NULL
+        ORDER BY p.id
         "#,
     )
     .bind(crawl_id)
@@ -1920,11 +2083,13 @@ pub async fn update_near_duplicates(
             serde_json::to_string(dup_urls).ok()
         };
         sqlx::query(
-            "UPDATE pages SET closest_similarity = ?, near_duplicate_count = ?, near_duplicate_urls_json = ? WHERE crawl_id = ? AND url = ?",
+            "UPDATE pages SET closest_similarity = ?, near_duplicate_count = ?, near_duplicate_urls_json = ?
+             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
         )
         .bind(*similarity as i64)
         .bind(*count as i64)
         .bind(dup_urls_json)
+        .bind(crawl_id)
         .bind(crawl_id)
         .bind(url)
         .execute(&mut *tx)
@@ -1940,14 +2105,18 @@ pub async fn insert_sitemap_urls(
     sitemap_urls: &[crate::crawl::sitemap::SitemapUrl],
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
+    let mut texts = TextIds::new(crawl_id);
     for entry in sitemap_urls {
+        let sitemap_id = texts.id(&mut tx, &entry.sitemap_url).await?;
+        let page_id = texts.id(&mut tx, &entry.page_url).await?;
+        let lastmod_id = texts.optional_id(&mut tx, entry.lastmod.as_deref()).await?;
         sqlx::query(
-            "INSERT INTO sitemap_urls (crawl_id, sitemap_url, page_url, lastmod) VALUES (?, ?, ?, ?)",
+            "INSERT INTO sitemap_urls (crawl_id, sitemap_url_id, page_url_id, lastmod_id) VALUES (?, ?, ?, ?)",
         )
         .bind(crawl_id)
-        .bind(&entry.sitemap_url)
-        .bind(&entry.page_url)
-        .bind(entry.lastmod.as_deref())
+        .bind(sitemap_id)
+        .bind(page_id)
+        .bind(lastmod_id)
         .execute(&mut *tx)
         .await?;
     }
@@ -1968,10 +2137,14 @@ pub async fn load_sitemap_orphans(
 ) -> Result<Vec<SitemapStatus>, sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, String, Option<String>)>(
         r#"
-        SELECT su.page_url, su.sitemap_url, su.lastmod
+        SELECT page.text, sitemap.text, lastmod.text
         FROM sitemap_urls su
-        LEFT JOIN pages p ON p.crawl_id = su.crawl_id AND p.url = su.page_url
+        JOIN texts page ON page.id = su.page_url_id
+        JOIN texts sitemap ON sitemap.id = su.sitemap_url_id
+        LEFT JOIN texts lastmod ON lastmod.id = su.lastmod_id
+        LEFT JOIN pages p ON p.crawl_id = su.crawl_id AND p.url_id = su.page_url_id
         WHERE su.crawl_id = ? AND p.id IS NULL
+        ORDER BY su.id
         "#,
     )
     .bind(crawl_id)
@@ -2136,6 +2309,7 @@ mod tests {
         assert_eq!(
             steps,
             vec![
+                LoadStep::Texts,
                 LoadStep::Links,
                 LoadStep::PageDetails,
                 LoadStep::Inlinks,

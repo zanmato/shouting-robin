@@ -1551,14 +1551,18 @@ async fn run_crawl_depth_analysis(
     root_url: &str,
 ) -> Result<(), sqlx::Error> {
     let link_rows = sqlx::query_as::<_, (String, String)>(
-        "SELECT src_url, dst_url FROM links WHERE crawl_id = ?",
+        "SELECT s.text, d.text FROM links l
+         JOIN texts s ON s.id = l.src_url_id
+         JOIN texts d ON d.id = l.dst_url_id
+         WHERE l.crawl_id = ? ORDER BY l.id",
     )
     .bind(crawl_id)
     .fetch_all(pool)
     .await?;
 
     let page_rows = sqlx::query_as::<_, (String, Option<String>)>(
-        "SELECT url, redirect_url FROM pages WHERE crawl_id = ?",
+        "SELECT t.text, p.redirect_url FROM pages p JOIN texts t ON t.id = p.url_id
+         WHERE p.crawl_id = ? ORDER BY p.id",
     )
     .bind(crawl_id)
     .fetch_all(pool)
@@ -1640,7 +1644,10 @@ const RATE_LIMIT_RETRIES: u8 = 2;
 
 async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
     let link_rows = sqlx::query_as::<_, (String, String)>(
-        "SELECT src_url, dst_url FROM links WHERE crawl_id = ? AND kind = 'internal'",
+        "SELECT s.text, d.text FROM links l
+         JOIN texts s ON s.id = l.src_url_id
+         JOIN texts d ON d.id = l.dst_url_id
+         WHERE l.crawl_id = ? AND l.internal = 1 ORDER BY l.id",
     )
     .bind(crawl_id)
     .fetch_all(pool)
@@ -1810,7 +1817,9 @@ pub(crate) fn hreflang_issues_for_page(
 
 async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
-        r#"SELECT url, hreflang_tags_json, canonical FROM pages WHERE crawl_id = ?"#,
+        r#"SELECT t.text, p.hreflang_tags_json, p.canonical FROM pages p
+           JOIN texts t ON t.id = p.url_id
+           WHERE p.crawl_id = ? ORDER BY p.id"#,
     )
     .bind(crawl_id)
     .fetch_all(pool)

@@ -36,6 +36,8 @@ use crate::views::results_grid::{
     IssueFilter, filters_for_tab, matching_urls, tab_filter_counts_for_test, tab_is_flattened,
 };
 
+mod migration_check;
+
 const LONG_PATH: &str = "/this-is-a-very-long-url-path-segment-that-keeps-going-and-going-and-going-well-past-one-hundred-and-fifteen-characters-total-x";
 
 /// Internal HTML routes linked from the home page so the spider discovers them.
@@ -818,14 +820,7 @@ fn chrome_test_guard() -> std::sync::MutexGuard<'static, ()> {
 }
 
 fn crawl_and_load(root_url: &str, render_mode: RenderMode, timeout: Duration) -> Vec<PageRecord> {
-    let _chrome_guard = matches!(render_mode, RenderMode::Chrome).then(chrome_test_guard);
-
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .thread_stack_size(8 * 1024 * 1024)
-        .build()
-        .unwrap();
-
+    let rt = test_runtime();
     let pool = rt.block_on(async {
         let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
         sqlx::query(
@@ -837,7 +832,31 @@ fn crawl_and_load(root_url: &str, render_mode: RenderMode, timeout: Duration) ->
         crate::storage::run_migrations(&pool).await.unwrap();
         pool
     });
+    let crawl_id = crawl_into(&rt, &pool, root_url, render_mode, timeout);
+    rt.block_on(crate::storage::load_pages_for_crawl(
+        &pool, crawl_id, root_url,
+    ))
+    .expect("load pages")
+}
 
+fn test_runtime() -> tokio::runtime::Runtime {
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .thread_stack_size(8 * 1024 * 1024)
+        .build()
+        .unwrap()
+}
+
+/// Crawls `root_url` into `pool` and returns the crawl's id once it finished
+/// or timed out.
+fn crawl_into(
+    rt: &tokio::runtime::Runtime,
+    pool: &sqlx::SqlitePool,
+    root_url: &str,
+    render_mode: RenderMode,
+    timeout: Duration,
+) -> i64 {
+    let _chrome_guard = matches!(render_mode, RenderMode::Chrome).then(chrome_test_guard);
     let (tx, rx) = crate::crawl::engine::channel();
     let (cancel, fut) = {
         let mut engine = crate::crawl::engine::CrawlEngine::new();
@@ -897,18 +916,13 @@ fn crawl_and_load(root_url: &str, render_mode: RenderMode, timeout: Duration) ->
         }
     }
 
-    let pages = rt.block_on(async {
-        let crawl_id: i64 = sqlx::query_scalar("SELECT id FROM crawls ORDER BY id DESC LIMIT 1")
-            .fetch_one(&pool)
-            .await
-            .expect("crawl row should exist");
-        crate::storage::load_pages_for_crawl(&pool, crawl_id, root_url)
-            .await
-            .expect("load pages")
-    });
-
+    let crawl_id: i64 = rt
+        .block_on(
+            sqlx::query_scalar("SELECT id FROM crawls ORDER BY id DESC LIMIT 1").fetch_one(pool),
+        )
+        .expect("crawl row should exist");
     cancel.store(true, Ordering::Relaxed);
-    pages
+    crawl_id
 }
 
 /// Records for conditions a normalized live crawl cannot deterministically

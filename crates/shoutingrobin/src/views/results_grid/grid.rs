@@ -435,9 +435,11 @@ impl ResultsGrid {
         cx: &mut Context<Self>,
     ) -> bool {
         let delegate = self.state.read(cx).delegate();
-        let Some(row_ix) =
-            (0..delegate.filtered_count()).find(|&ix| delegate.record_at(ix).is_some_and(&matches))
-        else {
+        let Some(row_ix) = (0..delegate.filtered_count()).find(|&ix| {
+            delegate
+                .record_at(ix)
+                .is_some_and(|record| matches(&record))
+        }) else {
             return false;
         };
         self.state
