@@ -7778,6 +7778,8 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "vsx-themes",
+ "xxhash-rust",
+ "zstd",
 ]
 
 [[package]]
@@ -7971,7 +7973,7 @@ dependencies = [
 [[package]]
 name = "spider"
 version = "2.54.0"
-source = "git+https://github.com/zanmato/spider?branch=shouting-robin#2b016e9adb2f65376ccafc260d2aadf588f3a03c"
+source = "git+https://github.com/zanmato/spider?branch=shouting-robin#a7b7fb9b1d7d13e5316f23c0de02f7c79b106041"
 dependencies = [
  "ahash",
  "aho-corasick",
@@ -8024,7 +8026,7 @@ dependencies = [
 [[package]]
 name = "spider_agent_types"
 version = "2.54.0"
-source = "git+https://github.com/zanmato/spider?branch=shouting-robin#2b016e9adb2f65376ccafc260d2aadf588f3a03c"
+source = "git+https://github.com/zanmato/spider?branch=shouting-robin#a7b7fb9b1d7d13e5316f23c0de02f7c79b106041"
 dependencies = [
  "aho-corasick",
  "llm_models_spider",

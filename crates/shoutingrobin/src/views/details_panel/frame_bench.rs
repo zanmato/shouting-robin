@@ -348,6 +348,7 @@ fn run_scenario(scenario: Scenario, cx: &mut BenchAppContext) {
                 Some(DetailsSelection::Page {
                     record: Box::new(pages[0].clone()),
                     references: Vec::new(),
+                    outlink_statuses: Vec::new(),
                 }),
                 None,
                 cx,
@@ -403,6 +404,7 @@ fn run_scenario(scenario: Scenario, cx: &mut BenchAppContext) {
                     Some(DetailsSelection::Page {
                         record: Box::new(page),
                         references: Vec::new(),
+                        outlink_statuses: Vec::new(),
                     }),
                     None,
                     cx,

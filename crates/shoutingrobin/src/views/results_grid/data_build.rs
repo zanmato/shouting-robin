@@ -218,6 +218,27 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Internal Outlinks With No Anchor Text" => {
             Some((ResultTab::Links, IssueFilter::LinkNoAnchorText))
         }
+        "Temporary Redirects" => Some((ResultTab::ResponseCodes, IssueFilter::RedirectTemporary)),
+        "Redirects to an Error" => Some((ResultTab::ResponseCodes, IssueFilter::RedirectToError)),
+        "HTTPS Pages Linking to HTTP" => Some((ResultTab::Links, IssueFilter::LinkToHttp)),
+        "Pages With One Inlink" => Some((ResultTab::Links, IssueFilter::SingleInlink)),
+        "Pages Without Internal Outlinks" => {
+            Some((ResultTab::Links, IssueFilter::NoInternalOutlinks))
+        }
+        "Canonical Points to a Redirect" => {
+            Some((ResultTab::Canonicals, IssueFilter::CanonicalToRedirect))
+        }
+        "Canonical Points to an Error" => {
+            Some((ResultTab::Canonicals, IssueFilter::CanonicalToError))
+        }
+        "Canonical Points to HTTP" => Some((ResultTab::Canonicals, IssueFilter::CanonicalToHttp)),
+        "Canonical Chains" => Some((ResultTab::Canonicals, IssueFilter::CanonicalChain)),
+        "Canonicalised URLs in Sitemap" => {
+            Some((ResultTab::Sitemaps, IssueFilter::CanonicalisedInSitemap))
+        }
+        "Slow HTML Response" => Some((ResultTab::Performance, IssueFilter::SlowResponse)),
+        "HTML Over 2 MB" => Some((ResultTab::Performance, IssueFilter::LargeHtml)),
+        "Assets Not Cached" => Some((ResultTab::Internal, IssueFilter::NotCached)),
         _ => None,
     }
 }
@@ -1302,6 +1323,148 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
         hint: "Without Product markup a product page earns no price, availability or \
                review details in search results. Check the template's markup for the \
                condition that leaves it out on these pages.",
+    },
+    FilterDerivedRule {
+        name: "Temporary Redirects",
+        tab: ResultTab::ResponseCodes,
+        filter: IssueFilter::RedirectTemporary,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::InternalUrls,
+        description: "URLs that redirect with a 302, 303 or 307, which says the move is \
+                      temporary, so search engines keep the old URL indexed.",
+        hint: "Use a 301 or 308 for a move that is permanent.",
+    },
+    FilterDerivedRule {
+        name: "Redirects to an Error",
+        tab: ResultTab::ResponseCodes,
+        filter: IssueFilter::RedirectToError,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::High,
+        denominator: Denominator::InternalUrls,
+        description: "Redirects that, followed to the end, land on a 4xx or 5xx page.",
+        hint: "Point the redirect at a page that answers 200, or let the old URL return \
+               404 or 410 if nothing replaced it.",
+    },
+    FilterDerivedRule {
+        name: "HTTPS Pages Linking to HTTP",
+        tab: ResultTab::Links,
+        filter: IssueFilter::LinkToHttp,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Secure pages with links to the site's own pages over plain HTTP.",
+        hint: "Change the links to HTTPS, so a click does not leave the secure site or \
+               depend on a redirect to get back to it.",
+    },
+    FilterDerivedRule {
+        name: "Pages With One Inlink",
+        tab: ResultTab::Links,
+        filter: IssueFilter::SingleInlink,
+        issue_type: IssueType::Opportunity,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Indexable pages that exactly one other page links to.",
+        hint: "Link to them from related pages or navigation, so crawlers find them \
+               more easily and they get more internal link equity.",
+    },
+    FilterDerivedRule {
+        name: "Pages Without Internal Outlinks",
+        tab: ResultTab::Links,
+        filter: IssueFilter::NoInternalOutlinks,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Indexable pages that link to no other page of the site.",
+        hint: "Add links to related pages, so visitors and crawlers can go on from here.",
+    },
+    FilterDerivedRule {
+        name: "Canonical Points to a Redirect",
+        tab: ResultTab::Canonicals,
+        filter: IssueFilter::CanonicalToRedirect,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages whose canonical names a URL that redirects elsewhere.",
+        hint: "Point the canonical at the redirect's final URL.",
+    },
+    FilterDerivedRule {
+        name: "Canonical Points to an Error",
+        tab: ResultTab::Canonicals,
+        filter: IssueFilter::CanonicalToError,
+        issue_type: IssueType::Issue,
+        priority: IssuePriority::High,
+        denominator: Denominator::Documents,
+        description: "Pages whose canonical names a URL that answers 4xx or 5xx.",
+        hint: "Point the canonical at a page that answers 200, or make it self referencing.",
+    },
+    FilterDerivedRule {
+        name: "Canonical Points to HTTP",
+        tab: ResultTab::Canonicals,
+        filter: IssueFilter::CanonicalToHttp,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "HTTPS pages whose canonical is an HTTP URL, which asks search engines \
+                      to index the insecure copy.",
+        hint: "Write canonicals with https://.",
+    },
+    FilterDerivedRule {
+        name: "Canonical Chains",
+        tab: ResultTab::Canonicals,
+        filter: IssueFilter::CanonicalChain,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages whose canonical names a page that canonicalises to another URL \
+                      again.",
+        hint: "Point the canonical straight at the final page. Search engines may ignore \
+               a canonical that leads to another one.",
+    },
+    FilterDerivedRule {
+        name: "Canonicalised URLs in Sitemap",
+        tab: ResultTab::Sitemaps,
+        filter: IssueFilter::CanonicalisedInSitemap,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::SitemapUrls,
+        description: "Pages a sitemap lists whose canonical points at another URL.",
+        hint: "List the canonical URL in the sitemap instead.",
+    },
+    FilterDerivedRule {
+        name: "Slow HTML Response",
+        tab: ResultTab::Performance,
+        filter: IssueFilter::SlowResponse,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::Documents,
+        description: "Pages whose HTML took longer than a second to arrive.",
+        hint: "Look at server side rendering time, caching and database queries for \
+               these templates.",
+    },
+    FilterDerivedRule {
+        name: "HTML Over 2 MB",
+        tab: ResultTab::Performance,
+        filter: IssueFilter::LargeHtml,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages whose HTML document is larger than 2 MB.",
+        hint: "Look for inlined data, base64 images or markup a template repeats, and \
+               load what is not needed up front later.",
+    },
+    FilterDerivedRule {
+        name: "Assets Not Cached",
+        tab: ResultTab::Internal,
+        filter: IssueFilter::NotCached,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Medium,
+        denominator: Denominator::InternalUrls,
+        description: "Assets the browser fetched again on later pages instead of reusing \
+                      its copy, because of the server's caching headers.",
+        hint: "Send a Cache-Control with a max-age for static files, and a long one with \
+               immutable for files whose names change with their content. no-store and \
+               max-age=0 send the browser back for them on every page.",
     },
 ];
 

@@ -38,6 +38,9 @@ use crate::views::results_grid::{
 
 mod migration_check;
 
+/// Longer than the one second the Slow Response filter allows the HTML.
+const SLOW_RESPONSE_DELAY: Duration = Duration::from_millis(1300);
+
 const LONG_PATH: &str = "/this-is-a-very-long-url-path-segment-that-keeps-going-and-going-and-going-well-past-one-hundred-and-fifteen-characters-total-x";
 
 /// Internal HTML routes linked from the home page so the spider discovers them.
@@ -58,6 +61,9 @@ fn linked_paths() -> Vec<String> {
         "/low-content",
         "/no-body",
         "/h2-before-h1",
+        "/cache-a",
+        "/cache-b",
+        "/cache-c",
         "/large",
         "/images",
         "/canonical-self",
@@ -93,6 +99,11 @@ fn linked_paths() -> Vec<String> {
         "/links",
         "/a11y",
         "/spa",
+        "/canonical-to-missing",
+        "/canonical-chain",
+        "/single-inlink-parent",
+        "/slow-response",
+        "/large-html",
     ]
     .iter()
     .map(|s| s.to_string())
@@ -130,11 +141,27 @@ fn spawn_site() -> (std::thread::JoinHandle<()>, u16, Arc<AtomicBool>) {
                         .to_string();
 
                     let (status_line, extra_headers, body) = route(&path, &base);
+                    // A route serving an asset names its own type.
+                    let content_type = if extra_headers.starts_with("Content-Type:") {
+                        ""
+                    } else {
+                        "Content-Type: text/html; charset=utf-8\r\n"
+                    };
                     let response = format!(
-                        "{status_line}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {len}\r\nServer: coverage-test\r\n{extra}Connection: close\r\n\r\n{body}",
+                        "{status_line}\r\n{content_type}Content-Length: {len}\r\nServer: coverage-test\r\n{extra}Connection: close\r\n\r\n{body}",
                         len = body.len(),
                         extra = extra_headers,
                     );
+                    // Held back on a thread of its own, so the wait does not
+                    // stall every other request behind it.
+                    if path == "/slow-response" {
+                        std::thread::spawn(move || {
+                            std::thread::sleep(SLOW_RESPONSE_DELAY);
+                            let _ = stream.write_all(response.as_bytes());
+                            let _ = stream.flush();
+                        });
+                        continue;
+                    }
                     let _ = stream.write_all(response.as_bytes());
                     let _ = stream.flush();
                 }
@@ -245,6 +272,7 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                  <url><loc>{base}/</loc><lastmod>2026-08-01</lastmod></url>\
                  <url><loc>{base}/robots-meta</loc></url>\
                  <url><loc>{base}/not-found</loc></url>\
+                 <url><loc>{base}/canonical-other</loc></url>\
                  </urlset>"
             );
             (ok, no_headers, xml)
@@ -767,6 +795,118 @@ fn route(path: &str, base: &str) -> (&'static str, String, String) {
                 lorem(80)
             ),
         ),
+        "/canonical-to-missing" => (
+            ok,
+            no_headers,
+            doc(
+                "Canonical Naming A URL That Answers Not Found",
+                &format!(
+                    "<meta name=\"description\" content=\"A page whose canonical answers 404.\">\
+                     <link rel=\"canonical\" href=\"{base}/not-found\">"
+                ),
+                "<h1>Canonical To Missing</h1><h2>Sub</h2><p>canonical to missing body</p>",
+            ),
+        ),
+        // Canonicalises to `/canonical-other`, which canonicalises to `/`.
+        "/canonical-chain" => (
+            ok,
+            no_headers,
+            doc(
+                "Canonical Naming A Page That Is Canonicalised Again",
+                &format!(
+                    "<meta name=\"description\" content=\"A page whose canonical target has a canonical of its own.\">\
+                     <link rel=\"canonical\" href=\"{base}/canonical-other\">"
+                ),
+                "<h1>Canonical Chain</h1><h2>Sub</h2><p>canonical chain body</p>",
+            ),
+        ),
+        // The only page linking to `/single-inlink`, which the home page does
+        // not link to.
+        // Three pages sharing the same assets, so Chrome loads each asset
+        // three times and keeps or refetches it as its headers say.
+        "/cache-a" | "/cache-b" | "/cache-c" => {
+            let name = route_path.trim_start_matches("/cache-");
+            (
+                ok,
+                no_headers,
+                doc(
+                    &format!("Page {name} Sharing Stylesheets And A Logo With Two Others"),
+                    &format!(
+                        "<meta name=\"description\" content=\"Shared asset page {name}, loading \
+                         one asset the server lets the browser keep and two it does not.\">\
+                         <link rel=\"stylesheet\" href=\"/cache/no-store.css\">\
+                         <link rel=\"stylesheet\" href=\"/cache/long-lived.css\">"
+                    ),
+                    &format!(
+                        "<h1>Shared Assets {name}</h1><h2>Sub</h2>\
+                         <img src=\"/cache/max-age-zero.svg\" alt=\"logo\" width=\"10\" height=\"10\">\
+                         <p>shared asset page {name}</p>"
+                    ),
+                ),
+            )
+        }
+        "/cache/no-store.css" => (
+            ok,
+            "Content-Type: text/css\r\nCache-Control: no-store\r\n".to_string(),
+            "body { margin: 0; }".to_string(),
+        ),
+        "/cache/long-lived.css" => (
+            ok,
+            "Content-Type: text/css\r\nCache-Control: public, max-age=31536000, immutable\r\n"
+                .to_string(),
+            "p { margin: 0; }".to_string(),
+        ),
+        "/cache/max-age-zero.svg" => (
+            ok,
+            "Content-Type: image/svg+xml\r\nCache-Control: public, max-age=0\r\n".to_string(),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"></svg>"
+                .to_string(),
+        ),
+        "/single-inlink-parent" => (
+            ok,
+            no_headers,
+            doc(
+                "Parent Of The Page With A Single Inlink",
+                "<meta name=\"description\" content=\"The one page that links to the single inlink page.\">",
+                "<h1>Single Inlink Parent</h1><h2>Sub</h2>\
+                 <p><a href=\"/single-inlink\">the page only linked from here</a></p>",
+            ),
+        ),
+        "/single-inlink" => (
+            ok,
+            no_headers,
+            plain(
+                "Page That Exactly One Other Page Links To",
+                "Single Inlink",
+                "Meta for the page that only the single inlink parent links to.",
+                "Sub",
+                "the unique single inlink body text",
+            ),
+        ),
+        "/slow-response" => (
+            ok,
+            no_headers,
+            plain(
+                "Page Whose HTML Takes Over A Second To Arrive",
+                "Slow Response",
+                "Meta for the page the test server holds back before answering.",
+                "Sub",
+                "the unique slow response body text",
+            ),
+        ),
+        // Over 2 MB of markup in a comment, so the page's text stays small.
+        "/large-html" => (
+            ok,
+            no_headers,
+            doc(
+                "Page Whose HTML Document Is Over Two Megabytes",
+                "<meta name=\"description\" content=\"A page carrying more than two megabytes of markup.\">",
+                &format!(
+                    "<h1>Large HTML</h1><h2>Sub</h2><p>large html body</p><!-- {} -->",
+                    "x".repeat(2_100_000)
+                ),
+            ),
+        ),
         p if p == LONG_PATH => (
             ok,
             no_headers,
@@ -929,6 +1069,7 @@ fn crawl_into(
 /// produce. Injected into the loaded page set so the pure filter logic is
 /// still exercised. See module docs.
 fn synthetic_pages(base: &str) -> Vec<PageRecord> {
+    let secure_base = base.replacen("http://", "https://", 1);
     let internal = |url: String| PageRecord {
         url,
         status: Some(200),
@@ -993,6 +1134,38 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
         PageRecord {
             redirect_url: Some(format!("{base}/large")),
             ..internal(format!("{base}/syn-redirect"))
+        },
+        // Temporary redirects, one nothing followed and one the redirect pass
+        // followed. Spider reports a redirect to loopback it refuses to follow
+        // as a 599, so the fixture origin cannot answer with one.
+        PageRecord {
+            status: Some(302),
+            ..internal(format!("{base}/syn-temp-redirect"))
+        },
+        PageRecord {
+            redirect_url: Some(format!("{base}/large")),
+            redirect_status: Some(307),
+            ..internal(format!("{base}/syn-temp-followed"))
+        },
+        PageRecord {
+            canonical: Some(format!("{base}/syn-redirect")),
+            ..internal(format!("{base}/syn-canonical-to-redirect"))
+        },
+        // A followed redirect whose target answers 404.
+        PageRecord {
+            redirect_url: Some(format!("{base}/not-found")),
+            redirect_status: Some(301),
+            ..internal(format!("{base}/syn-redirect-to-404"))
+        },
+        // HTTPS pages, which the plain HTTP fixture origin cannot serve: one
+        // linking to its own site over HTTP, one with an HTTP canonical.
+        PageRecord {
+            outlinks: thin_vec::thin_vec![link(&format!("{base}/large"), Some("insecure"), None)],
+            ..internal(format!("{secure_base}/syn-https-links"))
+        },
+        PageRecord {
+            canonical: Some(format!("{base}/large")),
+            ..internal(format!("{secure_base}/syn-https-canonical"))
         },
         // Two hops: a chain, but not a loop.
         PageRecord {
@@ -1095,6 +1268,20 @@ fn synthetic_pages(base: &str) -> Vec<PageRecord> {
             url: "https://cdn.example.net/asset.png".to_string(),
             status: Some(200),
             content_type: Some("image/png".to_string().into()),
+            is_internal: false,
+            ..Default::default()
+        },
+        // External URLs the resource pass found broken, which the coverage
+        // crawl does not run.
+        PageRecord {
+            url: "https://cdn.example.net/missing.js".to_string(),
+            status: Some(404),
+            is_internal: false,
+            ..Default::default()
+        },
+        PageRecord {
+            url: "https://cdn.example.net/down.css".to_string(),
+            status: Some(503),
             is_internal: false,
             ..Default::default()
         },
@@ -1265,11 +1452,22 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         // Response codes
         F::Status2xx => both(&["/"], &["/not-found"]),
         F::Status3xx => both(&["/syn-3xx"], &[]),
-        F::Status4xx => both(&["/not-found"], &["/"]),
-        F::Status5xx => both(&["/server-error"], &["/"]),
+        F::Status4xx => match tab {
+            ResultTab::External => both(&["/missing.js"], &["/asset.png", "/down.css"]),
+            _ => both(&["/not-found"], &["/"]),
+        },
+        F::Status5xx => match tab {
+            ResultTab::External => both(&["/down.css"], &["/asset.png", "/missing.js"]),
+            _ => both(&["/server-error"], &["/"]),
+        },
         F::Redirects => both(&["/syn-redirect", "/syn-3xx"], &["/"]),
         F::RedirectLoop => both(&["/syn-loop-a"], &["/syn-redirect", "/syn-chain"]),
         F::RedirectChain => both(&["/syn-chain", "/syn-loop-a"], &["/syn-redirect"]),
+        F::RedirectTemporary => both(
+            &["/syn-temp-redirect", "/syn-temp-followed"],
+            &["/syn-3xx", "/syn-redirect"],
+        ),
+        F::RedirectToError => both(&["/syn-redirect-to-404"], &["/syn-redirect", "/syn-chain"]),
 
         // Titles / meta / headings (uniform across the four heading tabs)
         F::Missing => both(&["/missing-all"], &["/", "/syn-3xx"]),
@@ -1303,6 +1501,16 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
             both(&["/syn-canonical-to-noindex"], &["/canonical-other"])
         }
         F::MissingCanonical => both(&["/missing-all"], &["/canonical-self"]),
+        F::CanonicalToRedirect => both(
+            &["/syn-canonical-to-redirect"],
+            &["/canonical-other", "/canonical-to-missing"],
+        ),
+        F::CanonicalToError => both(
+            &["/canonical-to-missing"],
+            &["/canonical-other", "/syn-canonical-to-redirect"],
+        ),
+        F::CanonicalChain => both(&["/canonical-chain"], &["/canonical-other"]),
+        F::CanonicalToHttp => both(&["/syn-https-canonical"], &["/canonical-other"]),
 
         // Hreflang
         F::ContainsHreflang => both(&["/hreflang-a", "/hreflang-b"], &["/"]),
@@ -1344,6 +1552,13 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::SlowCls => http(&["/slow-perf"], &[]),
         F::SlowFcp => http(&["/slow-perf"], &[]),
         F::SlowTtfb => http(&["/slow-perf"], &[]),
+        F::SlowResponse => both(&["/slow-response"], &["/"]),
+        F::LargeHtml => both(&["/large-html"], &["/", "/large"]),
+        // Only Chrome loads assets, so an HTTP crawl has no fetches to count.
+        F::NotCached => chrome(
+            &["/cache/no-store.css", "/cache/max-age-zero.svg"],
+            &["/cache/long-lived.css", "/cache-a"],
+        ),
 
         // Ecommerce
         F::IsProductPage => both(&["/sd-product", "/product-bare"], &["/"]),
@@ -1366,6 +1581,7 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::UrlsNotInSitemap => both(&["/images"], &["/"]),
         F::SitemapOrphans => both(&["/sitemap-orphan"], &[]),
         F::NonIndexableInSitemap => both(&["/robots-meta"], &[]),
+        F::CanonicalisedInSitemap => both(&["/canonical-other"], &["/robots-meta", "/"]),
         // The sitemap advertises a URL that 404s, which is the point of the
         // rule: a sitemap should list URLs that answer 200.
         F::SitemapNon200 => both(&["/not-found"], &["/"]),
@@ -1428,6 +1644,15 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::LinkNofollow => both(&["/links", "/syn-links"], &["/external"]),
         F::LinkNoAnchorText => both(&["/syn-links"], &["/external"]),
         F::LinkExternal => both(&["/external", "/syn-links"], &["/links"]),
+        F::LinkToHttp => both(&["/syn-https-links"], &["/links", "/syn-links"]),
+        // Every fixture page the home page links to has that one inlink, so
+        // the negative is a page linked from two: the home page and `/links`.
+        F::SingleInlink => both(&["/single-inlink"], &["/large", "/robots-meta"]),
+        // Most fixture pages link nowhere. `/external` links only off site.
+        F::NoInternalOutlinks => both(
+            &["/large", "/external"],
+            &["/", "/links", "/single-inlink-parent", "/robots-meta"],
+        ),
 
         // Overview issue/priority + depth: page-level no-ops that return the
         // tab's full base set.
@@ -1493,6 +1718,36 @@ fn run_coverage(render_mode: RenderMode) {
 
     let is_http = matches!(render_mode, RenderMode::Http);
     let mut failures: Vec<String> = Vec::new();
+
+    // Chrome's own record of each response describes the assets it loaded:
+    // the Resource Timing entries alone left them without a size or headers.
+    if !is_http {
+        match pages
+            .iter()
+            .find(|page| page.url.ends_with("/cache/long-lived.css"))
+        {
+            Some(asset) => {
+                if asset.size_bytes == 0 {
+                    failures.push("/cache/long-lived.css: no size from Chrome".to_string());
+                }
+                if !asset.headers.iter().any(|(name, value)| {
+                    name.eq_ignore_ascii_case("cache-control") && value.contains("immutable")
+                }) {
+                    failures.push(format!(
+                        "/cache/long-lived.css: no Cache-Control from Chrome, headers {:?}",
+                        asset.headers
+                    ));
+                }
+                if asset.network_fetches != Some(1) {
+                    failures.push(format!(
+                        "/cache/long-lived.css: fetched {:?} times, expected once",
+                        asset.network_fetches
+                    ));
+                }
+            }
+            None => failures.push("/cache/long-lived.css was not recorded".to_string()),
+        }
+    }
 
     for &tab in ResultTab::ALL {
         let all_paths: HashSet<String> = matching_urls(tab, IssueFilter::All, &pages)

@@ -53,6 +53,9 @@ pub enum DetailsSelection {
         /// so without these a broken image on Response Codes has no page to
         /// fix it on.
         references: Vec<ImageReference>,
+        /// The crawled status code of each outlink's destination, in the
+        /// order of `record.outlinks`. `None` for a destination not crawled.
+        outlink_statuses: Vec<Option<u16>>,
     },
     Image(Box<ImageDetails>),
 }
@@ -784,6 +787,14 @@ fn url_information_section(
             SharedString::from(format_bytes(rec.size_bytes)),
             muted,
         ))
+        .when_some(rec.transfer_bytes, |el, bytes| {
+            el.child(row(
+                order,
+                "Transferred",
+                SharedString::from(format_bytes(bytes)),
+                muted,
+            ))
+        })
         .child(row(order, "Indexability", indexability_tag, muted))
         .child(row(order, "Canonical", or_blank(&rec.canonical), muted))
         .when_some(rec.redirect_url.clone(), |el, redirect| {
@@ -1825,6 +1836,7 @@ fn tabs_for(selection: &DetailsSelection, panel: &DetailsPanel) -> Vec<(DetailsT
         DetailsSelection::Page {
             record: rec,
             references,
+            ..
         } => {
             for (tab, count) in [
                 (DetailsTab::NearDuplicates, rec.near_duplicate_urls.len()),
@@ -2077,7 +2089,12 @@ impl Render for DetailsPanel {
                 &self.outlinks_scroll,
                 link_row_sizes(rec.outlinks.len()),
                 move |this, range, cx| {
-                    let Some(rec) = selected_page(this) else {
+                    let Some(DetailsSelection::Page {
+                        record: rec,
+                        outlink_statuses,
+                        ..
+                    }) = &this.selected
+                    else {
                         return Vec::new();
                     };
                     let first = range.start;
@@ -2091,9 +2108,31 @@ impl Render for DetailsPanel {
                                 .rel
                                 .as_deref()
                                 .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
-                            let trailing = is_nofollow.then(|| {
-                                tone_tag(Tone::Warn, cx)
-                                    .child(SharedString::from("nofollow"))
+                            // Only what needs fixing is tagged: a 2xx on every
+                            // row would bury the one broken link among them.
+                            let status = outlink_statuses
+                                .get(first + offset)
+                                .copied()
+                                .flatten()
+                                .filter(|status| *status >= 300);
+                            let trailing = (status.is_some() || is_nofollow).then(|| {
+                                div()
+                                    .flex()
+                                    .gap_1()
+                                    .when_some(status, |el, status| {
+                                        let tone =
+                                            if status >= 400 { Tone::Err } else { Tone::Warn };
+                                        el.child(
+                                            tone_tag(tone, cx)
+                                                .child(SharedString::from(status.to_string())),
+                                        )
+                                    })
+                                    .when(is_nofollow, |el| {
+                                        el.child(
+                                            tone_tag(Tone::Warn, cx)
+                                                .child(SharedString::from("nofollow")),
+                                        )
+                                    })
                                     .into_any_element()
                             });
                             let anchor = link.anchor.as_deref().filter(|a| !a.trim().is_empty());

@@ -50,6 +50,20 @@ pub struct PageRecord {
     /// with no parsed document to read an outline from: a subresource, or a URL
     /// nothing was fetched for.
     pub h2_non_sequential: Option<bool>,
+    /// How many times Chrome fetched this asset over the network during the
+    /// crawl, a revalidation included. Loads from Chrome's cache are not
+    /// counted, so more than one means the server's caching headers sent the
+    /// browser back for it. `None` when it was not measured: an HTTP crawl, or
+    /// a row that is not an asset Chrome loaded.
+    pub network_fetches: Option<u32>,
+    /// How many of `network_fetches` the server answered with 304 Not
+    /// Modified: the browser kept a copy but had to ask before using it.
+    pub revalidated_fetches: Option<u32>,
+    /// Bytes Chrome received for this URL over the network, headers included
+    /// and compressed when the server compressed it, as against `size_bytes`,
+    /// the file itself. `None` when nothing came over the network: an HTTP
+    /// crawl, or a copy Chrome had in its cache.
+    pub transfer_bytes: Option<u64>,
     pub title_count: u32,
     pub hreflang_tags: ThinVec<(String, String)>,
     pub sd_types: ThinVec<String>,
@@ -97,6 +111,10 @@ pub struct PageRecord {
     /// Pages linking here only after rendering. The count above is links; this
     /// is how many distinct pages they come from.
     pub unique_csr_inlinks_count: u32,
+    /// Whether the inlink counts above cover the whole crawl. While it runs
+    /// they only count links from the pages crawled so far, so a page that
+    /// will end up with many inlinks can show one.
+    pub inlinks_complete: bool,
     pub a11y_errors: u32,
     pub a11y_warnings: u32,
     pub a11y_issues: ThinVec<A11yIssue>,

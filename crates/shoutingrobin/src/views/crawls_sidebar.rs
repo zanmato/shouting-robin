@@ -439,7 +439,20 @@ impl Render for CrawlsSidebar {
                                     .flex_col()
                                     .items_end()
                                     .gap_1()
-                                    .child(count_tag)
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_1()
+                                            .when(crawl.aborted, |el| {
+                                                el.child(
+                                                    tone_tag(Tone::Err, cx)
+                                                        .rounded_full()
+                                                        .child(SharedString::from("aborted")),
+                                                )
+                                            })
+                                            .child(count_tag),
+                                    )
                                     .child(mode_tag),
                             )
                             .context_menu({

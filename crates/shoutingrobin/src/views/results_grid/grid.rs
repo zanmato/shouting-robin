@@ -158,6 +158,23 @@ pub struct LayoutContext {
     pub note: Option<SharedString>,
 }
 
+/// Redraws the table after its delegate changed. `TableState::refresh`
+/// rebuilds the columns at their default widths, dropping any the user
+/// resized and the column bounds a drag in progress measures from, so it only
+/// runs when the delegate's columns changed. The rows need no rebuild: the
+/// table reads their count on every render.
+fn refresh_table(
+    state: &mut TableState<ResultsDelegate>,
+    columns_before: u64,
+    cx: &mut Context<TableState<ResultsDelegate>>,
+) {
+    if state.delegate().columns_version() == columns_before {
+        cx.notify();
+    } else {
+        state.refresh(cx);
+    }
+}
+
 impl ResultsGrid {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let state =
@@ -215,8 +232,9 @@ impl ResultsGrid {
     /// background.
     fn update_rows(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut ResultsDelegate)) {
         self.state.update(cx, |state, cx| {
+            let columns_before = state.delegate().columns_version();
             change(state.delegate_mut());
-            state.refresh(cx);
+            refresh_table(state, columns_before, cx);
         });
         cx.notify();
         self.refresh_counts(cx);
@@ -261,8 +279,9 @@ impl ResultsGrid {
             if let Err(error) = this.update(cx, |grid, cx| {
                 grid.counts_task = None;
                 grid.state.update(cx, |state, cx| {
+                    let columns_before = state.delegate().columns_version();
                     state.delegate_mut().finish_counts(counted);
-                    state.refresh(cx);
+                    refresh_table(state, columns_before, cx);
                 });
                 cx.notify();
                 grid.refresh_counts(cx);

@@ -41,7 +41,11 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("x_robots_tag", "X-Robots-Tag", 140., None),
             col("canonical", "Canonical", 280., None),
             col("size", "Size", 80., None),
+            col("transfer_size", "Transferred", 90., None),
             col("response_time", "Response Time", 110., None),
+            col("network_fetches", "Fetches", 70., None),
+            col("revalidated_fetches", "304s", 60., None),
+            col("cache_control", "Cache-Control", 180., None),
             col("words", "Words", 80., None),
             col("depth", "Depth", 60., None),
             col("folder_depth", "Folder Depth", 90., None),
@@ -210,6 +214,8 @@ pub(super) fn columns_for_tab(tab: ResultTab, hreflang_columns: usize) -> Vec<Co
             col("fcp", "FCP", 80., None),
             col("lcp", "LCP", 80., None),
             col("cls", "CLS", 80., None),
+            col("response_time", "Response Time", 110., None),
+            col("size", "Size", 80., None),
         ],
         ResultTab::Ecommerce => vec![
             col("address", "Address", 380., Some(ColumnFixed::Left)),
@@ -445,6 +451,8 @@ pub(super) fn is_numeric_column(key: &str) -> bool {
     matches!(
         key,
         "status_code"
+            | "network_fetches"
+            | "revalidated_fetches"
             | "title_length"
             | "title_pixel_width"
             | "meta_desc_length"
@@ -512,6 +520,7 @@ pub(super) fn is_right_aligned_column(key: &str) -> bool {
         || matches!(
             key,
             "size"
+                | "transfer_size"
                 | "image_size"
                 | "dir_total_size"
                 | "link_score"
@@ -557,6 +566,7 @@ pub(super) fn is_mono_column(key: &str) -> bool {
         || matches!(
             key,
             "address"
+                | "transfer_size"
                 | "image_src"
                 | "canonical"
                 | "a11y_target"
@@ -583,6 +593,37 @@ pub(super) fn compare_numeric(a: &str, b: &str) -> std::cmp::Ordering {
         (None, Some(_)) => std::cmp::Ordering::Greater,
         (None, None) => a.cmp(b),
     }
+}
+
+/// Columns showing a byte count as `format_size` writes it ("900 B",
+/// "1.2 KB"). Sorted as numbers alone they would put 900 B above 1.2 KB.
+pub(super) fn is_size_column(key: &str) -> bool {
+    matches!(key, "size" | "transfer_size" | "image_size")
+}
+
+/// Orders two formatted sizes by the bytes they stand for. An empty cell
+/// sorts after every size, as in [`compare_numeric`].
+pub(super) fn compare_size(a: &str, b: &str) -> std::cmp::Ordering {
+    match (parse_size(a), parse_size(b)) {
+        (Some(a_bytes), Some(b_bytes)) => a_bytes
+            .partial_cmp(&b_bytes)
+            .unwrap_or(std::cmp::Ordering::Equal),
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (None, None) => a.cmp(b),
+    }
+}
+
+fn parse_size(text: &str) -> Option<f64> {
+    let (number, unit) = text.trim().split_once(' ')?;
+    let unit_bytes = match unit {
+        "B" => 1.0,
+        "KB" => 1024.0,
+        "MB" => 1024.0 * 1024.0,
+        "GB" => 1024.0 * 1024.0 * 1024.0,
+        _ => return None,
+    };
+    Some(number.parse::<f64>().ok()? * unit_bytes)
 }
 
 pub(super) fn parse_numeric(s: &str) -> Option<f64> {

@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
@@ -54,16 +55,27 @@ fn origin_of(url: &str) -> Option<String> {
     Some(parsed.origin().ascii_serialization())
 }
 
+/// Stops between files once `cancel` is set: a shop's sitemaps can be a
+/// dozen files of 50,000 URLs, and Stop should not wait for all of them.
 pub async fn fetch_sitemap_urls(
     client: &reqwest::Client,
     sitemap_urls: &[String],
     max_depth: usize,
+    cancel: &AtomicBool,
 ) -> Vec<SitemapUrl> {
     let mut results = Vec::new();
     let mut visited: HashSet<String> = HashSet::new();
 
     for sitemap_url in sitemap_urls {
-        expand_sitemap(client, sitemap_url, max_depth, &mut visited, &mut results).await;
+        expand_sitemap(
+            client,
+            sitemap_url,
+            max_depth,
+            cancel,
+            &mut visited,
+            &mut results,
+        )
+        .await;
     }
 
     results
@@ -76,10 +88,11 @@ async fn expand_sitemap(
     client: &reqwest::Client,
     url: &str,
     depth_left: usize,
+    cancel: &AtomicBool,
     visited: &mut HashSet<String>,
     results: &mut Vec<SitemapUrl>,
 ) {
-    if depth_left == 0 || visited.contains(url) {
+    if depth_left == 0 || visited.contains(url) || cancel.load(Ordering::Relaxed) {
         return;
     }
     visited.insert(url.to_string());
@@ -94,6 +107,7 @@ async fn expand_sitemap(
                 client,
                 &child,
                 depth_left.saturating_sub(1),
+                cancel,
                 visited,
                 results,
             ))
@@ -475,6 +489,7 @@ mod tests {
             &reqwest::Client::new(),
             &[format!("{base}/index.xml")],
             3,
+            &AtomicBool::new(false),
         ));
         let attributed: Vec<(String, String)> = entries
             .into_iter()

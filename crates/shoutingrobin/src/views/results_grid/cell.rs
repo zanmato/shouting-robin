@@ -265,6 +265,32 @@ pub(super) fn cell_text(
         "canonical" => SharedString::from(record.canonical.clone().unwrap_or_default()),
         "robots" => SharedString::from(record.robots.clone().unwrap_or_default()),
         "size" => format_size(record.size_bytes),
+        "transfer_size" => record
+            .transfer_bytes
+            .map(format_size)
+            .unwrap_or_else(|| SharedString::from(NO_VALUE)),
+        "network_fetches" => SharedString::from(
+            record
+                .network_fetches
+                .map(|fetches| fetches.to_string())
+                .unwrap_or_else(|| NO_VALUE.into()),
+        ),
+        "revalidated_fetches" => SharedString::from(
+            record
+                .revalidated_fetches
+                .map(|fetches| fetches.to_string())
+                .unwrap_or_else(|| NO_VALUE.into()),
+        ),
+        // Chrome joins a header sent more than once with newlines, and a
+        // browser reads the copies as one comma separated list.
+        "cache_control" => SharedString::from(
+            record
+                .headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("cache-control"))
+                .map(|(_, value)| value.replace('\n', ", "))
+                .unwrap_or_default(),
+        ),
         "words" => SharedString::from(
             record
                 .word_count

@@ -58,6 +58,13 @@ impl AppDatabase {
 
         let mut db = Self { pool };
         db.init_schema().await?;
+        // Nothing crawls yet, so a crawl still open was cut off when the app
+        // was killed or quit, and is never going to finish.
+        match crate::storage::abort_unfinished_crawls(&db.pool).await {
+            Ok(0) => {}
+            Ok(count) => tracing::info!(count, "marked unfinished crawls as aborted"),
+            Err(error) => tracing::warn!(%error, "failed to mark unfinished crawls as aborted"),
+        }
         Ok(db)
     }
 

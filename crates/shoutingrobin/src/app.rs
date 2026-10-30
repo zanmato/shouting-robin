@@ -2086,6 +2086,7 @@ mod layout_context_tests {
             root_url: "https://example.com/".into(),
             started_at: 0,
             finished_at: Some(1),
+            aborted: false,
             page_count: 0,
             document_count: 0,
             unfetched_count: 0,

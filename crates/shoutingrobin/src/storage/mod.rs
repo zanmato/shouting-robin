@@ -150,12 +150,49 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0037_site_settings",
         include_str!("../../migrations/0037_site_settings.sql"),
     ),
+    (
+        "0038_crawl_aborted",
+        include_str!("../../migrations/0038_crawl_aborted.sql"),
+    ),
+    (
+        "0039_asset_fetches",
+        include_str!("../../migrations/0039_asset_fetches.sql"),
+    ),
+    (
+        TEXT_HASH_MIGRATION,
+        include_str!("../../migrations/0040_text_hashes.sql"),
+    ),
+    // Rewrites rows in Rust, see `compress_json_columns`.
+    (COMPRESSED_JSON_MIGRATION, ""),
+    (
+        "0042_unused_indexes",
+        include_str!("../../migrations/0042_unused_indexes.sql"),
+    ),
+    (
+        "0043_transfer_bytes",
+        include_str!("../../migrations/0043_transfer_bytes.sql"),
+    ),
 ];
 
 /// Stores every URL and repeated text once per crawl, in `texts`, and points
 /// to it by id. It rewrites most of the database, which only gets smaller on
 /// disk once it is vacuumed.
 const TEXTS_MIGRATION: &str = "0036_texts";
+
+/// Indexes `texts` by a hash of each text rather than the text itself, which
+/// the index stored a second copy of. See `hash_texts`.
+const TEXT_HASH_MIGRATION: &str = "0040_text_hashes";
+
+/// Compresses the JSON columns already stored. See `compress_json_columns`.
+const COMPRESSED_JSON_MIGRATION: &str = "0041_compressed_json";
+
+/// The migrations that rewrite enough of the database to vacuum after.
+const REWRITING_MIGRATIONS: [&str; 4] = [
+    TEXTS_MIGRATION,
+    TEXT_HASH_MIGRATION,
+    COMPRESSED_JSON_MIGRATION,
+    "0042_unused_indexes",
+];
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query(
@@ -169,6 +206,7 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     .execute(pool)
     .await?;
 
+    let mut rewritten = false;
     for (name, sql) in MIGRATIONS {
         let already: Option<(String,)> =
             sqlx::query_as("SELECT name FROM schema_migrations WHERE name = ?")
@@ -182,6 +220,11 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         for stmt in sql.split(";\n").map(str::trim).filter(|s| !s.is_empty()) {
             sqlx::query(stmt).execute(&mut *tx).await?;
         }
+        match *name {
+            TEXT_HASH_MIGRATION => hash_texts(&mut tx).await?,
+            COMPRESSED_JSON_MIGRATION => compress_json_columns(&mut tx).await?,
+            _ => {}
+        }
         sqlx::query("INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)")
             .bind(name)
             .bind(chrono::Utc::now().timestamp())
@@ -189,29 +232,242 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
             .await?;
         tx.commit().await?;
         tracing::info!("Applied migration {}", name);
-        if *name == TEXTS_MIGRATION {
-            // The migration's result is kept whether or not this works: the
-            // space only stays unused until a later vacuum.
-            let started = std::time::Instant::now();
-            match sqlx::query("VACUUM").execute(pool).await {
-                Ok(_) => tracing::info!(
-                    seconds = started.elapsed().as_secs_f64(),
-                    "vacuumed the database"
-                ),
-                Err(e) => tracing::warn!(error=%e, "failed to vacuum the database"),
-            }
-            // In WAL mode the vacuum writes the whole database to the log, and
-            // the log file keeps that size until it is truncated.
-            if let Err(e) = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
-                .execute(pool)
-                .await
-            {
-                tracing::warn!(error=%e, "failed to truncate the write-ahead log");
-            }
+        rewritten |= REWRITING_MIGRATIONS.contains(name);
+    }
+
+    if rewritten {
+        // The migrations' results are kept whether or not this works: the
+        // space only stays unused until a later vacuum.
+        let started = std::time::Instant::now();
+        match sqlx::query("VACUUM").execute(pool).await {
+            Ok(_) => tracing::info!(
+                seconds = started.elapsed().as_secs_f64(),
+                "vacuumed the database"
+            ),
+            Err(e) => tracing::warn!(error=%e, "failed to vacuum the database"),
+        }
+        // In WAL mode the vacuum writes the whole database to the log, and
+        // the log file keeps that size until it is truncated.
+        if let Err(e) = sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+            .execute(pool)
+            .await
+        {
+            tracing::warn!(error=%e, "failed to truncate the write-ahead log");
         }
     }
 
     Ok(())
+}
+
+/// Rows a migration reads at a time, so a large crawl is never in memory at
+/// once.
+const MIGRATION_BATCH: i64 = 5_000;
+
+/// Copies `texts` into `texts_hashed` with each text's hash, then puts it in
+/// the place of `texts`, indexed by hash. Ids are kept, so every table that
+/// points at a text still does.
+async fn hash_texts(conn: &mut sqlx::SqliteConnection) -> Result<(), sqlx::Error> {
+    let crawl_ids: Vec<i64> = sqlx::query_scalar("SELECT DISTINCT crawl_id FROM texts")
+        .fetch_all(&mut *conn)
+        .await?;
+    for crawl_id in crawl_ids {
+        let mut hashes: std::collections::HashSet<i64> = std::collections::HashSet::new();
+        let mut after = 0_i64;
+        loop {
+            let rows: Vec<(i64, String)> = sqlx::query_as(
+                "SELECT id, text FROM texts WHERE crawl_id = ? AND id > ? ORDER BY id LIMIT ?",
+            )
+            .bind(crawl_id)
+            .bind(after)
+            .bind(MIGRATION_BATCH)
+            .fetch_all(&mut *conn)
+            .await?;
+            let Some(&(last, _)) = rows.last() else {
+                break;
+            };
+            after = last;
+            let rows: Vec<(i64, Option<i64>, String)> = rows
+                .into_iter()
+                .map(|(id, text)| {
+                    let hash = text_hash(&text);
+                    // The texts are already distinct, so a hash met twice is
+                    // two texts that share it: the second goes unhashed.
+                    (id, hashes.insert(hash).then_some(hash), text)
+                })
+                .collect();
+            for chunk in rows.chunks(TEXT_ROWS_PER_INSERT) {
+                let mut insert: sqlx::QueryBuilder<sqlx::Sqlite> =
+                    sqlx::QueryBuilder::new("INSERT INTO texts_hashed (id, crawl_id, hash, text) ");
+                insert.push_values(chunk, |mut row, (id, hash, text)| {
+                    row.push_bind(*id)
+                        .push_bind(crawl_id)
+                        .push_bind(*hash)
+                        .push_bind(text.as_str());
+                });
+                insert.build().execute(&mut *conn).await?;
+            }
+        }
+    }
+    for statement in [
+        "DROP TABLE texts",
+        "ALTER TABLE texts_hashed RENAME TO texts",
+        "CREATE UNIQUE INDEX idx_texts_crawl_hash ON texts(crawl_id, hash)",
+    ] {
+        sqlx::query(statement).execute(&mut *conn).await?;
+    }
+    Ok(())
+}
+
+/// Rewrites the JSON columns already stored with `pack_json`.
+async fn compress_json_columns(conn: &mut sqlx::SqliteConnection) -> Result<(), sqlx::Error> {
+    fn repack(value: Option<Vec<u8>>) -> Result<Option<Vec<u8>>, sqlx::Error> {
+        value
+            .map(|bytes| unpack_json(&bytes).map(|json| pack_json(&json)))
+            .transpose()
+    }
+
+    let mut after = 0_i64;
+    loop {
+        type PageJson = (i64, Option<Vec<u8>>, Option<Vec<u8>>, Option<Vec<u8>>);
+        let rows: Vec<PageJson> = sqlx::query_as(
+            "SELECT id, CAST(headers_json AS BLOB), CAST(hreflang_tags_json AS BLOB),
+                    CAST(near_duplicate_urls_json AS BLOB)
+             FROM pages
+             WHERE id > ? AND (headers_json IS NOT NULL OR hreflang_tags_json IS NOT NULL
+                               OR near_duplicate_urls_json IS NOT NULL)
+             ORDER BY id LIMIT ?",
+        )
+        .bind(after)
+        .bind(MIGRATION_BATCH)
+        .fetch_all(&mut *conn)
+        .await?;
+        let Some(&(last, ..)) = rows.last() else {
+            break;
+        };
+        after = last;
+        for (id, headers, hreflang, near_duplicates) in rows {
+            sqlx::query(
+                "UPDATE pages SET headers_json = ?, hreflang_tags_json = ?,
+                                  near_duplicate_urls_json = ?
+                 WHERE id = ?",
+            )
+            .bind(repack(headers)?)
+            .bind(repack(hreflang)?)
+            .bind(repack(near_duplicates)?)
+            .bind(id)
+            .execute(&mut *conn)
+            .await?;
+        }
+    }
+
+    let mut after = 0_i64;
+    loop {
+        let rows: Vec<(i64, Vec<u8>)> = sqlx::query_as(
+            "SELECT id, CAST(json AS BLOB) FROM structured_data WHERE id > ? ORDER BY id LIMIT ?",
+        )
+        .bind(after)
+        .bind(MIGRATION_BATCH)
+        .fetch_all(&mut *conn)
+        .await?;
+        let Some(&(last, _)) = rows.last() else {
+            break;
+        };
+        after = last;
+        for (id, json) in rows {
+            sqlx::query("UPDATE structured_data SET json = ? WHERE id = ?")
+                .bind(pack_json(&unpack_json(&json)?))
+                .bind(id)
+                .execute(&mut *conn)
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+/// The hash `texts` is indexed by. It is stored, so it has to give the same
+/// value in every build: xxh3 is specified, unlike std's hasher.
+fn text_hash(text: &str) -> i64 {
+    i64::from_ne_bytes(xxhash_rust::xxh3::xxh3_64(text.as_bytes()).to_ne_bytes())
+}
+
+/// Rows per multi-row `INSERT` into `texts`, at four parameters a row.
+const TEXT_ROWS_PER_INSERT: usize = 500;
+
+/// The id of `text` in the crawl, stored first if the crawl has not met it.
+/// The insert comes first so the write holds SQLite's write lock before it
+/// reads, which keeps a concurrent write from slipping in between.
+async fn text_id(
+    conn: &mut sqlx::SqliteConnection,
+    crawl_id: i64,
+    text: &str,
+) -> Result<i64, sqlx::Error> {
+    let hash = text_hash(text);
+    sqlx::query("INSERT OR IGNORE INTO texts (crawl_id, hash, text) VALUES (?, ?, ?)")
+        .bind(crawl_id)
+        .bind(hash)
+        .bind(text)
+        .execute(&mut *conn)
+        .await?;
+    // A text is found by its hash, or among the few stored without one
+    // because another text holds their hash. Every lookup of a text by its
+    // value has this shape.
+    let found: Option<i64> = sqlx::query_scalar(
+        "SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?",
+    )
+    .bind(crawl_id)
+    .bind(hash)
+    .bind(text)
+    .fetch_optional(&mut *conn)
+    .await?;
+    if let Some(id) = found {
+        return Ok(id);
+    }
+    // Another text of the crawl holds this hash, so the insert above kept
+    // that one. This one is stored without a hash, where lookups also look.
+    let inserted = sqlx::query("INSERT INTO texts (crawl_id, hash, text) VALUES (?, NULL, ?)")
+        .bind(crawl_id)
+        .bind(text)
+        .execute(&mut *conn)
+        .await?;
+    Ok(inserted.last_insert_rowid())
+}
+
+/// A zstd frame's first four bytes. JSON text never starts with them.
+const ZSTD_MAGIC: [u8; 4] = [0x28, 0xB5, 0x2F, 0xFD];
+
+/// JSON shorter than this is stored as it is: a frame's own overhead takes
+/// most of what compressing it would save.
+const COMPRESS_FROM_BYTES: usize = 128;
+
+const COMPRESSION_LEVEL: i32 = 9;
+
+/// A JSON column's stored form: zstd compressed when that is smaller.
+/// `unpack_json` reads either form, and the plain text of older rows.
+fn pack_json(json: &str) -> Vec<u8> {
+    if json.len() >= COMPRESS_FROM_BYTES {
+        match zstd::bulk::compress(json.as_bytes(), COMPRESSION_LEVEL) {
+            Ok(compressed) if compressed.len() < json.len() => return compressed,
+            Ok(_) => {}
+            Err(error) => tracing::warn!(%error, "failed to compress a JSON column"),
+        }
+    }
+    json.as_bytes().to_vec()
+}
+
+pub(crate) fn unpack_json(bytes: &[u8]) -> Result<String, sqlx::Error> {
+    let decoded = if bytes.starts_with(&ZSTD_MAGIC) {
+        zstd::stream::decode_all(bytes).map_err(|error| sqlx::Error::Decode(Box::new(error)))?
+    } else {
+        bytes.to_vec()
+    };
+    String::from_utf8(decoded).map_err(|error| sqlx::Error::Decode(Box::new(error)))
+}
+
+/// A JSON column read as `CAST(column AS BLOB)`.
+fn json_column(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<String>, sqlx::Error> {
+    row.try_get::<Option<Vec<u8>>, _>(column)?
+        .map(|bytes| unpack_json(&bytes))
+        .transpose()
 }
 
 /// The ids of the texts one write stores. A page repeats its own URL on every
@@ -230,9 +486,7 @@ impl<'a> TextIds<'a> {
         }
     }
 
-    /// The text's id, stored first if the crawl has not met it yet. The
-    /// insert comes first so the write holds SQLite's write lock before it
-    /// reads, which keeps a concurrent write from slipping in between.
+    /// The text's id, stored first if the crawl has not met it yet.
     async fn id(
         &mut self,
         conn: &mut sqlx::SqliteConnection,
@@ -241,16 +495,7 @@ impl<'a> TextIds<'a> {
         if let Some(&id) = self.known.get(text) {
             return Ok(id);
         }
-        sqlx::query("INSERT OR IGNORE INTO texts (crawl_id, text) VALUES (?, ?)")
-            .bind(self.crawl_id)
-            .bind(text)
-            .execute(&mut *conn)
-            .await?;
-        let id: i64 = sqlx::query_scalar("SELECT id FROM texts WHERE crawl_id = ? AND text = ?")
-            .bind(self.crawl_id)
-            .bind(text)
-            .fetch_one(&mut *conn)
-            .await?;
+        let id = text_id(conn, self.crawl_id, text).await?;
         self.known.insert(text, id);
         Ok(id)
     }
@@ -634,6 +879,32 @@ pub async fn finish_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::
     Ok(())
 }
 
+/// Marks every crawl without a `finished_at` as aborted. Run at startup,
+/// before any crawl can start: a crawl's process was killed, crashed or quit
+/// mid crawl, so it will never finish. It is closed like a finished one, with
+/// its stored counts, so the history stops calling it running. It finished
+/// when its last page was recorded, or when it started if none was.
+pub async fn abort_unfinished_crawls(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        UPDATE crawls SET
+            aborted = 1,
+            finished_at = COALESCE(
+                (SELECT MAX(p.crawled_at) FROM pages p WHERE p.crawl_id = crawls.id),
+                started_at),
+            page_count = (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = crawls.id),
+            document_count =
+                (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = crawls.id AND p.is_page = 1),
+            unfetched_count = (SELECT COUNT(*) FROM pages p
+                WHERE p.crawl_id = crawls.id AND p.status IS NULL AND p.redirect_url IS NULL)
+        WHERE finished_at IS NULL
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
 /// The filter counts stored for a finished crawl under `filter_version`, as the
 /// JSON the grid wrote. `None` for a crawl that has not finished, has none
 /// stored, or has them under another version.
@@ -694,6 +965,45 @@ pub async fn insert_page(
     crawl_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
+    // One transaction per page: a page with a hundred links and forty images
+    // is otherwise two hundred autocommits, and a crash mid-page leaves a row
+    // with half its links.
+    let mut transaction = pool.begin().await?;
+    if write_page(&mut transaction, crawl_id, record).await? {
+        transaction.commit().await
+    } else {
+        transaction.rollback().await
+    }
+}
+
+/// Records many pages in one transaction. Each page is its own savepoint, so
+/// a URL already recorded leaves nothing behind, as with [`insert_page`]. The
+/// sitemap orphans of a large site are hundreds of thousands of rows, and a
+/// transaction each kept the crawl from finishing for minutes.
+pub async fn insert_pages(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    records: &[PageRecord],
+) -> Result<(), sqlx::Error> {
+    let mut transaction = pool.begin().await?;
+    for record in records {
+        let mut savepoint = sqlx::Connection::begin(&mut *transaction).await?;
+        if write_page(&mut savepoint, crawl_id, record).await? {
+            savepoint.commit().await?;
+        } else {
+            savepoint.rollback().await?;
+        }
+    }
+    transaction.commit().await
+}
+
+/// Writes a page and its side tables. `false` when the URL was already
+/// recorded, in which case the caller rolls back the text it stored.
+async fn write_page(
+    conn: &mut sqlx::SqliteConnection,
+    crawl_id: i64,
+    record: &PageRecord,
+) -> Result<bool, sqlx::Error> {
     let now = chrono::Utc::now().timestamp();
 
     let hreflang_json = if record.hreflang_tags.is_empty() {
@@ -717,12 +1027,8 @@ pub async fn insert_page(
         serde_json::to_string(record.headers.as_slice()).ok()
     };
 
-    // One transaction per page: a page with a hundred links and forty images
-    // is otherwise two hundred autocommits, each its own fsync, and a crash
-    // mid-page leaves a row with half its links.
-    let mut transaction = pool.begin().await?;
     let mut texts = TextIds::new(crawl_id);
-    let url_id = texts.id(&mut transaction, &record.url).await?;
+    let url_id = texts.id(conn, &record.url).await?;
     let inserted = sqlx::query(
         r#"
         INSERT INTO pages (
@@ -737,8 +1043,8 @@ pub async fn insert_page(
             ssr_word_count, ssr_h1, ssr_content_missing,
             blocked_by_robots, is_resource, resource_initiator, is_page,
             has_mixed_content, hreflang_sources_json, has_body_tag,
-            h2_non_sequential
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            h2_non_sequential, network_fetches, revalidated_fetches, transfer_bytes
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(crawl_id, url_id) DO NOTHING
         "#,
     )
@@ -761,13 +1067,13 @@ pub async fn insert_page(
     .bind(now)
     .bind(record.sd_errors as i64)
     .bind(record.sd_warnings as i64)
-    .bind(hreflang_json)
+    .bind(hreflang_json.as_deref().map(pack_json))
     .bind(sd_types_json)
     .bind(record.simhash.map(|h| h as i64))
     .bind(&record.og_type)
     .bind(record.a11y_errors as i64)
     .bind(record.a11y_warnings as i64)
-    .bind(headers_json)
+    .bind(headers_json.as_deref().map(pack_json))
     .bind(record.redirect_url.as_deref())
     .bind(record.redirect_status.map(|s| s as i64))
     .bind(record.title_2.as_deref())
@@ -787,24 +1093,26 @@ pub async fn insert_page(
     .bind(hreflang_sources_json)
     .bind(record.has_body_tag.map(|has| has as i64))
     .bind(record.h2_non_sequential.map(|out_of_order| out_of_order as i64))
-    .execute(&mut *transaction)
+    .bind(record.network_fetches.map(i64::from))
+    .bind(record.revalidated_fetches.map(i64::from))
+    .bind(record.transfer_bytes.and_then(|bytes| i64::try_from(bytes).ok()))
+    .execute(&mut *conn)
     .await?;
     // The first record of a URL wins: a page that Chrome later also reports
     // as a subresource of another page is already fully described.
     if inserted.rows_affected() == 0 {
-        transaction.rollback().await?;
-        return Ok(());
+        return Ok(false);
     }
 
-    insert_structured_data(&mut transaction, crawl_id, url_id, record).await?;
-    insert_performance(&mut transaction, crawl_id, url_id, record).await?;
-    insert_images(&mut transaction, url_id, record, &mut texts).await?;
-    insert_ecommerce(&mut transaction, crawl_id, url_id, record).await?;
-    insert_links(&mut transaction, url_id, record, &mut texts).await?;
-    insert_a11y_violations(&mut transaction, url_id, record, &mut texts).await?;
-    insert_sd_issues(&mut transaction, crawl_id, url_id, record).await?;
+    insert_structured_data(conn, crawl_id, url_id, record).await?;
+    insert_performance(conn, crawl_id, url_id, record).await?;
+    insert_images(conn, url_id, record, &mut texts).await?;
+    insert_ecommerce(conn, crawl_id, url_id, record).await?;
+    insert_links(conn, url_id, record, &mut texts).await?;
+    insert_a11y_violations(conn, url_id, record, &mut texts).await?;
+    insert_sd_issues(conn, crawl_id, url_id, record).await?;
 
-    transaction.commit().await
+    Ok(true)
 }
 
 async fn insert_structured_data(
@@ -826,7 +1134,7 @@ async fn insert_structured_data(
         .bind(url_id)
         .bind(format_str)
         .bind(&item.type_name)
-        .bind(&item.raw_json)
+        .bind(pack_json(&item.raw_json))
         .execute(&mut *conn)
         .await?;
     }
@@ -1029,19 +1337,20 @@ pub async fn record_resource_check(
             redirect_status = COALESCE(?, redirect_status),
             indexability = ?
         WHERE crawl_id = ? AND is_resource = 1
-          AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)
+          AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)
         "#,
     )
     .bind(record.status.map(|s| s as i64))
     .bind(record.size_bytes as i64)
     .bind(record.size_bytes as i64)
     .bind(record.content_type.as_deref())
-    .bind(headers_json)
+    .bind(headers_json.as_deref().map(pack_json))
     .bind(record.redirect_url.as_deref())
     .bind(record.redirect_status.map(|s| s as i64))
     .bind(record.indexability.as_deref().unwrap_or("N/A"))
     .bind(crawl_id)
     .bind(crawl_id)
+    .bind(text_hash(&record.url))
     .bind(&record.url)
     .execute(pool)
     .await?;
@@ -1099,15 +1408,48 @@ pub async fn set_redirect_target(
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE pages SET redirect_url = ?, redirect_status = ?
-         WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
+         WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
     )
     .bind(target)
     .bind(status as i64)
     .bind(crawl_id)
     .bind(crawl_id)
+    .bind(text_hash(url))
     .bind(url)
     .execute(pool)
     .await?;
+    Ok(())
+}
+
+/// How often Chrome fetched each asset over the network during a crawl, and
+/// how many of those fetches were 304 revalidations, by asset URL.
+pub type AssetFetches = std::collections::HashMap<String, (u32, u32)>;
+
+/// Writes each asset's final network fetch counts onto its row. A row is
+/// written when the asset is first seen, before later pages fetch it again,
+/// so the counts are only complete once the crawl's pages are done.
+pub async fn set_asset_fetches(
+    pool: &SqlitePool,
+    crawl_id: i64,
+    fetches: &AssetFetches,
+) -> Result<(), sqlx::Error> {
+    let mut transaction = pool.begin().await?;
+    for (url, (network, revalidated)) in fetches {
+        sqlx::query(
+            "UPDATE pages SET network_fetches = ?, revalidated_fetches = ?
+             WHERE crawl_id = ? AND is_resource = 1
+               AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
+        )
+        .bind(i64::from(*network))
+        .bind(i64::from(*revalidated))
+        .bind(crawl_id)
+        .bind(crawl_id)
+        .bind(text_hash(url))
+        .bind(url)
+        .execute(&mut *transaction)
+        .await?;
+    }
+    transaction.commit().await?;
     Ok(())
 }
 
@@ -1172,11 +1514,12 @@ pub async fn update_link_scores(
     for (url, score) in scores {
         sqlx::query(
             "UPDATE pages SET link_score = ?
-             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
+             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(*score)
         .bind(crawl_id)
         .bind(crawl_id)
+        .bind(text_hash(url))
         .bind(url)
             .execute(&mut *tx)
             .await?;
@@ -1194,11 +1537,12 @@ pub async fn update_crawl_depths(
     for (url, depth) in depths {
         sqlx::query(
             "UPDATE pages SET depth = ?
-             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
+             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(*depth as i64)
         .bind(crawl_id)
         .bind(crawl_id)
+        .bind(text_hash(url))
         .bind(url)
             .execute(&mut *tx)
             .await?;
@@ -1221,11 +1565,12 @@ pub async fn update_hreflang_issues(
         };
         sqlx::query(
             "UPDATE pages SET hreflang_issues_json = ?
-             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
+             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(json)
         .bind(crawl_id)
         .bind(crawl_id)
+        .bind(text_hash(url))
         .bind(url)
             .execute(&mut *tx)
             .await?;
@@ -1260,12 +1605,13 @@ pub async fn load_page_on_demand(
         LEFT JOIN texts a ON a.id = l.anchor_id
         LEFT JOIN texts r ON r.id = l.rel_id
         WHERE l.crawl_id = ?
-          AND l.dst_url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)
+          AND l.dst_url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)
         ORDER BY l.id
         "#,
     )
     .bind(crawl_id)
     .bind(crawl_id)
+    .bind(text_hash(url))
     .bind(url)
     .fetch_all(pool)
     .await?
@@ -1276,24 +1622,27 @@ pub async fn load_page_on_demand(
         rel,
     })
     .collect();
-    let sd_items = sqlx::query_as::<_, (String, String, String)>(
-        "SELECT format, type_name, json FROM structured_data \
+    let sd_items = sqlx::query_as::<_, (String, String, Vec<u8>)>(
+        "SELECT format, type_name, CAST(json AS BLOB) FROM structured_data \
          WHERE crawl_id = ? \
-           AND page_url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?) \
+           AND page_url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?) \
          ORDER BY id",
     )
     .bind(crawl_id)
     .bind(crawl_id)
+    .bind(text_hash(url))
     .bind(url)
     .fetch_all(pool)
     .await?
     .into_iter()
-    .map(|(format, type_name, raw_json)| SdItem {
-        format: sd_format(&format),
-        type_name,
-        raw_json,
+    .map(|(format, type_name, raw_json)| {
+        Ok(SdItem {
+            format: sd_format(&format),
+            type_name,
+            raw_json: unpack_json(&raw_json)?,
+        })
     })
-    .collect();
+    .collect::<Result<_, sqlx::Error>>()?;
     Ok(PageOnDemand {
         backlinks,
         sd_items,
@@ -1313,6 +1662,9 @@ pub struct CrawlRow {
     pub root_url: String,
     pub started_at: i64,
     pub finished_at: Option<i64>,
+    /// The app went away mid crawl, so the crawl never finished. Its
+    /// `finished_at` was set by [`abort_unfinished_crawls`] at the next start.
+    pub aborted: bool,
     /// Every URL the crawl recorded, documents and resources alike. This is the
     /// number on the sidebar badge, and it is far larger than the page count a
     /// tab shows, so [`CrawlRow::breakdown`] splits it for the badge's tooltip.
@@ -1346,7 +1698,7 @@ impl CrawlRow {
 // the subquery when they are missing, for a crawl still running or one that
 // ended without finishing.
 const CRAWL_ROW_COLUMNS: &str = r#"
-    c.id, c.root_url, c.started_at, c.finished_at,
+    c.id, c.root_url, c.started_at, c.finished_at, c.aborted,
     COALESCE(c.page_count, (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id)) as page_count,
     COALESCE(c.document_count,
         (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id AND p.is_page = 1)) as document_count,
@@ -1361,6 +1713,7 @@ type CrawlRowColumns = (
     String,
     i64,
     Option<i64>,
+    bool,
     i64,
     i64,
     i64,
@@ -1374,6 +1727,7 @@ fn crawl_row(columns: CrawlRowColumns) -> CrawlRow {
         root_url,
         started_at,
         finished_at,
+        aborted,
         page_count,
         document_count,
         unfetched_count,
@@ -1393,6 +1747,7 @@ fn crawl_row(columns: CrawlRowColumns) -> CrawlRow {
         root_url,
         started_at,
         finished_at,
+        aborted,
         page_count,
         document_count,
         unfetched_count,
@@ -1505,6 +1860,12 @@ pub async fn load_pages_for_crawl_reporting(
     report: impl Fn(LoadStep),
 ) -> Result<Vec<PageRecord>, sqlx::Error> {
     let report = &report;
+    let crawl_finished =
+        sqlx::query_scalar::<_, bool>("SELECT finished_at IS NOT NULL FROM crawls WHERE id = ?")
+            .bind(crawl_id)
+            .fetch_optional(pool)
+            .await?
+            .unwrap_or(false);
     let texts = std::sync::Arc::new(CrawlTexts::load(pool, crawl_id).await?);
     report(LoadStep::Texts);
     let links = async_std::task::spawn({
@@ -1707,13 +2068,18 @@ pub async fn load_pages_for_crawl_reporting(
                 r#"
                 SELECT url_id, status, title, size_bytes, content_type, meta_description, h1, h2,
                        canonical, word_count, depth, indexability, response_time_ms, og_type,
-                       a11y_errors, a11y_warnings, headers_json, robots, is_resource,
+                       a11y_errors, a11y_warnings, CAST(headers_json AS BLOB) AS headers_json,
+                       robots, is_resource,
                        resource_initiator, is_page, has_mixed_content, has_body_tag, redirect_url,
                        redirect_status, title_2, meta_description_2, h1_2, h2_2, title_pixel_width,
                        meta_description_pixel_width, ssr_word_count, ssr_h1, ssr_content_missing,
-                       blocked_by_robots, h2_non_sequential, hash, simhash, closest_similarity,
-                       near_duplicate_count, near_duplicate_urls_json, sd_errors, sd_warnings,
-                       hreflang_tags_json, sd_types_json, hreflang_issues_json, hreflang_sources_json,
+                       blocked_by_robots, h2_non_sequential, network_fetches, revalidated_fetches,
+                       transfer_bytes,
+                       hash, simhash, closest_similarity,
+                       near_duplicate_count,
+                       CAST(near_duplicate_urls_json AS BLOB) AS near_duplicate_urls_json,
+                       sd_errors, sd_warnings,
+                       CAST(hreflang_tags_json AS BLOB) AS hreflang_tags_json, sd_types_json, hreflang_issues_json, hreflang_sources_json,
                        link_score
                 FROM pages WHERE crawl_id = ?
                 ORDER BY id
@@ -1782,6 +2148,7 @@ pub async fn load_pages_for_crawl_reporting(
             record.csr_inlinks_count,
             record.unique_csr_inlinks_count,
         ) = inlink_counts.get(&url_id).copied().unwrap_or_default();
+        record.inlinks_complete = crawl_finished;
         record.layout = layout_by_url.remove(&record.url).map(Box::new);
         record.outlinks = outlinks_by_url.remove(&url_id).unwrap_or_default().into();
         record.images = images_by_url.remove(&url_id).unwrap_or_default().into();
@@ -1846,6 +2213,9 @@ fn page_record_from_row(
     let ssr_content_missing: Option<i64> = row.try_get("ssr_content_missing")?;
     let blocked_by_robots: Option<i64> = row.try_get("blocked_by_robots")?;
     let h2_non_sequential: Option<i64> = row.try_get("h2_non_sequential")?;
+    let network_fetches: Option<i64> = row.try_get("network_fetches")?;
+    let revalidated_fetches: Option<i64> = row.try_get("revalidated_fetches")?;
+    let transfer_bytes: Option<i64> = row.try_get("transfer_bytes")?;
     let simhash: Option<i64> = row.try_get("simhash")?;
     let closest_similarity: Option<i64> = row.try_get("closest_similarity")?;
     let near_duplicate_count: Option<i64> = row.try_get("near_duplicate_count")?;
@@ -1874,18 +2244,18 @@ fn page_record_from_row(
         sd_errors: sd_errors as u32,
         sd_warnings: sd_warnings as u32,
         sd_types: json_list(row.try_get::<Option<&str>, _>("sd_types_json")?),
-        hreflang_tags: json_list(row.try_get::<Option<&str>, _>("hreflang_tags_json")?),
+        hreflang_tags: json_list(json_column(row, "hreflang_tags_json")?.as_deref()),
         hreflang_issues: json_list(row.try_get::<Option<&str>, _>("hreflang_issues_json")?),
         hreflang_sources: json_list(row.try_get::<Option<&str>, _>("hreflang_sources_json")?),
         content_hash: row.try_get("hash")?,
         simhash: simhash.map(|h| h as u64),
         closest_similarity: closest_similarity.map(|s| s as u8),
         near_duplicate_count: near_duplicate_count.map(|c| c as u32),
-        near_duplicate_urls: json_list(row.try_get::<Option<&str>, _>("near_duplicate_urls_json")?),
+        near_duplicate_urls: json_list(json_column(row, "near_duplicate_urls_json")?.as_deref()),
         og_type: row.try_get("og_type")?,
         a11y_errors: a11y_errors as u32,
         a11y_warnings: a11y_warnings as u32,
-        headers: json_list(row.try_get::<Option<&str>, _>("headers_json")?),
+        headers: json_list(json_column(row, "headers_json")?.as_deref()),
         redirect_url: row.try_get("redirect_url")?,
         redirect_status: redirect_status.map(|s| s as u16),
         title_2: row.try_get("title_2")?,
@@ -1899,6 +2269,9 @@ fn page_record_from_row(
         ssr_content_missing: ssr_content_missing.map(|b| b != 0),
         blocked_by_robots: blocked_by_robots.map(|b| b != 0),
         h2_non_sequential: h2_non_sequential.map(|b| b != 0),
+        network_fetches: network_fetches.and_then(|count| u32::try_from(count).ok()),
+        revalidated_fetches: revalidated_fetches.and_then(|count| u32::try_from(count).ok()),
+        transfer_bytes: transfer_bytes.and_then(|bytes| u64::try_from(bytes).ok()),
         link_score: row.try_get("link_score")?,
         url,
         ..Default::default()
@@ -2140,13 +2513,14 @@ pub async fn update_near_duplicates(
         };
         sqlx::query(
             "UPDATE pages SET closest_similarity = ?, near_duplicate_count = ?, near_duplicate_urls_json = ?
-             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND text = ?)",
+             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(*similarity as i64)
         .bind(*count as i64)
-        .bind(dup_urls_json)
+        .bind(dup_urls_json.as_deref().map(pack_json))
         .bind(crawl_id)
         .bind(crawl_id)
+        .bind(text_hash(url))
         .bind(url)
         .execute(&mut *tx)
         .await?;
@@ -2155,28 +2529,98 @@ pub async fn update_near_duplicates(
     Ok(())
 }
 
+/// Rows per multi-row `INSERT`, kept well under SQLite's bound parameter
+/// limit at four parameters a row.
+const SITEMAP_ROWS_PER_INSERT: usize = 500;
+
+/// Stores a crawl's sitemap entries before the crawl starts. A large shop
+/// lists hundreds of thousands of URLs, and storing them one statement at a
+/// time held the crawl back for over half a minute, so the texts and the rows
+/// go in as multi-row inserts and the ids are read back in one query.
 pub async fn insert_sitemap_urls(
     pool: &SqlitePool,
     crawl_id: i64,
     sitemap_urls: &[crate::crawl::sitemap::SitemapUrl],
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    let mut texts = TextIds::new(crawl_id);
+    use futures::TryStreamExt as _;
+
+    let mut distinct: Vec<&str> = Vec::new();
+    let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for entry in sitemap_urls {
-        let sitemap_id = texts.id(&mut tx, &entry.sitemap_url).await?;
-        let page_id = texts.id(&mut tx, &entry.page_url).await?;
-        let lastmod_id = texts.optional_id(&mut tx, entry.lastmod.as_deref()).await?;
-        sqlx::query(
-            "INSERT INTO sitemap_urls (crawl_id, sitemap_url_id, page_url_id, lastmod_id) VALUES (?, ?, ?, ?)",
-        )
-        .bind(crawl_id)
-        .bind(sitemap_id)
-        .bind(page_id)
-        .bind(lastmod_id)
-        .execute(&mut *tx)
-        .await?;
+        for text in [
+            Some(entry.sitemap_url.as_str()),
+            Some(entry.page_url.as_str()),
+            entry.lastmod.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if seen.insert(text) {
+                distinct.push(text);
+            }
+        }
     }
-    tx.commit().await?;
+
+    let mut transaction = pool.begin().await?;
+    for chunk in distinct.chunks(SITEMAP_ROWS_PER_INSERT) {
+        let mut insert: sqlx::QueryBuilder<sqlx::Sqlite> =
+            sqlx::QueryBuilder::new("INSERT OR IGNORE INTO texts (crawl_id, hash, text) ");
+        insert.push_values(chunk, |mut row, text| {
+            row.push_bind(crawl_id)
+                .push_bind(text_hash(text))
+                .push_bind(*text);
+        });
+        insert.build().execute(&mut *transaction).await?;
+    }
+
+    let mut ids: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    {
+        let mut rows =
+            sqlx::query_as::<_, (i64, String)>("SELECT id, text FROM texts WHERE crawl_id = ?")
+                .bind(crawl_id)
+                .fetch(&mut *transaction);
+        while let Some((id, text)) = rows.try_next().await? {
+            if seen.contains(text.as_str()) {
+                ids.insert(text, id);
+            }
+        }
+    }
+    // The batch insert skipped any text whose hash another text holds.
+    for text in &distinct {
+        if !ids.contains_key(*text) {
+            let id = text_id(&mut transaction, crawl_id, text).await?;
+            ids.insert(text.to_string(), id);
+        }
+    }
+    let id_of = |text: &str| {
+        ids.get(text)
+            .copied()
+            .ok_or_else(|| sqlx::Error::Protocol(format!("no text id stored for {text}")))
+    };
+
+    for chunk in sitemap_urls.chunks(SITEMAP_ROWS_PER_INSERT) {
+        let rows = chunk
+            .iter()
+            .map(|entry| {
+                Ok((
+                    id_of(&entry.sitemap_url)?,
+                    id_of(&entry.page_url)?,
+                    entry.lastmod.as_deref().map(id_of).transpose()?,
+                ))
+            })
+            .collect::<Result<Vec<_>, sqlx::Error>>()?;
+        let mut insert: sqlx::QueryBuilder<sqlx::Sqlite> = sqlx::QueryBuilder::new(
+            "INSERT INTO sitemap_urls (crawl_id, sitemap_url_id, page_url_id, lastmod_id) ",
+        );
+        insert.push_values(rows, |mut row, (sitemap_id, page_id, lastmod_id)| {
+            row.push_bind(crawl_id)
+                .push_bind(sitemap_id)
+                .push_bind(page_id)
+                .push_bind(lastmod_id);
+        });
+        insert.build().execute(&mut *transaction).await?;
+    }
+    transaction.commit().await?;
     Ok(())
 }
 
@@ -2570,6 +3014,318 @@ mod tests {
         });
         assert_eq!(finished, Some((2, 1, 1)));
         assert_eq!(running, Some((3, 2, 1)));
+    }
+
+    /// Sitemap entries past one insert's worth of rows are all stored with
+    /// their texts, and the orphans recorded from them in one batch keep the
+    /// first record of a URL already crawled.
+    #[test]
+    fn sitemap_entries_and_their_orphans_are_stored_in_batches() {
+        use crate::crawl::sitemap::SitemapUrl;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let (orphans, pages) = runtime.block_on(async {
+            let pool = test_pool().await;
+            let crawl_id = create_crawl(&pool, "https://a.test/", "http", &config())
+                .await
+                .expect("crawl");
+            let entries: Vec<SitemapUrl> = (0..SITEMAP_ROWS_PER_INSERT + 3)
+                .map(|index| SitemapUrl {
+                    sitemap_url: format!("https://a.test/sitemap_{}.xml", index % 2),
+                    page_url: format!("https://a.test/{index}"),
+                    lastmod: (index % 3 == 0).then(|| "2026-10-30".to_string()),
+                    hreflang: Vec::new(),
+                })
+                .collect();
+            insert_sitemap_urls(&pool, crawl_id, &entries)
+                .await
+                .expect("sitemap");
+            insert_page(
+                &pool,
+                crawl_id,
+                &PageRecord {
+                    url: "https://a.test/0".into(),
+                    status: Some(200),
+                    is_page: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("crawled page");
+
+            let orphans = load_sitemap_orphans(&pool, crawl_id)
+                .await
+                .expect("orphans");
+            let records: Vec<PageRecord> = ["https://a.test/0", "https://a.test/1"]
+                .into_iter()
+                .map(|url| PageRecord {
+                    url: url.into(),
+                    in_sitemap: Some(true),
+                    ..Default::default()
+                })
+                .collect();
+            insert_pages(&pool, crawl_id, &records)
+                .await
+                .expect("batch");
+            let pages = sqlx::query_as::<_, (String, Option<i64>)>(
+                "SELECT t.text, p.status FROM pages p JOIN texts t ON t.id = p.url_id \
+                 WHERE p.crawl_id = ? ORDER BY p.id",
+            )
+            .bind(crawl_id)
+            .fetch_all(&pool)
+            .await
+            .expect("pages");
+            (orphans, pages)
+        });
+        assert_eq!(orphans.len(), SITEMAP_ROWS_PER_INSERT + 2);
+        let last = orphans.last().expect("an orphan");
+        assert_eq!(
+            (
+                last.page_url.as_str(),
+                last.sitemap_url.as_str(),
+                last.lastmod.as_deref()
+            ),
+            ("https://a.test/502", "https://a.test/sitemap_0.xml", None)
+        );
+        assert_eq!(orphans[2].lastmod.as_deref(), Some("2026-10-30"));
+        assert_eq!(
+            pages,
+            vec![
+                ("https://a.test/0".to_string(), Some(200)),
+                ("https://a.test/1".to_string(), None),
+            ]
+        );
+    }
+
+    /// A crawl left open by an app that went away is closed as aborted, with
+    /// its counts, and a finished crawl is left as it was.
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime")
+    }
+
+    #[test]
+    fn a_text_whose_hash_is_taken_gets_its_own_id() {
+        runtime().block_on(async {
+            let pool = test_pool().await;
+            let crawl_id = create_crawl(&pool, "https://a.test/", "http", &config())
+                .await
+                .expect("crawl");
+            let wanted = "https://a.test/wanted";
+            // Another text already holding the wanted text's hash, as a
+            // collision would leave it.
+            sqlx::query("INSERT INTO texts (crawl_id, hash, text) VALUES (?, ?, ?)")
+                .bind(crawl_id)
+                .bind(text_hash(wanted))
+                .bind("https://a.test/holder")
+                .execute(&pool)
+                .await
+                .expect("holder");
+            let mut conn = pool.acquire().await.expect("connection");
+            let first = text_id(&mut conn, crawl_id, wanted).await.expect("first");
+            let again = text_id(&mut conn, crawl_id, wanted).await.expect("again");
+            let holder = text_id(&mut conn, crawl_id, "https://a.test/holder")
+                .await
+                .expect("holder id");
+            assert_eq!(first, again);
+            assert_ne!(first, holder);
+            let looked_up: Option<i64> = sqlx::query_scalar(
+                "SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?",
+            )
+            .bind(crawl_id)
+            .bind(text_hash(wanted))
+            .bind(wanted)
+            .fetch_optional(&mut *conn)
+            .await
+            .expect("lookup");
+            assert_eq!(looked_up, Some(first));
+        });
+    }
+
+    #[test]
+    fn json_is_compressed_when_that_is_smaller_and_read_back_either_way() {
+        let long =
+            serde_json::to_string(&vec![("cache-control", "public, max-age=0"); 40]).expect("json");
+        let packed = pack_json(&long);
+        assert!(packed.starts_with(&ZSTD_MAGIC));
+        assert!(packed.len() < long.len());
+        assert_eq!(unpack_json(&packed).expect("unpack"), long);
+
+        let short = r#"[["a","b"]]"#;
+        assert_eq!(pack_json(short), short.as_bytes());
+        // A row stored before compression holds the JSON as it is.
+        assert_eq!(unpack_json(long.as_bytes()).expect("plain"), long);
+    }
+
+    #[test]
+    fn the_migrations_hash_and_compress_rows_stored_before_them() {
+        runtime().block_on(async {
+            let pool = test_pool().await;
+            let root = "https://a.test/";
+            let crawl_id = create_crawl(&pool, root, "http", &config())
+                .await
+                .expect("crawl");
+            let headers: Vec<(String, String)> = (0..30)
+                .map(|index| {
+                    (
+                        format!("x-header-{index}"),
+                        "a repeated header value".to_string(),
+                    )
+                })
+                .collect();
+            insert_page(
+                &pool,
+                crawl_id,
+                &PageRecord {
+                    url: root.to_string(),
+                    status: Some(200),
+                    is_page: true,
+                    is_internal: true,
+                    headers: headers.clone().into(),
+                    outlinks: thin_vec::thin_vec![crate::crawl::event::Outlink {
+                        dst_url: "https://a.test/next".into(),
+                        anchor: Some("next".into()),
+                        rel: None,
+                        csr_only: false,
+                    }],
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("page");
+            let ids_before: Vec<(i64, String)> =
+                sqlx::query_as("SELECT id, text FROM texts WHERE crawl_id = ? ORDER BY id")
+                    .bind(crawl_id)
+                    .fetch_all(&pool)
+                    .await
+                    .expect("texts");
+
+            // Back to how the rows were stored before: no hashes, and the
+            // headers as plain JSON text.
+            let mut conn = pool.acquire().await.expect("connection");
+            sqlx::query("UPDATE texts SET hash = NULL")
+                .execute(&mut *conn)
+                .await
+                .expect("unhash");
+            sqlx::query("UPDATE pages SET headers_json = ?")
+                .bind(serde_json::to_string(&headers).expect("json"))
+                .execute(&mut *conn)
+                .await
+                .expect("plain headers");
+            for statement in include_str!("../../migrations/0040_text_hashes.sql")
+                .split(";\n")
+                .map(str::trim)
+                .filter(|statement| !statement.is_empty())
+            {
+                sqlx::query(statement)
+                    .execute(&mut *conn)
+                    .await
+                    .expect("texts_hashed");
+            }
+            hash_texts(&mut conn).await.expect("hash texts");
+            compress_json_columns(&mut conn).await.expect("compress");
+            drop(conn);
+
+            let ids_after: Vec<(i64, String, Option<i64>)> =
+                sqlx::query_as("SELECT id, text, hash FROM texts WHERE crawl_id = ? ORDER BY id")
+                    .bind(crawl_id)
+                    .fetch_all(&pool)
+                    .await
+                    .expect("hashed texts");
+            assert_eq!(
+                ids_after
+                    .iter()
+                    .map(|(id, text, _)| (*id, text.clone()))
+                    .collect::<Vec<_>>(),
+                ids_before
+            );
+            for (_, text, hash) in &ids_after {
+                assert_eq!(*hash, Some(text_hash(text)));
+            }
+            let stored_type: String = sqlx::query_scalar("SELECT typeof(headers_json) FROM pages")
+                .fetch_one(&pool)
+                .await
+                .expect("type");
+            assert_eq!(stored_type, "blob");
+
+            let pages = load_pages_for_crawl(&pool, crawl_id, root)
+                .await
+                .expect("load");
+            let page = pages
+                .iter()
+                .find(|page| page.url == root)
+                .expect("root page");
+            assert_eq!(page.headers.to_vec(), headers);
+            // A URL stored before is found again rather than stored twice.
+            insert_page(
+                &pool,
+                crawl_id,
+                &PageRecord {
+                    url: root.to_string(),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("again");
+            let stored: i64 =
+                sqlx::query_scalar("SELECT COUNT(*) FROM texts WHERE crawl_id = ? AND text = ?")
+                    .bind(crawl_id)
+                    .bind(root)
+                    .fetch_one(&pool)
+                    .await
+                    .expect("count");
+            assert_eq!(stored, 1);
+        });
+    }
+
+    #[test]
+    fn an_unfinished_crawl_is_marked_aborted() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("runtime");
+        let crawls = runtime.block_on(async {
+            let pool = test_pool().await;
+            let mut crawl_ids = Vec::new();
+            for root in ["https://finished.test/", "https://cut-off.test/"] {
+                let crawl_id = create_crawl(&pool, root, "http", &config())
+                    .await
+                    .expect("crawl");
+                insert_page(
+                    &pool,
+                    crawl_id,
+                    &PageRecord {
+                        url: root.to_string(),
+                        status: Some(200),
+                        is_page: true,
+                        is_internal: true,
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("page");
+                crawl_ids.push(crawl_id);
+            }
+            let [finished_id, _] = crawl_ids[..] else {
+                panic!("two crawls");
+            };
+            finish_crawl(&pool, finished_id).await.expect("finish");
+            let aborted = abort_unfinished_crawls(&pool).await.expect("abort");
+            assert_eq!(aborted, 1);
+            list_crawls(&pool).await.expect("list")
+        });
+        let state = |root: &str| {
+            crawls
+                .iter()
+                .find(|crawl| crawl.root_url == root)
+                .map(|crawl| (crawl.finished_at.is_some(), crawl.aborted, crawl.page_count))
+        };
+        assert_eq!(state("https://finished.test/"), Some((true, false, 1)));
+        assert_eq!(state("https://cut-off.test/"), Some((true, true, 1)));
     }
 
     /// Stored counts are only for a finished crawl, only under the version

@@ -142,15 +142,26 @@ impl CrawlEngine {
                     Ok(client) => {
                         let sitemap_urls =
                             crate::crawl::sitemap::discover_sitemaps(&client, &root_url).await;
-                        let entries =
-                            crate::crawl::sitemap::fetch_sitemap_urls(&client, &sitemap_urls, 3)
-                                .await;
-                        if let Err(e) =
-                            storage::insert_sitemap_urls(&pool, crawl_id, &entries).await
-                        {
-                            tracing::warn!(error=%e, "failed to persist sitemap URLs");
+                        let entries = crate::crawl::sitemap::fetch_sitemap_urls(
+                            &client,
+                            &sitemap_urls,
+                            3,
+                            &cancel_flag,
+                        )
+                        .await;
+                        // A crawl stopped before its first page has nothing for
+                        // the sitemap to be compared with, and storing it would
+                        // only turn every listed URL into an orphan row.
+                        if cancel_flag.load(Ordering::Relaxed) {
+                            Vec::new()
+                        } else {
+                            if let Err(e) =
+                                storage::insert_sitemap_urls(&pool, crawl_id, &entries).await
+                            {
+                                tracing::warn!(error=%e, "failed to persist sitemap URLs");
+                            }
+                            entries
                         }
-                        entries
                     }
                     Err(e) => {
                         tracing::warn!(error=%e, "failed to build client for sitemaps");
@@ -296,6 +307,12 @@ impl CrawlEngine {
                     website
                         .with_viewport(Some(viewport))
                         .with_chrome_intercept(intercept)
+                        .with_event_tracker(Some(spider::configuration::ChromeEventTracker {
+                            requests: false,
+                            responses: false,
+                            automation: false,
+                            response_details: true,
+                        }))
                         .with_stealth(true)
                         .with_wait_for_idle_dom(Some(WaitForSelector::new(
                             Some(Duration::from_secs(wait_cap)),
@@ -412,6 +429,10 @@ impl CrawlEngine {
                 // Every resource URL the pages point at, in discovery order,
                 // for the status-check pass once the crawl is done.
                 let mut discovered_resources: Vec<(String, ResourceKind)> = Vec::new();
+                // How often Chrome went to the network for each asset. Rows
+                // are written when an asset is first seen, so the totals are
+                // written onto them once the pages are done.
+                let mut asset_fetches = storage::AssetFetches::new();
                 tracing::info!("page pump started, waiting for pages...");
                 loop {
                     let mut page = match rx.recv().await {
@@ -605,6 +626,9 @@ impl CrawlEngine {
                     }
 
                     let mut resource_timings: Vec<ResourceTiming> = Vec::new();
+                    // Every response the page received, as Chrome's Network
+                    // domain reported it, headers included.
+                    let mut page_responses: Vec<spider::page::ChromeResponse> = Vec::new();
                     // The server's HTML for this page, if Chrome still has it.
                     let mut chrome_raw_html: Option<String> = None;
                     if chrome_mode {
@@ -631,6 +655,14 @@ impl CrawlEngine {
                                 collect_a11y_violations(&page, &mut record, axe_js).await;
                             }
                             resource_timings = collect_resource_timings(&page).await;
+                            page_responses = page.response_details.take().unwrap_or_default();
+                            record.transfer_bytes = page_responses
+                                .iter()
+                                .find(|response| {
+                                    response.resource_type == "Document"
+                                        && response.url == record.url
+                                })
+                                .and_then(transferred);
                             // Read while the tab is open; the SSR diff below runs
                             // once it is closed.
                             chrome_raw_html = raw_html_from_chrome(&page, &record.url).await;
@@ -774,6 +806,21 @@ impl CrawlEngine {
                         tracing::error!(error=%e, "failed to send page event");
                     }
 
+                    // Documents are pages and frames, rows of their own; the
+                    // count is about assets a browser could have kept.
+                    for response in page_responses
+                        .iter()
+                        .filter(|response| response.resource_type != "Document")
+                        .filter(|response| response.from_network())
+                    {
+                        let counts = asset_fetches.entry(response.url.clone()).or_default();
+                        counts.0 += 1;
+                        if response.wire_status == Some(304) {
+                            counts.1 += 1;
+                        }
+                    }
+                    let responses_by_url = responses_by_url(&page_responses);
+
                     // Emit the resources Chrome loaded for this page as their
                     // own rows (CSS/JS/images/fonts), deduplicated across the
                     // crawl. No body is fetched or parsed here.
@@ -814,6 +861,17 @@ impl CrawlEngine {
                                 .then(|| resource.initiator.as_str().into()),
                             ..Default::default()
                         };
+                        if let Some(response) = responses_by_url.get(resource.url.as_str()) {
+                            describe_from_response(&mut resource_record, response);
+                        }
+                        if chrome_mode {
+                            let (network, revalidated) = asset_fetches
+                                .get(&resource.url)
+                                .copied()
+                                .unwrap_or_default();
+                            resource_record.network_fetches = Some(network);
+                            resource_record.revalidated_fetches = Some(revalidated);
+                        }
                         let sitemap_key = crate::crawl::url_norm::normalize_url(&resource.url)
                             .unwrap_or_else(|| resource.url.clone());
                         if let Some((sm_url, lastmod, _)) = sitemap_for_pump.get(&sitemap_key) {
@@ -836,7 +894,7 @@ impl CrawlEngine {
                         }
                     }
                 }
-                (total, discovered_resources)
+                (total, discovered_resources, asset_fetches)
             });
 
             // Chrome mode renders each page in a browser; Http mode forces
@@ -864,11 +922,14 @@ impl CrawlEngine {
                 tokio::time::sleep(Duration::from_millis(100)).await;
             }
 
-            let (total, discovered_resources) = pump.await.unwrap_or_else(|e| {
+            let (total, discovered_resources, asset_fetches) = pump.await.unwrap_or_else(|e| {
                 tracing::warn!(error=%e, "page pump task failed");
-                (0, Vec::new())
+                (0, Vec::new(), storage::AssetFetches::new())
             });
             tracing::info!(total, "page pump finished");
+            if let Err(e) = storage::set_asset_fetches(&pool, crawl_id, &asset_fetches).await {
+                tracing::warn!(error=%e, "failed to store how often assets were fetched");
+            }
 
             resolve_redirect_chains(&pool, crawl_id, &tx, &config, &root_url, &cancel_flag).await;
 
@@ -957,13 +1018,12 @@ impl CrawlEngine {
                         tracing::warn!(error=%e, "failed to load sitemap orphans");
                         Vec::new()
                     });
-                let mut orphan_count = 0usize;
+                let mut records = Vec::new();
                 for orphan in &orphans {
                     if !recorded.insert(orphan.page_url.clone()) {
                         continue;
                     }
-                    orphan_count += 1;
-                    let record = PageRecord {
+                    records.push(PageRecord {
                         url: orphan.page_url.clone(),
                         sitemap_url: Some(orphan.sitemap_url.clone().into()),
                         sitemap_lastmod: orphan.lastmod.clone().map(Into::into),
@@ -973,39 +1033,36 @@ impl CrawlEngine {
                         blocked_by_robots: blocked.contains(&orphan.page_url).then_some(true),
                         is_internal: is_same_domain(&root_url, &orphan.page_url),
                         ..Default::default()
-                    };
-                    if let Err(e) = storage::insert_page(&pool, crawl_id, &record).await {
-                        tracing::warn!(error=%e, url=%record.url, "failed to persist sitemap orphan");
-                    }
-                    if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
-                        tracing::warn!(error=%e, "failed to send sitemap orphan page event");
-                    }
+                    });
                 }
+                let orphan_count = records.len();
                 if orphan_count > 0 {
                     tracing::info!(count = orphan_count, "found sitemap orphan URLs");
                 }
 
-                let mut blocked_count = 0usize;
                 for url in &blocked {
                     if !recorded.insert(url.clone()) {
                         continue;
                     }
-                    blocked_count += 1;
-                    let record = PageRecord {
+                    records.push(PageRecord {
                         url: url.clone(),
                         is_internal: is_same_domain(&root_url, url),
                         blocked_by_robots: Some(true),
                         ..Default::default()
-                    };
-                    if let Err(e) = storage::insert_page(&pool, crawl_id, &record).await {
-                        tracing::warn!(error=%e, url=%record.url, "failed to persist blocked URL");
-                    }
-                    if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
-                        tracing::warn!(error=%e, "failed to send blocked URL page event");
-                    }
+                    });
                 }
+                let blocked_count = records.len() - orphan_count;
                 if blocked_count > 0 {
                     tracing::info!(count = blocked_count, "found robots.txt-blocked URLs");
+                }
+
+                if let Err(e) = storage::insert_pages(&pool, crawl_id, &records).await {
+                    tracing::warn!(error=%e, "failed to persist sitemap orphans and blocked URLs");
+                }
+                for record in records {
+                    if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
+                        tracing::warn!(error=%e, "failed to send sitemap orphan page event");
+                    }
                 }
             }
 
@@ -1816,8 +1873,8 @@ pub(crate) fn hreflang_issues_for_page(
 }
 
 async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
-    let rows = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
-        r#"SELECT t.text, p.hreflang_tags_json, p.canonical FROM pages p
+    let rows = sqlx::query_as::<_, (String, Option<Vec<u8>>, Option<String>)>(
+        r#"SELECT t.text, CAST(p.hreflang_tags_json AS BLOB), p.canonical FROM pages p
            JOIN texts t ON t.id = p.url_id
            WHERE p.crawl_id = ? ORDER BY p.id"#,
     )
@@ -1829,6 +1886,10 @@ async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) -> Result<(),
         std::collections::HashMap::with_capacity(rows.len());
     let mut tagged: Vec<(String, HreflangPage)> = Vec::new();
     for (url, hreflang_json, canonical) in &rows {
+        let hreflang_json = hreflang_json
+            .as_deref()
+            .map(storage::unpack_json)
+            .transpose()?;
         let tags: Vec<(String, String)> = hreflang_json
             .as_deref()
             .and_then(|j| serde_json::from_str(j).ok())
@@ -2392,6 +2453,60 @@ impl ResourceTiming {
             && self.size == 0
             && self.content_type.as_deref().is_none_or(str::is_empty)
     }
+}
+
+/// Each URL's response on one page, preferring one that carried a body, which
+/// gives the file's size, over a revalidation's empty one.
+fn responses_by_url(
+    responses: &[spider::page::ChromeResponse],
+) -> std::collections::HashMap<&str, &spider::page::ChromeResponse> {
+    let mut by_url: std::collections::HashMap<&str, &spider::page::ChromeResponse> =
+        std::collections::HashMap::new();
+    let has_body = |response: &spider::page::ChromeResponse| {
+        response.decoded_bytes.is_some_and(|bytes| bytes > 0)
+    };
+    for response in responses {
+        by_url
+            .entry(response.url.as_str())
+            .and_modify(|kept| {
+                if !has_body(kept) && has_body(response) {
+                    *kept = response;
+                }
+            })
+            .or_insert(response);
+    }
+    by_url
+}
+
+/// The bytes a response took over the network, `None` for a copy from the
+/// cache.
+fn transferred(response: &spider::page::ChromeResponse) -> Option<u64> {
+    response
+        .from_network()
+        .then_some(response.total_bytes)
+        .flatten()
+        .filter(|bytes| *bytes > 0.0)
+        .map(|bytes| bytes as u64)
+}
+
+/// Fills in what the Resource Timing entry could not say about an asset from
+/// Chrome's own record of the response. Timing entries report no status for
+/// another host's asset unless it sends `Timing-Allow-Origin`, and carry no
+/// headers at all.
+fn describe_from_response(record: &mut PageRecord, response: &spider::page::ChromeResponse) {
+    // The file's own size, as the resource check measured it before Chrome
+    // reported one: the timing entry's is the compressed transfer.
+    if let Some(bytes) = response.decoded_bytes.filter(|bytes| *bytes > 0) {
+        record.size_bytes = bytes;
+    }
+    record.transfer_bytes = transferred(response);
+    if record.status.is_none() && response.status > 0 {
+        record.status = Some(response.status);
+    }
+    if record.content_type.is_none() && !response.mime_type.is_empty() {
+        record.content_type = Some(response.mime_type.as_str().into());
+    }
+    record.headers = response.headers.iter().cloned().collect();
 }
 
 /// Reads `performance.getEntriesByType('resource')` from the rendered page.

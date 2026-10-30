@@ -278,6 +278,22 @@ pub enum IssueFilter {
     LayoutMissingMarkup,
     LayoutChanged,
     ProductLayoutWithoutMarkup,
+    RedirectTemporary,
+    RedirectToError,
+    LinkToHttp,
+    SingleInlink,
+    NoInternalOutlinks,
+    CanonicalToRedirect,
+    CanonicalToError,
+    CanonicalToHttp,
+    CanonicalChain,
+    CanonicalisedInSitemap,
+    SlowResponse,
+    LargeHtml,
+    /// An asset of the site Chrome fetched over the network more than once
+    /// during the crawl: the server's caching headers sent the browser back
+    /// for a file it already had.
+    NotCached,
 }
 
 impl IssueFilter {
@@ -416,6 +432,19 @@ impl IssueFilter {
             IssueFilter::LayoutMissingMarkup => "Missing Markup",
             IssueFilter::LayoutChanged => "Layout Changed",
             IssueFilter::ProductLayoutWithoutMarkup => "Product Layout, No Markup",
+            IssueFilter::RedirectTemporary => "Temporary Redirect",
+            IssueFilter::RedirectToError => "Redirect to Error",
+            IssueFilter::LinkToHttp => "Links to HTTP",
+            IssueFilter::SingleInlink => "One Inlink",
+            IssueFilter::NoInternalOutlinks => "No Internal Outlinks",
+            IssueFilter::CanonicalToRedirect => "Canonical to Redirect",
+            IssueFilter::CanonicalToError => "Canonical to 4xx/5xx",
+            IssueFilter::CanonicalToHttp => "Canonical to HTTP",
+            IssueFilter::CanonicalChain => "Canonical Chain",
+            IssueFilter::CanonicalisedInSitemap => "Canonicalised in Sitemap",
+            IssueFilter::SlowResponse => "Slow Response",
+            IssueFilter::LargeHtml => "HTML Over 2 MB",
+            IssueFilter::NotCached => "Not Cached",
         }
     }
 
@@ -485,7 +514,9 @@ impl IssueFilter {
             | Self::DirectiveNoindex
             | Self::ImageBroken
             | Self::MissingBodyTag
-            | Self::LinkBroken => Tone::Err,
+            | Self::LinkBroken
+            | Self::RedirectToError
+            | Self::CanonicalToError => Tone::Err,
 
             Self::NonIndexable
             | Self::LayoutMissingMarkup
@@ -559,7 +590,18 @@ impl IssueFilter {
             | Self::LinkRedirected
             | Self::LinkNofollow
             | Self::LinkNoAnchorText
-            | Self::DepthDeep => Tone::Warn,
+            | Self::DepthDeep
+            | Self::RedirectTemporary
+            | Self::LinkToHttp
+            | Self::SingleInlink
+            | Self::NoInternalOutlinks
+            | Self::CanonicalToRedirect
+            | Self::CanonicalToHttp
+            | Self::CanonicalChain
+            | Self::CanonicalisedInSitemap
+            | Self::SlowResponse
+            | Self::LargeHtml
+            | Self::NotCached => Tone::Warn,
         }
     }
 }

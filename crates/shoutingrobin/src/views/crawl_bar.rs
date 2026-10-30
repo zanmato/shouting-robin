@@ -597,7 +597,7 @@ impl CrawlBar {
         cx.notify();
     }
 
-    /// The settings are hidden while a crawl runs. Closing them here keeps a
+    /// The settings cannot be opened while a crawl runs. Closing them here keeps a
     /// panel left open at Start from reappearing when the crawl ends, long
     /// after it was last seen.
     fn mark_running(&mut self) {
@@ -815,42 +815,43 @@ impl CrawlBar {
         let running = self.running;
         let default_mode = self.default_mode;
         let list_mode = self.list_mode;
-        let show_dot = !self.settings_open && !running && !self.summary(cx).is_empty();
+        let show_dot = !self.settings_open && !self.summary(cx).is_empty();
 
         h_flex()
             .id("crawl-bar-main")
             .gap_2()
             .px_3()
             .py_2()
-            .when(!running, |el| {
-                el.child(
-                    div()
-                        .relative()
-                        .child(
-                            Button::new("toggle-crawl-settings")
-                                .small()
-                                .ghost()
-                                .icon(Icon::Sliders)
-                                .tooltip("Crawl settings")
-                                .selected(self.settings_open)
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.settings_open = !this.settings_open;
-                                    cx.notify();
-                                })),
+            // Disabled rather than hidden while a crawl runs, so the bar
+            // keeps its shape from start to finish.
+            .child(
+                div()
+                    .relative()
+                    .child(
+                        Button::new("toggle-crawl-settings")
+                            .small()
+                            .ghost()
+                            .icon(Icon::Sliders)
+                            .tooltip("Crawl settings")
+                            .selected(self.settings_open)
+                            .disabled(running)
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.settings_open = !this.settings_open;
+                                cx.notify();
+                            })),
+                    )
+                    .when(show_dot, |el| {
+                        el.child(
+                            div()
+                                .absolute()
+                                .top(px(3.))
+                                .right(px(3.))
+                                .size(px(6.))
+                                .rounded_full()
+                                .bg(cx.theme().primary),
                         )
-                        .when(show_dot, |el| {
-                            el.child(
-                                div()
-                                    .absolute()
-                                    .top(px(3.))
-                                    .right(px(3.))
-                                    .size(px(6.))
-                                    .rounded_full()
-                                    .bg(cx.theme().primary),
-                            )
-                        }),
-                )
-            })
+                    }),
+            )
             // The same input in both modes, so switching does not move the
             // bar. A list crawl starts from its list, so the address is
             // disabled meanwhile.
@@ -864,37 +865,38 @@ impl CrawlBar {
                         }),
                 ),
             )
+            .child(
+                h_flex()
+                    .gap_1()
+                    .child(
+                        Switch::new("mode-switch")
+                            .small()
+                            .checked(default_mode.renders_javascript())
+                            .disabled(running)
+                            .on_click(cx.listener(|this, checked: &bool, _, cx| {
+                                this.default_mode = if *checked {
+                                    RenderMode::Chrome
+                                } else {
+                                    RenderMode::Http
+                                };
+                                cx.notify();
+                            })),
+                    )
+                    .child(
+                        div()
+                            .text_xs()
+                            .pl_1()
+                            .pr_2()
+                            .text_color(if default_mode.renders_javascript() && !running {
+                                cx.theme().foreground
+                            } else {
+                                cx.theme().muted_foreground
+                            })
+                            .child("Chrome"),
+                    ),
+            )
             .when(!running, |el| {
                 el.child(
-                    h_flex()
-                        .gap_1()
-                        .child(
-                            Switch::new("mode-switch")
-                                .small()
-                                .checked(default_mode.renders_javascript())
-                                .on_click(cx.listener(|this, checked: &bool, _, cx| {
-                                    this.default_mode = if *checked {
-                                        RenderMode::Chrome
-                                    } else {
-                                        RenderMode::Http
-                                    };
-                                    cx.notify();
-                                })),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .pl_1()
-                                .pr_2()
-                                .text_color(if default_mode.renders_javascript() {
-                                    cx.theme().foreground
-                                } else {
-                                    cx.theme().muted_foreground
-                                })
-                                .child("Chrome"),
-                        ),
-                )
-                .child(
                     Button::new("crawl-btn")
                         .small()
                         .primary()
@@ -919,11 +921,10 @@ impl CrawlBar {
 
     /// The settings that differ from a new site's, as tags at the end of the
     /// address field. They sit in the bar's one row, so they come and go
-    /// without moving the results, and the panel opens on a click.
+    /// without moving the results, and the panel opens on a click while no
+    /// crawl runs.
     fn render_summary(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.running {
-            return None;
-        }
+        let running = self.running;
         let summary = self.summary(cx);
         if summary.is_empty() {
             return None;
@@ -944,7 +945,7 @@ impl CrawlBar {
                 .id("crawl-settings-summary")
                 .flex_shrink_0()
                 .gap_1()
-                .cursor_pointer()
+                .when(!running, |el| el.cursor_pointer())
                 .children(
                     summary
                         .into_iter()
@@ -957,11 +958,13 @@ impl CrawlBar {
                     )
                 })
                 .tooltip(move |window, cx| Tooltip::new(tooltip.clone()).build(window, cx))
-                .on_click(cx.listener(|this, _, _, cx| {
-                    cx.stop_propagation();
-                    this.settings_open = true;
-                    cx.notify();
-                }))
+                .when(!running, |el| {
+                    el.on_click(cx.listener(|this, _, _, cx| {
+                        cx.stop_propagation();
+                        this.settings_open = true;
+                        cx.notify();
+                    }))
+                })
                 .into_any_element(),
         )
     }

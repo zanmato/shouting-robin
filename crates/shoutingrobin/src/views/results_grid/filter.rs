@@ -32,7 +32,7 @@ use super::types::{
 /// counting differently. Stored counts under another version are counted
 /// again. `the_filter_version_moves_with_the_counting_code` fails when the
 /// main counting functions change, as a reminder.
-pub const FILTER_VERSION: i64 = 1;
+pub const FILTER_VERSION: i64 = 2;
 
 /// The tabs whose counts depend on the baseline and on the layout changes
 /// found against it. They are not stored, since the baseline can change, and
@@ -65,8 +65,13 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::FetchXhr,
             IssueFilter::OtherResource,
             IssueFilter::NonIndexable,
+            IssueFilter::NotCached,
         ],
-        ResultTab::External => &[IssueFilter::All],
+        ResultTab::External => &[
+            IssueFilter::All,
+            IssueFilter::Status4xx,
+            IssueFilter::Status5xx,
+        ],
         ResultTab::ResponseCodes => &[
             IssueFilter::All,
             IssueFilter::Status2xx,
@@ -76,6 +81,8 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::Redirects,
             IssueFilter::RedirectChain,
             IssueFilter::RedirectLoop,
+            IssueFilter::RedirectTemporary,
+            IssueFilter::RedirectToError,
         ],
         ResultTab::PageTitles => &[
             IssueFilter::All,
@@ -140,6 +147,10 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::SelfReferencing,
             IssueFilter::Canonicalised,
             IssueFilter::CanonicalTargetNotIndexable,
+            IssueFilter::CanonicalToRedirect,
+            IssueFilter::CanonicalToError,
+            IssueFilter::CanonicalChain,
+            IssueFilter::CanonicalToHttp,
             IssueFilter::MissingCanonical,
         ],
         ResultTab::Hreflang => &[
@@ -186,6 +197,8 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::SlowCls,
             IssueFilter::SlowFcp,
             IssueFilter::SlowTtfb,
+            IssueFilter::SlowResponse,
+            IssueFilter::LargeHtml,
         ],
         ResultTab::Ecommerce => &[
             IssueFilter::All,
@@ -208,6 +221,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::UrlsNotInSitemap,
             IssueFilter::SitemapOrphans,
             IssueFilter::NonIndexableInSitemap,
+            IssueFilter::CanonicalisedInSitemap,
             IssueFilter::SitemapNon200,
         ],
         ResultTab::Security => &[
@@ -255,6 +269,9 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::LinkNofollow,
             IssueFilter::LinkNoAnchorText,
             IssueFilter::LinkExternal,
+            IssueFilter::LinkToHttp,
+            IssueFilter::SingleInlink,
+            IssueFilter::NoInternalOutlinks,
         ],
         ResultTab::SiteStructure => &[
             IssueFilter::All,
@@ -393,6 +410,10 @@ fn reads_other_pages(filter: IssueFilter) -> bool {
             | IssueFilter::CanonicalTargetNotIndexable
             | IssueFilter::LinkBroken
             | IssueFilter::LinkRedirected
+            | IssueFilter::RedirectToError
+            | IssueFilter::CanonicalToRedirect
+            | IssueFilter::CanonicalToError
+            | IssueFilter::CanonicalChain
     )
 }
 
@@ -920,10 +941,18 @@ pub(super) fn filter_for_tab(
             .filter(|(_, p)| p.is_internal && !p.images.is_empty())
             .map(|(i, _)| i)
             .collect(),
+        // Anything carrying links, and every page that answered: a page with
+        // no outlinks is a dead end, and the tab's own filter for it has to be
+        // able to find it. An error page has no links to speak of.
         ResultTab::Links => pages
             .iter()
             .enumerate()
-            .filter(|(_, p)| p.is_internal && !p.outlinks.is_empty())
+            .filter(|(_, p)| {
+                p.is_internal
+                    && (!p.outlinks.is_empty()
+                        || (p.is_page_document()
+                            && p.status.is_some_and(|status| (200..300).contains(&status))))
+            })
             .map(|(i, _)| i)
             .collect(),
         // Documents, plus every URL a sitemap lists. A sitemap orphan is a URL
@@ -1283,16 +1312,11 @@ pub(super) fn filter_for_tab(
             // Canonicalising to a page search engines will not index hands
             // the signal to nowhere: a redirect, an error, a noindex page, or
             // a page that in turn canonicalises elsewhere.
-            IssueFilter::CanonicalTargetNotIndexable => {
-                let by_url: HashMap<String, &PageRecord> = pages
-                    .iter()
-                    .map(|p| {
-                        (
-                            normalize_url(&p.url).unwrap_or_else(|| p.url.clone()),
-                            p.as_ref(),
-                        )
-                    })
-                    .collect();
+            IssueFilter::CanonicalTargetNotIndexable
+            | IssueFilter::CanonicalToRedirect
+            | IssueFilter::CanonicalToError
+            | IssueFilter::CanonicalChain => {
+                let by_url = pages_by_url(pages);
                 indices.retain(|&idx| {
                     let page = &pages[idx];
                     if !page.is_canonicalised() {
@@ -1304,11 +1328,79 @@ pub(super) fn filter_for_tab(
                     let resolved = resolve_url(&page.url, canonical)
                         .unwrap_or_else(|| canonical.trim().to_string());
                     let key = normalize_url(&resolved).unwrap_or(resolved);
-                    by_url
-                        .get(&key)
-                        .is_some_and(|target| !target.is_indexable())
+                    by_url.get(&key).is_some_and(|target| match issue_filter {
+                        IssueFilter::CanonicalToRedirect => target.is_redirect(),
+                        IssueFilter::CanonicalToError => {
+                            !target.is_redirect()
+                                && target.status.is_some_and(|status| status >= 400)
+                        }
+                        // A redirect's canonical belongs to the page it leads
+                        // to, so only a document can pass the signal on again.
+                        IssueFilter::CanonicalChain => {
+                            target.is_page_document() && target.is_canonicalised()
+                        }
+                        _ => !target.is_indexable(),
+                    })
                 });
             }
+            // An HTTPS page that names an HTTP URL as its canonical asks search
+            // engines to index the insecure copy.
+            IssueFilter::CanonicalToHttp => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.url.starts_with("https://")
+                    && page.canonical.as_deref().is_some_and(|canonical| {
+                        resolve_url(&page.url, canonical)
+                            .unwrap_or_else(|| canonical.trim().to_string())
+                            .starts_with("http://")
+                    })
+            }),
+            IssueFilter::CanonicalisedInSitemap => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.in_sitemap == Some(true) && page.is_page_document() && page.is_canonicalised()
+            }),
+            IssueFilter::RedirectTemporary => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.is_redirect() && matches!(redirect_code(page), Some(302 | 303 | 307))
+            }),
+            IssueFilter::RedirectToError => {
+                let by_url = pages_by_url(pages);
+                indices.retain(|&idx| {
+                    redirect_destination(&pages[idx], &by_url)
+                        .is_some_and(|target| target.status.is_some_and(|status| status >= 400))
+                });
+            }
+            // Live counts only grow, so before the crawl ends every match
+            // here could still get more inlinks.
+            IssueFilter::SingleInlink => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.inlinks_complete
+                    && page.is_page_document()
+                    && page.is_indexable()
+                    && page.unique_inlinks_count == 1
+            }),
+            IssueFilter::NoInternalOutlinks => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.is_page_document()
+                    && page.is_indexable()
+                    && !page
+                        .outlinks
+                        .iter()
+                        .any(|link| is_same_domain(&page.url, &link.dst_url))
+            }),
+            IssueFilter::SlowResponse => {
+                indices.retain(|&idx| pages[idx].response_time > SLOW_RESPONSE)
+            }
+            IssueFilter::LargeHtml => {
+                indices.retain(|&idx| pages[idx].size_bytes > LARGE_HTML_BYTES)
+            }
+            // Chrome keeps what a server lets it keep, so a second trip for
+            // the same file over one crawl is the server saying not to.
+            IssueFilter::NotCached => indices.retain(|&idx| {
+                let page = &pages[idx];
+                page.is_resource
+                    && page.is_internal
+                    && page.network_fetches.is_some_and(|fetches| fetches > 1)
+            }),
             IssueFilter::A11yImageAlt => indices.retain(|&idx| {
                 pages[idx]
                     .a11y_issues
@@ -1450,7 +1542,8 @@ pub(super) fn filter_for_tab(
             | IssueFilter::LinkRedirected
             | IssueFilter::LinkNofollow
             | IssueFilter::LinkNoAnchorText
-            | IssueFilter::LinkExternal => {
+            | IssueFilter::LinkExternal
+            | IssueFilter::LinkToHttp => {
                 let status_by_url = status_by_url(pages);
                 indices.retain(|&idx| {
                     let page = &pages[idx];
@@ -1559,6 +1652,60 @@ pub(super) fn filter_for_tab(
     indices
 }
 
+/// HTML that takes longer than this to arrive is slow. It is the document
+/// alone, before any of what it loads, so a second of it already spends most
+/// of the time a page has to show something.
+pub(super) const SLOW_RESPONSE: std::time::Duration = std::time::Duration::from_secs(1);
+
+/// An HTML document over this size is too large, in decimal bytes. The
+/// document is downloaded and parsed before the page can render, and a page
+/// that size is usually inlined data or markup repeated by a template.
+pub(super) const LARGE_HTML_BYTES: u64 = 2_000_000;
+
+/// Every row keyed by its normalised URL, so a canonical or a redirect target
+/// resolves to the row recorded for it in whatever spelling it was written.
+fn pages_by_url(pages: &[Arc<PageRecord>]) -> HashMap<String, &PageRecord> {
+    pages
+        .iter()
+        .map(|page| {
+            (
+                normalize_url(&page.url).unwrap_or_else(|| page.url.clone()),
+                page.as_ref(),
+            )
+        })
+        .collect()
+}
+
+/// The code a redirect answered with: the hop the redirect pass recorded, or
+/// the row's own 3xx for a redirect nothing followed.
+fn redirect_code(page: &PageRecord) -> Option<u16> {
+    page.redirect_status
+        .or(page.status.filter(|status| (300..400).contains(status)))
+}
+
+/// Where a redirect ends: the first row along its hops that is not itself a
+/// redirect. `None` when a hop leads off the crawl, ends on a 3xx nothing
+/// followed, or circles back on itself.
+fn redirect_destination<'a>(
+    page: &PageRecord,
+    by_url: &HashMap<String, &'a PageRecord>,
+) -> Option<&'a PageRecord> {
+    let mut visited: HashSet<String> = HashSet::new();
+    let mut target = page.redirect_url.clone()?;
+    loop {
+        let key = normalize_url(&target).unwrap_or(target);
+        if !visited.insert(key.clone()) {
+            return None;
+        }
+        let record = *by_url.get(&key)?;
+        match &record.redirect_url {
+            Some(next) => target = next.clone(),
+            None if record.is_redirect() => return None,
+            None => return Some(record),
+        }
+    }
+}
+
 /// The status code of every crawled URL, keyed by URL, so a link's destination
 /// resolves in constant time.
 fn status_by_url(pages: &[Arc<PageRecord>]) -> HashMap<&str, u16> {
@@ -1593,6 +1740,13 @@ fn link_matches_filter(
         IssueFilter::LinkNoAnchorText => link_lacks_anchor_text(link) && !dst_is_external(),
         IssueFilter::LinkBroken => dst_status().is_some_and(|c| c >= 400),
         IssueFilter::LinkRedirected => dst_status().is_some_and(|c| (300..400).contains(&c)),
+        // The page is secure and the link to its own site is not, so the click
+        // leaves HTTPS or depends on a redirect to get back to it.
+        IssueFilter::LinkToHttp => {
+            page.url.starts_with("https://")
+                && link.dst_url.starts_with("http://")
+                && !dst_is_external()
+        }
         _ => true,
     }
 }
@@ -1745,9 +1899,15 @@ mod counting_tests {
                 h1: Some(format!("Heading {}", index % 6)),
                 h2: (index % 2 == 0).then(|| "The same subheading".into()),
                 content_hash: Some(format!("hash-{}", index % 7)),
+                // Each canonical names a row that arrives in a later batch:
+                // a page, a redirect, an error, and a page that is itself
+                // canonicalised (index % 9 == 4 points at one that is 0).
                 canonical: match index % 9 {
                     0 => Some(format!("{HOST}/page-{}", index + 22)),
                     1 => Some(url.clone()),
+                    2 => Some(format!("{HOST}/moved-{}", index % 3)),
+                    3 => Some(format!("{HOST}/gone-{}", index % 5)),
+                    4 => Some(format!("{HOST}/page-{}", index + 5)),
                     _ => None,
                 },
                 robots: (index % 11 == 0).then(|| "noindex".into()),
@@ -1808,6 +1968,11 @@ mod counting_tests {
                     ..internal_page(&format!("{HOST}/moved-{}", batch % 3))
                 });
                 pages.push(PageRecord {
+                    status: Some(301),
+                    redirect_url: Some(format!("{HOST}/gone-{}", (batch + 1) % 5)),
+                    ..internal_page(&format!("{HOST}/retired-{batch}"))
+                });
+                pages.push(PageRecord {
                     url: format!("{HOST}/image-{}.png", batch % 8),
                     status: Some(if batch % 2 == 0 { 404 } else { 200 }),
                     content_type: Some("image/png".into()),
@@ -1865,6 +2030,10 @@ mod counting_tests {
             ),
             (ResultTab::Links, IssueFilter::LinkBroken),
             (ResultTab::Links, IssueFilter::LinkRedirected),
+            (ResultTab::ResponseCodes, IssueFilter::RedirectToError),
+            (ResultTab::Canonicals, IssueFilter::CanonicalToRedirect),
+            (ResultTab::Canonicals, IssueFilter::CanonicalToError),
+            (ResultTab::Canonicals, IssueFilter::CanonicalChain),
         ] {
             let full = compute_tab_filter_counts(tab, &pages, &[], Some(HOST));
             assert!(
@@ -2083,7 +2252,8 @@ mod counting_tests {
         let pages = vec![source, broken];
 
         let counts = compute_tab_filter_counts(ResultTab::Links, &shared(pages), &[], None);
-        // Only the source page has outlinks, so the tab holds one row.
+        // The 404 neither links anywhere nor answered, so the tab holds the
+        // source page alone.
         assert_eq!(counts.badge.total, 1);
         assert_eq!(count_of(&counts, IssueFilter::LinkBroken), 1);
         assert_eq!(counts.badge.errors, 1);
@@ -2116,6 +2286,21 @@ mod counting_tests {
         assert_eq!(
             matching_urls(ResultTab::Links, IssueFilter::LinkExternal, &pages),
             vec!["https://a.test/has-external".to_string()]
+        );
+    }
+
+    #[test]
+    fn one_inlink_waits_for_the_crawl_to_finish() {
+        let mut streamed = internal_page("https://a.test/streamed");
+        streamed.unique_inlinks_count = 1;
+        let mut finished = internal_page("https://a.test/finished");
+        finished.unique_inlinks_count = 1;
+        finished.inlinks_complete = true;
+        let pages = vec![streamed, finished];
+
+        assert_eq!(
+            matching_urls(ResultTab::Links, IssueFilter::SingleInlink, &pages),
+            vec!["https://a.test/finished".to_string()]
         );
     }
 
@@ -2712,8 +2897,8 @@ mod filter_version_tests {
     /// The filter version and the fingerprint of the counting functions it was
     /// set for.
     const COUNTED_WITH: (i64, &str) = (
-        1,
-        "62aef22c6b27347dd02487af11b6d7acc77d62ae9f6319fb56702d09a716d651",
+        2,
+        "8e14255e1fa8f7970420e5e3948ddfb613939f4fa163271231cf5b8a99055f36",
     );
 
     /// A function's text from its signature to its closing brace, without

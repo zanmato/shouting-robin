@@ -86,6 +86,9 @@ md5 = "0.7"
 # XML parsing
 quick-xml = "0.37"
 flate2 = "1"
+# Indexes crawl texts by a hash that is stored, so it must never change.
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+zstd = "0.13"
 
 tempfile = "3"
 

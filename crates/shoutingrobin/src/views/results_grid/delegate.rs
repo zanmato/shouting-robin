@@ -25,8 +25,9 @@ use super::cell::{
     cell_text, flat_cell_text, image_aggregate_cell_text, render_cell_tag, url_to_path,
 };
 use super::columns::{
-    build_occurrence_counts, columns_for_tab_with_baseline, compare_numeric, hreflang_column_count,
-    is_mono_column, is_numeric_column, is_right_aligned_column,
+    build_occurrence_counts, columns_for_tab_with_baseline, compare_numeric, compare_size,
+    hreflang_column_count, is_mono_column, is_numeric_column, is_right_aligned_column,
+    is_size_column,
 };
 use super::data_build::{
     build_change_entries, build_image_aggregates, build_issues_entries, build_rows_for_tab,
@@ -329,6 +330,14 @@ pub struct ResultsDelegate {
     /// loaded records. Kept here so the columns are only rebuilt when the
     /// figure actually moves rather than on every streamed record.
     hreflang_columns: usize,
+    /// Bumped by every rebuild of `columns`. The table's own column state,
+    /// which holds the widths the user dragged to, is only rebuilt when this
+    /// moved, so streamed pages and landing counts leave a resize alone.
+    columns_version: u64,
+    /// The column the rows are sorted by and which way, by column key. Kept
+    /// so the sort survives the rows being rebuilt, which every streamed batch
+    /// of pages does. `None` for the tab's natural order.
+    sort: Option<(SharedString, ColumnSort)>,
     /// Bumped whenever `all_pages` is replaced rather than added to. Counting
     /// progress and issue entries carry over only within one.
     pages_epoch: u64,
@@ -407,6 +416,30 @@ fn image_references<'a>(
         .collect()
 }
 
+/// The crawled status of each of `page`'s outlink destinations, in its
+/// outlinks' order, so the details panel can show which link a Links filter
+/// flagged.
+fn outlink_statuses(pages: &[Arc<PageRecord>], page: &PageRecord) -> Vec<Option<u16>> {
+    let destinations: std::collections::HashSet<&str> = page
+        .outlinks
+        .iter()
+        .map(|link| link.dst_url.as_ref())
+        .collect();
+    let status_by_url: HashMap<&str, u16> = pages
+        .iter()
+        .filter(|candidate| destinations.contains(candidate.url.as_str()))
+        .filter_map(|candidate| {
+            candidate
+                .status
+                .map(|status| (candidate.url.as_str(), status))
+        })
+        .collect();
+    page.outlinks
+        .iter()
+        .map(|link| status_by_url.get(link.dst_url.as_ref()).copied())
+        .collect()
+}
+
 /// One CSV per tab, each exactly what that tab's own export button produces.
 /// Pure, so it belongs on a background thread: it rebuilds every tab's rows.
 pub fn export_every_tab(snapshot: CrawlSnapshot) -> Vec<(ResultTab, Result<String, csv::Error>)> {
@@ -442,6 +475,8 @@ impl ResultsDelegate {
             baseline: None,
             issue_entries: Vec::new(),
             hreflang_columns: 0,
+            columns_version: 0,
+            sort: None,
             pages_epoch: 0,
             counts_version: 0,
             counts: None,
@@ -587,6 +622,7 @@ impl ResultsDelegate {
             if self.active_tab == ResultTab::Overview {
                 self.rebuild_flat_rows();
                 self.apply_row_filter();
+                self.apply_sort();
             }
         }
     }
@@ -630,11 +666,26 @@ impl ResultsDelegate {
             self.baseline.is_some(),
             self.hreflang_columns,
         );
+        self.columns_version += 1;
+        // The table rebuilds its headers from these columns, so the sorted
+        // one carries its direction or the arrow would reset while the rows
+        // stay sorted.
+        if let Some((key, sort)) = &self.sort {
+            match self.columns.iter_mut().find(|column| column.key == *key) {
+                Some(column) => column.sort = Some(*sort),
+                None => self.sort = None,
+            }
+        }
+    }
+
+    pub(super) fn columns_version(&self) -> u64 {
+        self.columns_version
     }
 
     pub fn switch_tab(&mut self, tab: ResultTab) {
         self.active_tab = tab;
         self.issue_filter = IssueFilter::All;
+        self.sort = None;
         self.rebuild_columns();
         self.rebuild_filter();
     }
@@ -843,9 +894,11 @@ impl ResultsDelegate {
         // a harvested resource, or an image also reached through a link. One
         // pass over the crawl's image lists, and only on selection.
         let references = image_references(self.all_pages.iter(), &record.url);
+        let outlink_statuses = outlink_statuses(&self.all_pages, &record);
         Some(DetailsSelection::Page {
             record: Box::new(record.into_owned()),
             references,
+            outlink_statuses,
         })
     }
 
@@ -977,6 +1030,7 @@ impl ResultsDelegate {
         );
         self.rebuild_flat_rows();
         self.apply_row_filter();
+        self.apply_sort();
     }
 
     /// Narrows the tab's rows to those its row filter keeps.
@@ -1637,11 +1691,24 @@ impl TableDelegate for ResultsDelegate {
         // than re-sorting ascending, which would differ from what a fresh
         // filter rebuild produces.
         if sort == ColumnSort::Default {
+            self.sort = None;
             self.rebuild_filter();
             return;
         }
-        let col_key = col.key.to_string();
+        self.sort = Some((col.key.clone(), sort));
+        self.apply_sort();
+    }
+}
+
+impl ResultsDelegate {
+    /// Orders the rows by the remembered sort, if any.
+    fn apply_sort(&mut self) {
+        let Some((col_key, sort)) = self.sort.clone() else {
+            return;
+        };
+        let col_key = col_key.to_string();
         let numeric = is_numeric_column(&col_key);
+        let size = is_size_column(&col_key);
         let root_origin = self.root_origin.clone();
 
         if tab_is_flattened(self.active_tab) {
@@ -1760,7 +1827,9 @@ impl TableDelegate for ResultsDelegate {
                 let a_text = flat_cell_text(a_record, a, &col_key, root_origin.as_deref());
                 let b_text = flat_cell_text(b_record, b, &col_key, root_origin.as_deref());
 
-                let ordering = if numeric {
+                let ordering = if size {
+                    compare_size(&a_text, &b_text)
+                } else if numeric {
                     compare_numeric(&a_text, &b_text)
                 } else {
                     a_text.cmp(&b_text)
@@ -1773,35 +1842,36 @@ impl TableDelegate for ResultsDelegate {
             });
             self.issue_entries = issue_entries;
         } else {
-            self.filtered_indices.sort_by(|&a, &b| {
-                let a_record = &self.all_pages[a];
-                let b_record = &self.all_pages[b];
-                let a_text = cell_text(
-                    a_record,
-                    &col_key,
-                    &self.occurrence_counts,
-                    self.active_tab,
-                    self.root_origin.as_deref(),
-                );
-                let b_text = cell_text(
-                    b_record,
-                    &col_key,
-                    &self.occurrence_counts,
-                    self.active_tab,
-                    self.root_origin.as_deref(),
-                );
-
-                let ordering = if numeric {
-                    compare_numeric(&a_text, &b_text)
+            // Each row's text is formatted once rather than per comparison:
+            // a streaming crawl sorts every row again with each batch.
+            let mut keyed: Vec<(SharedString, usize)> = self
+                .filtered_indices
+                .iter()
+                .map(|&index| {
+                    let text = cell_text(
+                        &self.all_pages[index],
+                        &col_key,
+                        &self.occurrence_counts,
+                        self.active_tab,
+                        self.root_origin.as_deref(),
+                    );
+                    (text, index)
+                })
+                .collect();
+            keyed.sort_by(|(a_text, _), (b_text, _)| {
+                let ordering = if size {
+                    compare_size(a_text, b_text)
+                } else if numeric {
+                    compare_numeric(a_text, b_text)
                 } else {
-                    a_text.cmp(&b_text)
+                    a_text.cmp(b_text)
                 };
-
                 match sort {
                     ColumnSort::Descending => ordering.reverse(),
                     _ => ordering,
                 }
             });
+            self.filtered_indices = keyed.into_iter().map(|(_, index)| index).collect();
         }
     }
 }
@@ -1832,6 +1902,82 @@ mod cache_tests {
     /// A running crawl read back from the database already holds some of the
     /// pages that streamed in during the read; adding those again would list
     /// them twice.
+    #[test]
+    fn sizes_sort_by_bytes_rather_than_by_the_number_shown() {
+        let sized = |url: &str, bytes: u64| PageRecord {
+            size_bytes: bytes,
+            ..internal_page(url)
+        };
+        let mut delegate = ResultsDelegate::new();
+        delegate.push_many(vec![
+            sized("https://a.test/kilobytes", 1_300),
+            sized("https://a.test/bytes", 900),
+            sized("https://a.test/megabytes", 2_500_000),
+            sized("https://a.test/empty", 0),
+        ]);
+        delegate.sort = Some(("size".into(), ColumnSort::Ascending));
+        delegate.apply_sort();
+
+        let urls: Vec<String> = delegate
+            .filtered_indices
+            .iter()
+            .map(|&index| delegate.all_pages[index].url.clone())
+            .collect();
+        assert_eq!(
+            urls,
+            [
+                "https://a.test/bytes",
+                "https://a.test/kilobytes",
+                "https://a.test/megabytes",
+                "https://a.test/empty"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_sort_holds_while_pages_stream_in() {
+        let mut delegate = ResultsDelegate::new();
+        delegate.push_many(vec![
+            internal_page("https://a.test/b"),
+            internal_page("https://a.test/d"),
+        ]);
+        delegate.sort = Some(("address".into(), ColumnSort::Descending));
+        delegate.apply_sort();
+        delegate.push_many(vec![
+            internal_page("https://a.test/c"),
+            internal_page("https://a.test/a"),
+        ]);
+
+        let urls: Vec<String> = delegate
+            .filtered_indices
+            .iter()
+            .map(|&index| delegate.all_pages[index].url.clone())
+            .collect();
+        assert_eq!(
+            urls,
+            [
+                "https://a.test/d",
+                "https://a.test/c",
+                "https://a.test/b",
+                "https://a.test/a"
+            ]
+        );
+
+        // A rebuild of the columns keeps the arrow on the sorted one.
+        delegate.rebuild_columns();
+        let address = delegate
+            .columns
+            .iter()
+            .find(|column| column.key == "address");
+        assert_eq!(
+            address.and_then(|column| column.sort),
+            Some(ColumnSort::Descending)
+        );
+
+        delegate.switch_tab(ResultTab::Internal);
+        assert!(delegate.sort.is_none());
+    }
+
     #[test]
     fn only_records_the_grid_lacks_are_kept() {
         let mut delegate = ResultsDelegate::new();
