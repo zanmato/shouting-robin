@@ -416,10 +416,12 @@ fn image_references<'a>(
         .collect()
 }
 
-/// The crawled status of each of `page`'s outlink destinations, in its
-/// outlinks' order, so the details panel can show which link a Links filter
-/// flagged.
-fn outlink_statuses(pages: &[Arc<PageRecord>], page: &PageRecord) -> Vec<Option<u16>> {
+/// `page`'s outlinks as the details panel lists them, by their index in
+/// `page.outlinks` with their destination's crawled status: broken links
+/// first, then redirected ones, then the rest, each in page order. A page
+/// under Links > Broken is opened to find the broken link, which among a few
+/// hundred others was hard to spot.
+fn outlink_order(pages: &[Arc<PageRecord>], page: &PageRecord) -> Vec<(usize, Option<u16>)> {
     let destinations: std::collections::HashSet<&str> = page
         .outlinks
         .iter()
@@ -434,10 +436,18 @@ fn outlink_statuses(pages: &[Arc<PageRecord>], page: &PageRecord) -> Vec<Option<
                 .map(|status| (candidate.url.as_str(), status))
         })
         .collect();
-    page.outlinks
+    let mut order: Vec<(usize, Option<u16>)> = page
+        .outlinks
         .iter()
-        .map(|link| status_by_url.get(link.dst_url.as_ref()).copied())
-        .collect()
+        .enumerate()
+        .map(|(index, link)| (index, status_by_url.get(link.dst_url.as_ref()).copied()))
+        .collect();
+    order.sort_by_key(|(_, status)| match status {
+        Some(400..) => 0,
+        Some(300..400) => 1,
+        _ => 2,
+    });
+    order
 }
 
 /// One CSV per tab, each exactly what that tab's own export button produces.
@@ -894,11 +904,11 @@ impl ResultsDelegate {
         // a harvested resource, or an image also reached through a link. One
         // pass over the crawl's image lists, and only on selection.
         let references = image_references(self.all_pages.iter(), &record.url);
-        let outlink_statuses = outlink_statuses(&self.all_pages, &record);
+        let outlink_order = outlink_order(&self.all_pages, &record);
         Some(DetailsSelection::Page {
             record: Box::new(record.into_owned()),
             references,
-            outlink_statuses,
+            outlink_order,
         })
     }
 
@@ -1902,6 +1912,48 @@ mod cache_tests {
     /// A running crawl read back from the database already holds some of the
     /// pages that streamed in during the read; adding those again would list
     /// them twice.
+    #[test]
+    fn broken_outlinks_are_listed_first_then_redirects() {
+        let link = |path: &str| crate::crawl::event::Outlink {
+            dst_url: format!("https://a.test/{path}").into(),
+            anchor: None,
+            rel: None,
+            csr_only: false,
+        };
+        let with_status = |path: &str, status: u16| PageRecord {
+            status: Some(status),
+            ..internal_page(&format!("https://a.test/{path}"))
+        };
+        let mut source = internal_page("https://a.test/source");
+        source.outlinks = thin_vec::thin_vec![
+            link("fine"),
+            link("missing"),
+            link("moved"),
+            link("never-crawled"),
+            link("down"),
+        ];
+        let pages: Vec<Arc<PageRecord>> = [
+            with_status("fine", 200),
+            with_status("missing", 404),
+            with_status("moved", 301),
+            with_status("down", 500),
+        ]
+        .into_iter()
+        .map(Arc::new)
+        .collect();
+
+        assert_eq!(
+            outlink_order(&pages, &source),
+            vec![
+                (1, Some(404)),
+                (4, Some(500)),
+                (2, Some(301)),
+                (0, Some(200)),
+                (3, None),
+            ]
+        );
+    }
+
     #[test]
     fn sizes_sort_by_bytes_rather_than_by_the_number_shown() {
         let sized = |url: &str, bytes: u64| PageRecord {

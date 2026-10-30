@@ -20,19 +20,33 @@ All notable changes to this project will be documented in this file.
   crawl, with Forget for this site. Header values are not kept
 - Tested a URL against the include and exclude patterns, and entered headers
   as name and value rows with the values hidden
+- Added twelve checks: temporary redirects, redirects that end in an error,
+  HTTPS pages linking to HTTP, pages with one inlink, pages without internal
+  outlinks, canonicals pointing to a redirect, an error, HTTP or another
+  canonical, canonicalised URLs listed in a sitemap, slow HTML responses and
+  HTML over 2 MB
+- Flagged the site's assets that Chrome fetched more than once in a crawl,
+  in a Not Cached filter on the Internal tab with Fetches, 304s and
+  Cache-Control columns
+- Read each asset's size, status and headers from the responses Chrome
+  received in Chrome crawls, and showed the bytes transferred next to the
+  file's size on the Internal tab and in the details panel
+- Tagged each outlink in the details panel with its status when it
+  redirects or errors, so a page under Links shows which link is broken
+- Showed each crawl's size on disk in the crawl history
 
 ### Performance
 
-- Kept large crawls small in memory and quick to open. A crawl of 409k rows
-  compared with one of 269k now holds 1.2 GB in place of 3.5 GB and reads
-  in 7.5 s in place of 28.5 s
-- Stored a finished crawl's tab and filter counts, so opening it again skips
-  counting (6.9 s to 0.3 s on that crawl)
-- Stored each crawl's page counts when it finishes, so the crawl history
-  lists quickly
-- Stored each URL and repeated text once per crawl, which shrank a 2.4 GB
-  database to 750 MB. The first start after updating converts the database
-  once, which takes about a minute for one that size
+- Reworked how crawls are kept, in memory and on disk. Each crawl is a file
+  of its own, so deleting one frees its space at once. A crawl stores each
+  URL and repeated text once, looked up by a hash, and keeps headers,
+  hreflang and structured data compressed. A 2.4 GB database came down to
+  750 MB, and a further third after that. A crawl of 409k rows compared
+  with one of 269k holds 1.2 GB in memory in place of 3.5 GB and reads in
+  7.5 s in place of 28.5 s. A finished crawl keeps its tab, filter and page
+  counts, so it opens again without counting (6.9 s to 0.3 s) and the crawl
+  history lists quickly. The first start after updating converts the
+  database once, which can take a few minutes for a large one
 
 ### Fixes
 
@@ -50,6 +64,16 @@ All notable changes to this project will be documented in this file.
   list without a word
 - Filled most of the loading bar with the reads when a crawl's counts are
   stored, since restoring them takes a moment
+- Marked a crawl cut off by quitting or killing the app as aborted at the
+  next start, in place of listing it as running
+- Started crawls of sites with very large sitemaps without a wait of half a
+  minute, and stopped reading sitemaps when the crawl is stopped
+- Kept the crawl settings button and the Chrome switch in place, disabled,
+  while a crawl runs
+- Kept column widths and sorts while pages stream in, and sorted size
+  columns by bytes
+- Left One Inlink empty until the crawl finishes, since a page's inlinks are
+  only all counted then
 
 ## [0.2.3] - 2026-10-28
 

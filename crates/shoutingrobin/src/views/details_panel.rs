@@ -53,9 +53,10 @@ pub enum DetailsSelection {
         /// so without these a broken image on Response Codes has no page to
         /// fix it on.
         references: Vec<ImageReference>,
-        /// The crawled status code of each outlink's destination, in the
-        /// order of `record.outlinks`. `None` for a destination not crawled.
-        outlink_statuses: Vec<Option<u16>>,
+        /// The outlinks in the order the Outlinks tab lists them, as indices
+        /// into `record.outlinks` with the destination's crawled status code,
+        /// `None` for one not crawled. See `outlink_order` in the grid.
+        outlink_order: Vec<(usize, Option<u16>)>,
     },
     Image(Box<ImageDetails>),
 }
@@ -1571,6 +1572,7 @@ fn link_row(
     url: SharedString,
     detail: SharedString,
     copyable_detail: Option<(&'static str, SharedString)>,
+    leading: Option<AnyElement>,
     trailing: Option<AnyElement>,
     muted: Hsla,
     fg: Hsla,
@@ -1594,6 +1596,7 @@ fn link_row(
                 .flex()
                 .items_center()
                 .gap_1()
+                .when_some(leading, |el, tag| el.child(tag))
                 .child(
                     div()
                         .flex_1()
@@ -2066,6 +2069,7 @@ impl Render for DetailsPanel {
                                     ("Copy Anchor Text", SharedString::from(anchor.to_string()))
                                 }),
                                 None,
+                                None,
                                 muted,
                                 fg,
                                 border,
@@ -2083,48 +2087,37 @@ impl Render for DetailsPanel {
                 move |this, range, cx| {
                     let Some(DetailsSelection::Page {
                         record: rec,
-                        outlink_statuses,
+                        outlink_order,
                         ..
                     }) = &this.selected
                     else {
                         return Vec::new();
                     };
                     let first = range.start;
-                    rec.outlinks
+                    outlink_order
                         .get(range)
                         .unwrap_or_default()
                         .iter()
+                        .filter_map(|&(index, status)| Some((rec.outlinks.get(index)?, status)))
                         .enumerate()
-                        .map(|(offset, link)| {
+                        .map(|(offset, (link, status))| {
                             let is_nofollow = link
                                 .rel
                                 .as_deref()
                                 .is_some_and(|r| r.to_ascii_lowercase().contains("nofollow"));
                             // Only what needs fixing is tagged: a 2xx on every
                             // row would bury the one broken link among them.
-                            let status = outlink_statuses
-                                .get(first + offset)
-                                .copied()
-                                .flatten()
-                                .filter(|status| *status >= 300);
-                            let trailing = (status.is_some() || is_nofollow).then(|| {
-                                div()
-                                    .flex()
-                                    .gap_1()
-                                    .when_some(status, |el, status| {
-                                        let tone =
-                                            if status >= 400 { Tone::Err } else { Tone::Warn };
-                                        el.child(
-                                            tone_tag(tone, cx)
-                                                .child(SharedString::from(status.to_string())),
-                                        )
-                                    })
-                                    .when(is_nofollow, |el| {
-                                        el.child(
-                                            tone_tag(Tone::Warn, cx)
-                                                .child(SharedString::from("nofollow")),
-                                        )
-                                    })
+                            // In front of the URL, which a long one would
+                            // otherwise push out of sight.
+                            let leading = status.filter(|status| *status >= 300).map(|status| {
+                                let tone = if status >= 400 { Tone::Err } else { Tone::Warn };
+                                tone_tag(tone, cx)
+                                    .child(SharedString::from(status.to_string()))
+                                    .into_any_element()
+                            });
+                            let trailing = is_nofollow.then(|| {
+                                tone_tag(Tone::Warn, cx)
+                                    .child(SharedString::from("nofollow"))
                                     .into_any_element()
                             });
                             let anchor = link.anchor.as_deref().filter(|a| !a.trim().is_empty());
@@ -2136,6 +2129,7 @@ impl Render for DetailsPanel {
                                 anchor.map(|anchor| {
                                     ("Copy Anchor Text", SharedString::from(anchor.to_string()))
                                 }),
+                                leading,
                                 trailing,
                                 muted,
                                 fg,
@@ -2183,6 +2177,7 @@ impl Render for DetailsPanel {
                                 SharedString::from(reference.page_url.clone()),
                                 alt.clone(),
                                 (!alt.is_empty()).then_some(("Copy Alt Text", alt)),
+                                None,
                                 Some(trailing),
                                 muted,
                                 fg,
