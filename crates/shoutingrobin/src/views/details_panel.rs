@@ -149,12 +149,17 @@ impl DetailsPanel {
     /// Reads what a page's details show that the crawl was loaded without,
     /// see [`crate::storage::load_page_on_demand`].
     fn load_on_demand(&self, crawl_id: i64, url: String, cx: &mut Context<Self>) -> Task<()> {
-        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        let crawls = crate::app_database::AppDatabase::global(cx)
+            .crawls()
+            .clone();
         cx.spawn(async move |panel, cx| {
             let loaded = cx
                 .background_spawn({
                     let url = url.clone();
-                    async move { crate::storage::load_page_on_demand(&pool, crawl_id, &url).await }
+                    async move {
+                        let db = crawls.open(crawl_id).await?;
+                        crate::storage::load_page_on_demand(&db, &url).await
+                    }
                 })
                 .await;
             let loaded = match loaded {
@@ -329,19 +334,6 @@ impl Default for DetailsPanel {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn format_bytes(bytes: u64) -> String {
-    if bytes == 0 {
-        return String::new();
-    }
-    if bytes < 1024 {
-        return format!("{bytes} B");
-    }
-    if bytes < 1024 * 1024 {
-        return format!("{:.1} KB", bytes as f64 / 1024.0);
-    }
-    format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
 }
 
 /// A field's value, or nothing at all when it has none.
@@ -784,14 +776,14 @@ fn url_information_section(
         .child(row(
             order,
             "Size",
-            SharedString::from(format_bytes(rec.size_bytes)),
+            SharedString::from(crate::ui::tag::format_bytes(rec.size_bytes)),
             muted,
         ))
         .when_some(rec.transfer_bytes, |el, bytes| {
             el.child(row(
                 order,
                 "Transferred",
-                SharedString::from(format_bytes(bytes)),
+                SharedString::from(crate::ui::tag::format_bytes(bytes)),
                 muted,
             ))
         })

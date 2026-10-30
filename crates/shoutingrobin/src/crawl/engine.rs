@@ -12,6 +12,8 @@ use spider::features::chrome_common::{
 use spider::website::Website;
 use sqlx::SqlitePool;
 
+use crate::storage::CrawlDb;
+
 use crate::crawl::CrawlConfig;
 use crate::crawl::event::{A11yIssue, CrawlEvent, HreflangSource, PageRecord, SubresourceKind};
 use crate::crawl::render_mode::RenderMode;
@@ -62,7 +64,8 @@ impl CrawlEngine {
         &mut self,
         root_url: String,
         tx: Sender<CrawlEvent>,
-        pool: SqlitePool,
+        catalog: SqlitePool,
+        crawls: storage::CrawlStore,
         render_mode: RenderMode,
         mut config: CrawlConfig,
     ) -> (
@@ -95,13 +98,30 @@ impl CrawlEngine {
             }
             let root_url = resolve_start_url(&root_url, &config).await;
 
-            let crawl_id = match storage::create_crawl(&pool, &root_url, mode_str, &config).await {
+            let crawl_id = match storage::create_crawl(&catalog, &root_url, mode_str, &config).await
+            {
                 Ok(id) => id,
                 Err(e) => {
                     if let Err(send_err) = tx
                         .send_async(CrawlEvent::Error {
                             url: root_url.clone(),
                             message: format!("Failed to create crawl: {e}"),
+                        })
+                        .await
+                    {
+                        tracing::warn!(error=%send_err, "failed to send crawl error event");
+                    }
+                    return;
+                }
+            };
+
+            let db = match crawls.open(crawl_id).await {
+                Ok(db) => db,
+                Err(e) => {
+                    if let Err(send_err) = tx
+                        .send_async(CrawlEvent::Error {
+                            url: root_url.clone(),
+                            message: format!("Failed to open the crawl's database: {e}"),
                         })
                         .await
                     {
@@ -125,10 +145,11 @@ impl CrawlEngine {
             // site that only answers those still gives up its icon.
             let site_icon = match build_ssr_client(&config) {
                 Ok(client) => {
-                    let pool = pool.clone();
+                    let catalog = catalog.clone();
                     let page_url = root_url.clone();
                     Some(tokio::spawn(async move {
-                        crate::crawl::site_icon::refresh_site_icon(&pool, &client, &page_url).await
+                        crate::crawl::site_icon::refresh_site_icon(&catalog, &client, &page_url)
+                            .await
                     }))
                 }
                 Err(e) => {
@@ -155,9 +176,7 @@ impl CrawlEngine {
                         if cancel_flag.load(Ordering::Relaxed) {
                             Vec::new()
                         } else {
-                            if let Err(e) =
-                                storage::insert_sitemap_urls(&pool, crawl_id, &entries).await
-                            {
+                            if let Err(e) = storage::insert_sitemap_urls(&db, &entries).await {
                                 tracing::warn!(error=%e, "failed to persist sitemap URLs");
                             }
                             entries
@@ -387,7 +406,7 @@ impl CrawlEngine {
 
             let tx_pages = tx.clone();
             let cancel_pages = cancel_flag.clone();
-            let pool_pages = pool.clone();
+            let db_pages = db.clone();
             let root_for_pump = root_url.clone();
             let chrome_mode = matches!(render_mode, RenderMode::Chrome);
             let content_selector_for_pump = config.content_selector.clone();
@@ -619,8 +638,7 @@ impl CrawlEngine {
                             stashed_layout,
                             layout_capture.scrolls(),
                             &mut layout_tables,
-                            &pool_pages,
-                            crawl_id,
+                            &db_pages,
                         )
                         .await;
                     }
@@ -751,7 +769,7 @@ impl CrawlEngine {
                     } else if !sitemap_for_pump.is_empty() {
                         record.in_sitemap = Some(false);
                     }
-                    if let Err(e) = storage::insert_page(&pool_pages, crawl_id, &record).await {
+                    if let Err(e) = storage::insert_page(&db_pages, &record).await {
                         tracing::warn!(error=%e, url=%record.url, "failed to persist page");
                     }
                     for image in &record.images {
@@ -881,9 +899,7 @@ impl CrawlEngine {
                         } else if !sitemap_for_pump.is_empty() {
                             resource_record.in_sitemap = Some(false);
                         }
-                        if let Err(e) =
-                            storage::insert_page(&pool_pages, crawl_id, &resource_record).await
-                        {
+                        if let Err(e) = storage::insert_page(&db_pages, &resource_record).await {
                             tracing::warn!(error=%e, url=%resource_record.url, "failed to persist resource");
                         }
                         if let Err(e) = tx_pages
@@ -927,25 +943,16 @@ impl CrawlEngine {
                 (0, Vec::new(), storage::AssetFetches::new())
             });
             tracing::info!(total, "page pump finished");
-            if let Err(e) = storage::set_asset_fetches(&pool, crawl_id, &asset_fetches).await {
+            if let Err(e) = storage::set_asset_fetches(&db, &asset_fetches).await {
                 tracing::warn!(error=%e, "failed to store how often assets were fetched");
             }
 
-            resolve_redirect_chains(&pool, crawl_id, &tx, &config, &root_url, &cancel_flag).await;
+            resolve_redirect_chains(&db, &tx, &config, &root_url, &cancel_flag).await;
 
-            fetch_declared_canonical_targets(
-                &pool,
-                crawl_id,
-                &tx,
-                &config,
-                &root_url,
-                &cancel_flag,
-            )
-            .await;
+            fetch_declared_canonical_targets(&db, &tx, &config, &root_url, &cancel_flag).await;
 
             check_discovered_resources(
-                &pool,
-                crawl_id,
+                &db,
                 &tx,
                 &config,
                 &root_url,
@@ -959,24 +966,17 @@ impl CrawlEngine {
             let passes: [(&str, Result<(), sqlx::Error>); 5] = [
                 (
                     "near-duplicate analysis",
-                    run_near_duplicate_analysis(&pool, crawl_id, config.near_duplicate_threshold)
-                        .await,
+                    run_near_duplicate_analysis(&db, config.near_duplicate_threshold).await,
                 ),
                 (
                     "crawl depth analysis",
-                    run_crawl_depth_analysis(&pool, crawl_id, &root_url).await,
+                    run_crawl_depth_analysis(&db, &root_url).await,
                 ),
-                (
-                    "link score analysis",
-                    run_pagerank_analysis(&pool, crawl_id).await,
-                ),
-                (
-                    "hreflang validation",
-                    run_hreflang_validation(&pool, crawl_id).await,
-                ),
+                ("link score analysis", run_pagerank_analysis(&db).await),
+                ("hreflang validation", run_hreflang_validation(&db).await),
                 (
                     "layout template grouping",
-                    crate::crawl::layout_groups::run_template_grouping(&pool, crawl_id).await,
+                    crate::crawl::layout_groups::run_template_grouping(&db).await,
                 ),
             ];
             for (pass, outcome) in passes {
@@ -1005,14 +1005,12 @@ impl CrawlEngine {
                         .collect();
                 // Every URL already a row, so a URL listed by two sitemaps, or
                 // both listed and blocked, is one row rather than two.
-                let mut recorded = storage::load_page_urls(&pool, crawl_id)
-                    .await
-                    .unwrap_or_default();
+                let mut recorded = storage::load_page_urls(&db).await.unwrap_or_default();
 
                 // Read the orphans before recording any: the query is "listed
                 // in a sitemap and absent from `pages`", and we are about to
                 // add them to `pages`.
-                let orphans = storage::load_sitemap_orphans(&pool, crawl_id)
+                let orphans = storage::load_sitemap_orphans(&db)
                     .await
                     .unwrap_or_else(|e| {
                         tracing::warn!(error=%e, "failed to load sitemap orphans");
@@ -1056,7 +1054,7 @@ impl CrawlEngine {
                     tracing::info!(count = blocked_count, "found robots.txt-blocked URLs");
                 }
 
-                if let Err(e) = storage::insert_pages(&pool, crawl_id, &records).await {
+                if let Err(e) = storage::insert_pages(&db, &records).await {
                     tracing::warn!(error=%e, "failed to persist sitemap orphans and blocked URLs");
                 }
                 for record in records {
@@ -1077,7 +1075,7 @@ impl CrawlEngine {
 
             // Last, after the passes and the rows recorded above: a finished
             // crawl's stored counts and cached filter counts are taken as final.
-            if let Err(e) = storage::finish_crawl(&pool, crawl_id).await {
+            if let Err(e) = storage::finish_crawl(&catalog, &db, crawl_id).await {
                 tracing::warn!(error=%e, "failed to finalize crawl record");
             }
 
@@ -1101,8 +1099,7 @@ impl CrawlEngine {
 /// URL the crawler reached, or a resource Chrome already reported through the
 /// Resource Timing API.
 async fn check_discovered_resources(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     tx: &Sender<CrawlEvent>,
     config: &CrawlConfig,
     root_url: &str,
@@ -1112,7 +1109,7 @@ async fn check_discovered_resources(
     if !config.check_resources || cancel.load(Ordering::Relaxed) {
         return;
     }
-    let recorded = match storage::load_described_page_urls(pool, crawl_id).await {
+    let recorded = match storage::load_described_page_urls(db).await {
         Ok(urls) => urls,
         Err(e) => {
             tracing::warn!(error=%e, "failed to read recorded URLs; skipping resource checks");
@@ -1126,7 +1123,7 @@ async fn check_discovered_resources(
     // and headers say nothing about SEO, and on a catalogue with two API
     // calls per product that is a thousand requests for nothing.
     let mut discovered = discovered;
-    match storage::load_undescribed_resources(pool, crawl_id).await {
+    match storage::load_undescribed_resources(db).await {
         Ok(undescribed) => discovered.extend(
             undescribed
                 .into_iter()
@@ -1181,7 +1178,7 @@ async fn check_discovered_resources(
                 tracing::debug!(url = %check.url, error = %error, "resource check failed");
             }
             record.compute_indexability();
-            if let Err(e) = storage::record_resource_check(pool, crawl_id, &record).await {
+            if let Err(e) = storage::record_resource_check(db, &record).await {
                 tracing::warn!(error=%e, url=%record.url, "failed to persist resource");
             }
             if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
@@ -1222,8 +1219,7 @@ const MAX_REDIRECT_HOPS: usize = 10;
 /// target, every intermediate hop becomes a row of its own, and the page the
 /// chain ends at is fetched and analysed like any other.
 async fn resolve_redirect_chains(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     tx: &Sender<CrawlEvent>,
     config: &CrawlConfig,
     root_url: &str,
@@ -1232,7 +1228,7 @@ async fn resolve_redirect_chains(
     if cancel.load(Ordering::Relaxed) {
         return;
     }
-    let redirects = match storage::load_redirects(pool, crawl_id).await {
+    let redirects = match storage::load_redirects(db).await {
         Ok(rows) => rows,
         Err(e) => {
             tracing::warn!(error=%e, "failed to read redirects");
@@ -1249,7 +1245,7 @@ async fn resolve_redirect_chains(
             return;
         }
     };
-    let mut recorded = match storage::load_page_urls(pool, crawl_id).await {
+    let mut recorded = match storage::load_page_urls(db).await {
         Ok(urls) => urls,
         Err(e) => {
             tracing::warn!(error=%e, "failed to read recorded URLs");
@@ -1270,9 +1266,7 @@ async fn resolve_redirect_chains(
             };
             // The row points at the hop it actually serves, which is not
             // necessarily where the chain ends.
-            if let Err(e) =
-                storage::set_redirect_target(pool, crawl_id, &url, &target, status).await
-            {
+            if let Err(e) = storage::set_redirect_target(db, &url, &target, status).await {
                 tracing::warn!(error=%e, url=%url, "failed to record redirect target");
             }
             tracing::info!(from = %url, to = %target, "followed a redirect");
@@ -1290,7 +1284,7 @@ async fn resolve_redirect_chains(
                 break;
             };
             let next_status = record.status;
-            if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
+            if let Err(e) = storage::insert_page(db, &record).await {
                 tracing::warn!(error=%e, url=%record.url, "failed to persist redirect target");
             }
             if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
@@ -1360,8 +1354,7 @@ fn plan_canonical_fetches(
 /// The client does not follow redirects, so a canonical pointing at a redirect
 /// is recorded as the 3xx it is rather than silently resolved.
 async fn fetch_declared_canonical_targets(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     tx: &Sender<CrawlEvent>,
     config: &CrawlConfig,
     root_url: &str,
@@ -1370,7 +1363,7 @@ async fn fetch_declared_canonical_targets(
     if cancel.load(Ordering::Relaxed) {
         return;
     }
-    let declared = match storage::load_declared_canonicals(pool, crawl_id).await {
+    let declared = match storage::load_declared_canonicals(db).await {
         Ok(rows) => rows,
         Err(e) => {
             tracing::warn!(error=%e, "failed to read declared canonicals");
@@ -1380,7 +1373,7 @@ async fn fetch_declared_canonical_targets(
     if declared.is_empty() {
         return;
     }
-    let recorded = match storage::load_page_urls(pool, crawl_id).await {
+    let recorded = match storage::load_page_urls(db).await {
         Ok(urls) => urls,
         Err(e) => {
             tracing::warn!(error=%e, "failed to read recorded URLs");
@@ -1411,7 +1404,7 @@ async fn fetch_declared_canonical_targets(
         let Some(record) = fetch_uncrawled_page(&client, &target, config, root_url).await else {
             continue;
         };
-        if let Err(e) = storage::insert_page(pool, crawl_id, &record).await {
+        if let Err(e) = storage::insert_page(db, &record).await {
             tracing::warn!(error=%e, url=%record.url, "failed to persist canonical target");
         }
         if let Err(e) = tx.send_async(CrawlEvent::Page(Box::new(record))).await {
@@ -1565,12 +1558,8 @@ pub fn channel() -> (Sender<CrawlEvent>, Receiver<CrawlEvent>) {
     flume::unbounded()
 }
 
-async fn run_near_duplicate_analysis(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    threshold: u8,
-) -> Result<(), sqlx::Error> {
-    let pages = storage::load_simhashes_for_crawl(pool, crawl_id).await?;
+async fn run_near_duplicate_analysis(db: &CrawlDb, threshold: u8) -> Result<(), sqlx::Error> {
+    let pages = storage::load_simhashes_for_crawl(db).await?;
 
     if pages.len() < 2 {
         return Ok(());
@@ -1579,8 +1568,7 @@ async fn run_near_duplicate_analysis(
     let results = crate::crawl::similarity::find_near_duplicates(&pages, threshold);
 
     storage::update_near_duplicates(
-        pool,
-        crawl_id,
+        db,
         &results
             .iter()
             .map(|r| {
@@ -1602,27 +1590,21 @@ async fn run_near_duplicate_analysis(
 /// URLs the walk can't reach (sitemap-only orphans, robots.txt-blocked URLs) are
 /// left untouched rather than reported as depth 0, which would put them level
 /// with the start page.
-async fn run_crawl_depth_analysis(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    root_url: &str,
-) -> Result<(), sqlx::Error> {
+async fn run_crawl_depth_analysis(db: &CrawlDb, root_url: &str) -> Result<(), sqlx::Error> {
     let link_rows = sqlx::query_as::<_, (String, String)>(
         "SELECT s.text, d.text FROM links l
          JOIN texts s ON s.id = l.src_url_id
          JOIN texts d ON d.id = l.dst_url_id
-         WHERE l.crawl_id = ? ORDER BY l.id",
+ ORDER BY l.id",
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
 
     let page_rows = sqlx::query_as::<_, (String, Option<String>)>(
         "SELECT t.text, p.redirect_url FROM pages p JOIN texts t ON t.id = p.url_id
-         WHERE p.crawl_id = ? ORDER BY p.id",
+ ORDER BY p.id",
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
 
     // Key the graph on normalised URLs so a link written as
@@ -1692,22 +1674,21 @@ async fn run_crawl_depth_analysis(
         .flat_map(|(urls, depth)| urls.iter().map(move |url| (url.clone(), depth)))
         .collect();
 
-    storage::update_crawl_depths(pool, crawl_id, &depths).await
+    storage::update_crawl_depths(db, &depths).await
 }
 
 /// How many times a rate-limited or failing fetch is retried before its
 /// status is recorded.
 const RATE_LIMIT_RETRIES: u8 = 2;
 
-async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
+async fn run_pagerank_analysis(db: &CrawlDb) -> Result<(), sqlx::Error> {
     let link_rows = sqlx::query_as::<_, (String, String)>(
         "SELECT s.text, d.text FROM links l
          JOIN texts s ON s.id = l.src_url_id
          JOIN texts d ON d.id = l.dst_url_id
-         WHERE l.crawl_id = ? AND l.internal = 1 ORDER BY l.id",
+         WHERE l.internal = 1 ORDER BY l.id",
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
 
     if link_rows.is_empty() {
@@ -1716,7 +1697,7 @@ async fn run_pagerank_analysis(pool: &SqlitePool, crawl_id: i64) -> Result<(), s
 
     let results = compute_pagerank(&link_rows);
 
-    storage::update_link_scores(pool, crawl_id, &results).await
+    storage::update_link_scores(db, &results).await
 }
 
 /// Normalised PageRank (0..100) over internal links. Each page's score is
@@ -1872,14 +1853,13 @@ pub(crate) fn hreflang_issues_for_page(
     issues
 }
 
-async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
+async fn run_hreflang_validation(db: &CrawlDb) -> Result<(), sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, Option<Vec<u8>>, Option<String>)>(
         r#"SELECT t.text, CAST(p.hreflang_tags_json AS BLOB), p.canonical FROM pages p
            JOIN texts t ON t.id = p.url_id
-           WHERE p.crawl_id = ? ORDER BY p.id"#,
+ ORDER BY p.id"#,
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
 
     let mut crawled: std::collections::HashMap<String, HreflangPage> =
@@ -1925,7 +1905,7 @@ async fn run_hreflang_validation(pool: &SqlitePool, crawl_id: i64) -> Result<(),
         })
         .collect();
 
-    storage::update_hreflang_issues(pool, crawl_id, &all_issues).await
+    storage::update_hreflang_issues(db, &all_issues).await
 }
 
 /// ISO 639-1 two-letter language codes.
@@ -2585,8 +2565,7 @@ async fn store_page_layout(
     stashed: Option<&str>,
     scroll: bool,
     tables: &mut crate::crawl::layout::LayoutTables,
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) {
     let capture = match stashed {
         Some(json) => serde_json::from_str(json).map_err(anyhow::Error::from),
@@ -2613,7 +2592,7 @@ async fn store_page_layout(
             return;
         }
     };
-    if let Err(e) = storage::save_page_layout(pool, crawl_id, url, &encoded, &added).await {
+    if let Err(e) = storage::save_page_layout(db, url, &encoded, &added).await {
         tracing::warn!(%url, error=%e, "failed to store page layout");
     }
 }
@@ -3223,17 +3202,11 @@ mod out_of_band_fetch_tests {
         let rt = runtime();
 
         let pages = rt.block_on(async {
-            let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").expect("pool");
-            sqlx::query(
-                "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-            )
-            .execute(&pool)
-            .await
-            .expect("migrations table");
-            storage::run_migrations(&pool).await.expect("migrations");
+            let (pool, crawls) = storage::temporary_databases().await.expect("databases");
             let crawl_id = storage::create_crawl(&pool, &base, "http", &config())
                 .await
                 .expect("crawl");
+            let db = crawls.open(crawl_id).await.expect("crawl file");
 
             // The shape this pass exists for: a crawled document that declares
             // a canonical nothing links to.
@@ -3245,14 +3218,13 @@ mod out_of_band_fetch_tests {
                 is_internal: true,
                 ..Default::default()
             };
-            storage::insert_page(&pool, crawl_id, &source)
+            storage::insert_page(&db, &source)
                 .await
                 .expect("insert source");
 
             let (tx, rx) = channel();
             fetch_declared_canonical_targets(
-                &pool,
-                crawl_id,
+                &db,
                 &tx,
                 &config(),
                 &base,
@@ -3268,7 +3240,7 @@ mod out_of_band_fetch_tests {
                     _ => None,
                 })
                 .collect();
-            let stored = storage::load_pages_for_crawl(&pool, crawl_id, &base)
+            let stored = storage::load_pages_for_crawl(&db, &base)
                 .await
                 .expect("load");
             (emitted, stored)
@@ -3304,17 +3276,11 @@ mod out_of_band_fetch_tests {
         let rt = runtime();
 
         let stored = rt.block_on(async {
-            let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").expect("pool");
-            sqlx::query(
-                "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-            )
-            .execute(&pool)
-            .await
-            .expect("migrations table");
-            storage::run_migrations(&pool).await.expect("migrations");
+            let (pool, crawls) = storage::temporary_databases().await.expect("databases");
             let crawl_id = storage::create_crawl(&pool, &base, "http", &config())
                 .await
                 .expect("crawl");
+            let db = crawls.open(crawl_id).await.expect("crawl file");
 
             // What the crawler leaves behind: the head of the chain, already
             // carrying the destination two hops away.
@@ -3330,14 +3296,11 @@ mod out_of_band_fetch_tests {
                 is_internal: true,
                 ..Default::default()
             };
-            storage::insert_page(&pool, crawl_id, &head)
-                .await
-                .expect("insert head");
+            storage::insert_page(&db, &head).await.expect("insert head");
 
             let (tx, _rx) = channel();
             resolve_redirect_chains(
-                &pool,
-                crawl_id,
+                &db,
                 &tx,
                 &config(),
                 &base,
@@ -3345,7 +3308,7 @@ mod out_of_band_fetch_tests {
             )
             .await;
 
-            storage::load_pages_for_crawl(&pool, crawl_id, &base)
+            storage::load_pages_for_crawl(&db, &base)
                 .await
                 .expect("load")
         });

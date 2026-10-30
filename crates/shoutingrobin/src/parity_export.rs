@@ -37,19 +37,9 @@ fn crawl_and_load(root_url: &str, timeout: Duration) -> Vec<PageRecord> {
         .build()
         .expect("build runtime");
 
-    let pool = rt.block_on(async {
-        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").expect("open pool");
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-        )
-        .execute(&pool)
-        .await
-        .expect("create migrations table");
-        crate::storage::run_migrations(&pool)
-            .await
-            .expect("run migrations");
-        pool
-    });
+    let (pool, crawls) = rt
+        .block_on(crate::storage::temporary_databases())
+        .expect("open the databases");
 
     let (tx, rx) = crate::crawl::engine::channel();
     let (cancel, fut) = {
@@ -58,6 +48,7 @@ fn crawl_and_load(root_url: &str, timeout: Duration) -> Vec<PageRecord> {
             root_url.to_string(),
             tx,
             pool.clone(),
+            crawls.clone(),
             RenderMode::Http,
             CrawlConfig {
                 max_pages: 0,
@@ -117,7 +108,8 @@ fn crawl_and_load(root_url: &str, timeout: Duration) -> Vec<PageRecord> {
             .fetch_one(&pool)
             .await
             .expect("crawl row should exist");
-        crate::storage::load_pages_for_crawl(&pool, crawl_id, root_url)
+        let db = crawls.open(crawl_id).await.expect("open the crawl's file");
+        crate::storage::load_pages_for_crawl(&db, root_url)
             .await
             .expect("load pages")
     });

@@ -36,8 +36,6 @@ use crate::views::results_grid::{
     IssueFilter, filters_for_tab, matching_urls, tab_filter_counts_for_test, tab_is_flattened,
 };
 
-mod migration_check;
-
 /// Longer than the one second the Slow Response filter allows the HTML.
 const SLOW_RESPONSE_DELAY: Duration = Duration::from_millis(1300);
 
@@ -961,21 +959,14 @@ fn chrome_test_guard() -> std::sync::MutexGuard<'static, ()> {
 
 fn crawl_and_load(root_url: &str, render_mode: RenderMode, timeout: Duration) -> Vec<PageRecord> {
     let rt = test_runtime();
-    let pool = rt.block_on(async {
-        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        crate::storage::run_migrations(&pool).await.unwrap();
-        pool
-    });
-    let crawl_id = crawl_into(&rt, &pool, root_url, render_mode, timeout);
-    rt.block_on(crate::storage::load_pages_for_crawl(
-        &pool, crawl_id, root_url,
-    ))
+    let (pool, crawls) = rt
+        .block_on(crate::storage::temporary_databases())
+        .expect("databases");
+    let crawl_id = crawl_into(&rt, &pool, &crawls, root_url, render_mode, timeout);
+    rt.block_on(async {
+        let db = crawls.open(crawl_id).await?;
+        crate::storage::load_pages_for_crawl(&db, root_url).await
+    })
     .expect("load pages")
 }
 
@@ -987,11 +978,12 @@ fn test_runtime() -> tokio::runtime::Runtime {
         .unwrap()
 }
 
-/// Crawls `root_url` into `pool` and returns the crawl's id once it finished
-/// or timed out.
+/// Crawls `root_url` into `pool` and `crawls` and returns the crawl's id once
+/// it finished or timed out.
 fn crawl_into(
     rt: &tokio::runtime::Runtime,
     pool: &sqlx::SqlitePool,
+    crawls: &crate::storage::CrawlStore,
     root_url: &str,
     render_mode: RenderMode,
     timeout: Duration,
@@ -1004,6 +996,7 @@ fn crawl_into(
             root_url.to_string(),
             tx,
             pool.clone(),
+            crawls.clone(),
             render_mode,
             CrawlConfig {
                 max_pages: 0,

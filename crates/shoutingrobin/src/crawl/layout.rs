@@ -1291,13 +1291,12 @@ const BATCH: i64 = 200;
 /// Reads every stored layout of the crawl in URL order, `BATCH` at a time,
 /// so a pass over a large crawl never holds every layout at once.
 pub(crate) async fn for_each_layout(
-    pool: &sqlx::SqlitePool,
-    crawl_id: i64,
+    db: &crate::storage::CrawlDb,
     mut visit: impl FnMut(String, PageLayout),
 ) -> Result<(), sqlx::Error> {
     let mut after = String::new();
     loop {
-        let rows = crate::storage::load_page_layouts_after(pool, crawl_id, &after, BATCH).await?;
+        let rows = crate::storage::load_page_layouts_after(db, &after, BATCH).await?;
         let Some((last, _)) = rows.last() else {
             return Ok(());
         };
@@ -1324,23 +1323,21 @@ pub struct PageLayoutChange {
 /// changed are returned: a page whose text or images changed but whose
 /// layout did not is unchanged here.
 pub async fn compare_crawls(
-    pool: &sqlx::SqlitePool,
-    baseline_crawl_id: i64,
-    crawl_id: i64,
+    baseline: &crate::storage::CrawlDb,
+    db: &crate::storage::CrawlDb,
 ) -> Result<HashMap<String, PageLayoutChange>, sqlx::Error> {
-    let baseline_tables = crate::storage::load_layout_tables(pool, baseline_crawl_id).await?;
-    let tables = crate::storage::load_layout_tables(pool, crawl_id).await?;
+    let baseline_tables = crate::storage::load_layout_tables(baseline).await?;
+    let tables = crate::storage::load_layout_tables(db).await?;
     let mut changed = HashMap::new();
     let mut after = String::new();
     loop {
-        let rows = crate::storage::load_page_layouts_after(pool, crawl_id, &after, BATCH).await?;
+        let rows = crate::storage::load_page_layouts_after(db, &after, BATCH).await?;
         let Some((last, _)) = rows.last() else {
             return Ok(changed);
         };
         after = last.clone();
         for (url, encoded) in rows {
-            let Some(baseline_encoded) =
-                crate::storage::load_page_layout(pool, baseline_crawl_id, &url).await?
+            let Some(baseline_encoded) = crate::storage::load_page_layout(baseline, &url).await?
             else {
                 continue;
             };
@@ -1381,26 +1378,24 @@ pub struct PageComparison {
 /// Loads one page's layout, and its baseline when there is one. `None` when
 /// the crawl did not capture the page.
 pub async fn load_page_comparison(
-    pool: &sqlx::SqlitePool,
-    baseline_crawl_id: Option<i64>,
-    crawl_id: i64,
+    baseline: Option<&crate::storage::CrawlDb>,
+    db: &crate::storage::CrawlDb,
     url: &str,
 ) -> anyhow::Result<Option<PageComparison>> {
-    let Some(encoded) = crate::storage::load_page_layout(pool, crawl_id, url).await? else {
+    let Some(encoded) = crate::storage::load_page_layout(db, url).await? else {
         return Ok(None);
     };
     let after = (
         PageLayout::decode(&encoded)?,
-        crate::storage::load_layout_tables(pool, crawl_id).await?,
+        crate::storage::load_layout_tables(db).await?,
     );
     let mut before = None;
-    if let Some(baseline_crawl_id) = baseline_crawl_id
-        && let Some(encoded) =
-            crate::storage::load_page_layout(pool, baseline_crawl_id, url).await?
+    if let Some(baseline) = baseline
+        && let Some(encoded) = crate::storage::load_page_layout(baseline, url).await?
     {
         before = Some((
             PageLayout::decode(&encoded)?,
-            crate::storage::load_layout_tables(pool, baseline_crawl_id).await?,
+            crate::storage::load_layout_tables(baseline).await?,
         ));
     }
     let diff = match &before {

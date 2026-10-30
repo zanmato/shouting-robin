@@ -39,11 +39,12 @@ fn crawl_shop(database: &TestDatabase, port: u16, layout_capture: LayoutCapture)
 }
 
 fn load_layout(database: &TestDatabase, crawl_id: i64, url: &str) -> (PageLayout, LayoutTables) {
+    let db = database.db(crawl_id);
     database.runtime.block_on(async {
-        let tables = shoutingrobin::storage::load_layout_tables(&database.pool, crawl_id)
+        let tables = shoutingrobin::storage::load_layout_tables(&db)
             .await
             .expect("load layout tables");
-        let encoded = shoutingrobin::storage::load_page_layout(&database.pool, crawl_id, url)
+        let encoded = shoutingrobin::storage::load_page_layout(&db, url)
             .await
             .expect("load page layout")
             .unwrap_or_else(|| panic!("{url} should have a stored layout"));
@@ -72,13 +73,11 @@ fn chrome_crawl_stores_the_layout_of_every_shop_page() {
     let (mut server, port) = spawn_http_server();
     let database = test_database();
     let crawl_id = crawl_shop(&database, port, LayoutCapture::Loaded);
+    let db = database.db(crawl_id);
 
     let stored = database
         .runtime
-        .block_on(shoutingrobin::storage::count_page_layouts(
-            &database.pool,
-            crawl_id,
-        ))
+        .block_on(shoutingrobin::storage::count_page_layouts(&db))
         .expect("count layouts");
     assert_eq!(
         stored, SHOP_PAGES as i64,
@@ -142,13 +141,11 @@ fn layout_is_not_captured_unless_asked() {
     let database = test_database();
     let crawl_id = crawl_shop(&database, port, LayoutCapture::Off);
     server.kill();
+    let db = database.db(crawl_id);
 
     let stored = database
         .runtime
-        .block_on(shoutingrobin::storage::count_page_layouts(
-            &database.pool,
-            crawl_id,
-        ))
+        .block_on(shoutingrobin::storage::count_page_layouts(&db))
         .expect("count layouts");
     assert_eq!(stored, 0);
 }
@@ -167,13 +164,10 @@ fn shop_pages_group_into_their_templates() {
     let database = test_database();
     let crawl_id = crawl_shop(&database, port, LayoutCapture::Loaded);
     let root_url = format!("http://127.0.0.1:{port}/shop/");
+    let db = database.db(crawl_id);
     let pages = database
         .runtime
-        .block_on(shoutingrobin::storage::load_pages_for_crawl(
-            &database.pool,
-            crawl_id,
-            &root_url,
-        ))
+        .block_on(shoutingrobin::storage::load_pages_for_crawl(&db, &root_url))
         .expect("load pages");
     server.kill();
 
@@ -258,12 +252,13 @@ fn change_labels(
     crawl_id: i64,
     url: &str,
 ) -> Vec<String> {
+    let baseline = database.db(baseline_crawl_id);
+    let db = database.db(crawl_id);
     let comparison = database
         .runtime
         .block_on(shoutingrobin::crawl::layout::load_page_comparison(
-            &database.pool,
-            Some(baseline_crawl_id),
-            crawl_id,
+            Some(&baseline),
+            &db,
             url,
         ))
         .expect("load comparison")
@@ -302,9 +297,8 @@ fn theme_changes_are_found_and_reloads_are_not() {
     let unchanged = database
         .runtime
         .block_on(shoutingrobin::crawl::layout::compare_crawls(
-            &database.pool,
-            baseline,
-            reload,
+            &database.db(baseline),
+            &database.db(reload),
         ))
         .expect("compare plain crawls");
     assert!(
@@ -315,20 +309,17 @@ fn theme_changes_are_found_and_reloads_are_not() {
     let changed = database
         .runtime
         .block_on(shoutingrobin::crawl::layout::compare_crawls(
-            &database.pool,
-            reload,
-            themed,
+            &database.db(reload),
+            &database.db(themed),
         ))
         .expect("compare themed crawl");
     let stored: Vec<i64> = [baseline, reload, themed]
         .iter()
         .map(|crawl_id| {
+            let db = database.db(*crawl_id);
             database
                 .runtime
-                .block_on(shoutingrobin::storage::count_page_layouts(
-                    &database.pool,
-                    *crawl_id,
-                ))
+                .block_on(shoutingrobin::storage::count_page_layouts(&db))
                 .expect("count layouts")
         })
         .collect();

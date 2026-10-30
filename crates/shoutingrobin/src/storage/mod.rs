@@ -1,5 +1,11 @@
 use sqlx::{Row, SqlitePool};
 
+mod crawl_files;
+
+#[allow(unused_imports)]
+pub use crawl_files::temporary_databases;
+pub use crawl_files::{CrawlDb, CrawlStore, connect_catalog};
+
 use crate::crawl::event::{
     A11yIssue, ImageRef, Outlink, PageRecord, SdFormat, SdIssue, SdItem, SdSeverity,
 };
@@ -172,6 +178,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0043_transfer_bytes",
         include_str!("../../migrations/0043_transfer_bytes.sql"),
     ),
+    (
+        CRAWL_FILES_MIGRATION,
+        include_str!("../../migrations/0044_crawl_files.sql"),
+    ),
 ];
 
 /// Stores every URL and repeated text once per crawl, in `texts`, and points
@@ -186,15 +196,32 @@ const TEXT_HASH_MIGRATION: &str = "0040_text_hashes";
 /// Compresses the JSON columns already stored. See `compress_json_columns`.
 const COMPRESSED_JSON_MIGRATION: &str = "0041_compressed_json";
 
+/// Moves each crawl's rows out of the catalog into a file of its own, see
+/// `crawl_files::move_crawls_into_files`, then drops the catalog's tables.
+const CRAWL_FILES_MIGRATION: &str = "0044_crawl_files";
+
 /// The migrations that rewrite enough of the database to vacuum after.
-const REWRITING_MIGRATIONS: [&str; 4] = [
+const REWRITING_MIGRATIONS: [&str; 5] = [
     TEXTS_MIGRATION,
     TEXT_HASH_MIGRATION,
     COMPRESSED_JSON_MIGRATION,
     "0042_unused_indexes",
+    CRAWL_FILES_MIGRATION,
 ];
 
-pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+/// Brings the catalog up to date, moving crawls into files of their own in
+/// `crawls` on the way.
+pub async fn run_migrations(pool: &SqlitePool, crawls: &CrawlStore) -> Result<(), sqlx::Error> {
+    migrate(pool, crawls, None).await
+}
+
+/// Applies the catalog's migrations in order, stopping before `stop_before`
+/// when it is given.
+async fn migrate(
+    pool: &SqlitePool,
+    crawls: &CrawlStore,
+    stop_before: Option<&str>,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -208,6 +235,9 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
 
     let mut rewritten = false;
     for (name, sql) in MIGRATIONS {
+        if stop_before == Some(*name) {
+            break;
+        }
         let already: Option<(String,)> =
             sqlx::query_as("SELECT name FROM schema_migrations WHERE name = ?")
                 .bind(name)
@@ -215,6 +245,11 @@ pub async fn run_migrations(pool: &SqlitePool) -> Result<(), sqlx::Error> {
                 .await?;
         if already.is_some() {
             continue;
+        }
+        // Before the migration's transaction: the copy attaches each crawl's
+        // file, which SQLite does not allow inside one.
+        if *name == CRAWL_FILES_MIGRATION {
+            crawl_files::move_crawls_into_files(pool, crawls).await?;
         }
         let mut tx = pool.begin().await?;
         for stmt in sql.split(";\n").map(str::trim).filter(|s| !s.is_empty()) {
@@ -396,14 +431,9 @@ const TEXT_ROWS_PER_INSERT: usize = 500;
 /// The id of `text` in the crawl, stored first if the crawl has not met it.
 /// The insert comes first so the write holds SQLite's write lock before it
 /// reads, which keeps a concurrent write from slipping in between.
-async fn text_id(
-    conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
-    text: &str,
-) -> Result<i64, sqlx::Error> {
+async fn text_id(conn: &mut sqlx::SqliteConnection, text: &str) -> Result<i64, sqlx::Error> {
     let hash = text_hash(text);
-    sqlx::query("INSERT OR IGNORE INTO texts (crawl_id, hash, text) VALUES (?, ?, ?)")
-        .bind(crawl_id)
+    sqlx::query("INSERT OR IGNORE INTO texts (hash, text) VALUES (?, ?)")
         .bind(hash)
         .bind(text)
         .execute(&mut *conn)
@@ -411,21 +441,18 @@ async fn text_id(
     // A text is found by its hash, or among the few stored without one
     // because another text holds their hash. Every lookup of a text by its
     // value has this shape.
-    let found: Option<i64> = sqlx::query_scalar(
-        "SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?",
-    )
-    .bind(crawl_id)
-    .bind(hash)
-    .bind(text)
-    .fetch_optional(&mut *conn)
-    .await?;
+    let found: Option<i64> =
+        sqlx::query_scalar("SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?")
+            .bind(hash)
+            .bind(text)
+            .fetch_optional(&mut *conn)
+            .await?;
     if let Some(id) = found {
         return Ok(id);
     }
     // Another text of the crawl holds this hash, so the insert above kept
     // that one. This one is stored without a hash, where lookups also look.
-    let inserted = sqlx::query("INSERT INTO texts (crawl_id, hash, text) VALUES (?, NULL, ?)")
-        .bind(crawl_id)
+    let inserted = sqlx::query("INSERT INTO texts (hash, text) VALUES (NULL, ?)")
         .bind(text)
         .execute(&mut *conn)
         .await?;
@@ -474,14 +501,12 @@ fn json_column(row: &sqlx::sqlite::SqliteRow, column: &str) -> Result<Option<Str
 /// side table row and often the same anchor or alt text, so each is looked up
 /// once per write.
 struct TextIds<'a> {
-    crawl_id: i64,
     known: std::collections::HashMap<&'a str, i64>,
 }
 
 impl<'a> TextIds<'a> {
-    fn new(crawl_id: i64) -> Self {
+    fn new() -> Self {
         Self {
-            crawl_id,
             known: std::collections::HashMap::new(),
         }
     }
@@ -495,7 +520,7 @@ impl<'a> TextIds<'a> {
         if let Some(&id) = self.known.get(text) {
             return Ok(id);
         }
-        let id = text_id(conn, self.crawl_id, text).await?;
+        let id = text_id(conn, text).await?;
         self.known.insert(text, id);
         Ok(id)
     }
@@ -518,12 +543,10 @@ impl<'a> TextIds<'a> {
 struct CrawlTexts(std::collections::HashMap<i64, std::sync::Arc<str>>);
 
 impl CrawlTexts {
-    async fn load(pool: &SqlitePool, crawl_id: i64) -> Result<Self, sqlx::Error> {
+    async fn load(db: &CrawlDb) -> Result<Self, sqlx::Error> {
         use futures::TryStreamExt as _;
         let mut rows =
-            sqlx::query_as::<_, (i64, String)>("SELECT id, text FROM texts WHERE crawl_id = ?")
-                .bind(crawl_id)
-                .fetch(pool);
+            sqlx::query_as::<_, (i64, String)>("SELECT id, text FROM texts").fetch(db.pool());
         let mut texts = std::collections::HashMap::new();
         while let Some((id, text)) = rows.try_next().await? {
             texts.insert(id, text.into());
@@ -696,16 +719,14 @@ pub async fn forget_site_settings(pool: &SqlitePool, host: &str) -> Result<(), s
 /// Stores one page's layout with the key and style table entries it added,
 /// in one transaction so a page never refers to entries that were not saved.
 pub async fn save_page_layout(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     url: &str,
     encoded_layout: &[u8],
     added: &crate::crawl::layout::NewTableEntries,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db.pool().begin().await?;
     for (id, key) in &added.keys {
-        sqlx::query("INSERT OR REPLACE INTO layout_keys (crawl_id, id, key) VALUES (?, ?, ?)")
-            .bind(crawl_id)
+        sqlx::query("INSERT OR REPLACE INTO layout_keys (id, key) VALUES (?, ?)")
             .bind(i64::from(*id))
             .bind(key)
             .execute(&mut *tx)
@@ -713,17 +734,13 @@ pub async fn save_page_layout(
     }
     for (id, style) in &added.styles {
         let style_json = serde_json::to_string(style).unwrap_or_else(|_| "[]".to_string());
-        sqlx::query(
-            "INSERT OR REPLACE INTO layout_styles (crawl_id, id, style_json) VALUES (?, ?, ?)",
-        )
-        .bind(crawl_id)
-        .bind(i64::from(*id))
-        .bind(style_json)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("INSERT OR REPLACE INTO layout_styles (id, style_json) VALUES (?, ?)")
+            .bind(i64::from(*id))
+            .bind(style_json)
+            .execute(&mut *tx)
+            .await?;
     }
-    sqlx::query("INSERT OR REPLACE INTO page_layouts (crawl_id, url, layout) VALUES (?, ?, ?)")
-        .bind(crawl_id)
+    sqlx::query("INSERT OR REPLACE INTO page_layouts (url, layout) VALUES (?, ?)")
         .bind(url)
         .bind(encoded_layout)
         .execute(&mut *tx)
@@ -733,20 +750,14 @@ pub async fn save_page_layout(
 }
 
 pub async fn load_layout_tables(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) -> Result<crate::crawl::layout::LayoutTables, sqlx::Error> {
-    let keys =
-        sqlx::query_as::<_, (i64, String)>("SELECT id, key FROM layout_keys WHERE crawl_id = ?")
-            .bind(crawl_id)
-            .fetch_all(pool)
-            .await?;
-    let styles = sqlx::query_as::<_, (i64, String)>(
-        "SELECT id, style_json FROM layout_styles WHERE crawl_id = ?",
-    )
-    .bind(crawl_id)
-    .fetch_all(pool)
-    .await?;
+    let keys = sqlx::query_as::<_, (i64, String)>("SELECT id, key FROM layout_keys")
+        .fetch_all(db.pool())
+        .await?;
+    let styles = sqlx::query_as::<_, (i64, String)>("SELECT id, style_json FROM layout_styles")
+        .fetch_all(db.pool())
+        .await?;
     let keys = keys
         .into_iter()
         .filter_map(|(id, key)| u32::try_from(id).ok().map(|id| (id, key)))
@@ -758,7 +769,7 @@ pub async fn load_layout_tables(
             match serde_json::from_str::<Vec<String>>(&json) {
                 Ok(style) => Some((id, style)),
                 Err(e) => {
-                    tracing::warn!(error=%e, crawl_id, id, "stored layout style could not be parsed");
+                    tracing::warn!(error=%e, id, "stored layout style could not be parsed");
                     None
                 }
             }
@@ -768,61 +779,46 @@ pub async fn load_layout_tables(
 }
 
 /// One page's stored layout, still encoded.
-pub async fn load_page_layout(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    url: &str,
-) -> Result<Option<Vec<u8>>, sqlx::Error> {
-    let row = sqlx::query_as::<_, (Vec<u8>,)>(
-        "SELECT layout FROM page_layouts WHERE crawl_id = ? AND url = ?",
-    )
-    .bind(crawl_id)
-    .bind(url)
-    .fetch_optional(pool)
-    .await?;
+pub async fn load_page_layout(db: &CrawlDb, url: &str) -> Result<Option<Vec<u8>>, sqlx::Error> {
+    let row = sqlx::query_as::<_, (Vec<u8>,)>("SELECT layout FROM page_layouts WHERE url = ?")
+        .bind(url)
+        .fetch_optional(db.pool())
+        .await?;
     Ok(row.map(|(layout,)| layout))
 }
 
 /// A page of stored layouts in URL order, starting after `after_url`. Read
 /// in pages so a pass over a large crawl never holds every layout at once.
 pub async fn load_page_layouts_after(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     after_url: &str,
     limit: i64,
 ) -> Result<Vec<(String, Vec<u8>)>, sqlx::Error> {
     sqlx::query_as::<_, (String, Vec<u8>)>(
-        "SELECT url, layout FROM page_layouts WHERE crawl_id = ? AND url > ? ORDER BY url LIMIT ?",
+        "SELECT url, layout FROM page_layouts WHERE url > ? ORDER BY url LIMIT ?",
     )
-    .bind(crawl_id)
     .bind(after_url)
     .bind(limit)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await
 }
 
 /// Replaces the crawl's templates and every page's place in them.
 pub async fn save_layout_grouping(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     grouping: &crate::crawl::layout_groups::Grouping,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM layout_templates WHERE crawl_id = ?")
-        .bind(crawl_id)
+    let mut tx = db.pool().begin().await?;
+    sqlx::query("DELETE FROM layout_templates")
         .execute(&mut *tx)
         .await?;
-    sqlx::query(
-        "UPDATE page_layouts SET template_id = NULL, assigned_by = NULL WHERE crawl_id = ?",
-    )
-    .bind(crawl_id)
-    .execute(&mut *tx)
-    .await?;
+    sqlx::query("UPDATE page_layouts SET template_id = NULL, assigned_by = NULL")
+        .execute(&mut *tx)
+        .await?;
     for template in &grouping.templates {
         sqlx::query(
-            "INSERT INTO layout_templates (crawl_id, id, name, type_key, page_count) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO layout_templates (id, name, type_key, page_count) VALUES (?, ?, ?, ?)",
         )
-        .bind(crawl_id)
         .bind(template.id)
         .bind(&template.name)
         .bind(&template.type_key)
@@ -831,50 +827,88 @@ pub async fn save_layout_grouping(
         .await?;
     }
     for (url, (template_id, assignment)) in &grouping.pages {
-        sqlx::query(
-            "UPDATE page_layouts SET template_id = ?, assigned_by = ? WHERE crawl_id = ? AND url = ?",
-        )
-        .bind(template_id)
-        .bind(assignment.as_str())
-        .bind(crawl_id)
-        .bind(url)
-        .execute(&mut *tx)
-        .await?;
+        sqlx::query("UPDATE page_layouts SET template_id = ?, assigned_by = ? WHERE url = ?")
+            .bind(template_id)
+            .bind(assignment.as_str())
+            .bind(url)
+            .execute(&mut *tx)
+            .await?;
     }
     tx.commit().await?;
     Ok(())
 }
 
-pub async fn count_page_layouts(pool: &SqlitePool, crawl_id: i64) -> Result<i64, sqlx::Error> {
-    let (count,) =
-        sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM page_layouts WHERE crawl_id = ?")
-            .bind(crawl_id)
-            .fetch_one(pool)
-            .await?;
+pub async fn count_page_layouts(db: &CrawlDb) -> Result<i64, sqlx::Error> {
+    let (count,) = sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM page_layouts")
+        .fetch_one(db.pool())
+        .await?;
     Ok(count)
 }
 
+/// A crawl's row counts as the history lists them: every row, the
+/// documents, and the URLs found but never requested.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CrawlCounts {
+    pub pages: i64,
+    pub documents: i64,
+    pub unfetched: i64,
+}
+
+async fn count_crawl_rows(db: &CrawlDb) -> Result<CrawlCounts, sqlx::Error> {
+    let (pages, documents, unfetched): (i64, i64, i64) = sqlx::query_as(
+        r#"
+        SELECT COUNT(*),
+               COALESCE(SUM(is_page = 1), 0),
+               COALESCE(SUM(status IS NULL AND redirect_url IS NULL), 0)
+        FROM pages
+        "#,
+    )
+    .fetch_one(db.pool())
+    .await?;
+    Ok(CrawlCounts {
+        pages,
+        documents,
+        unfetched,
+    })
+}
+
 /// Marks a crawl finished and stores its row counts, which the crawl history
-/// lists. Counting them per listing scanned every crawl's pages, seconds on a
-/// database holding a few large crawls, and a finished crawl's rows no longer
-/// change.
-pub async fn finish_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
-    let now = chrono::Utc::now().timestamp();
+/// lists. Counting them per listing read every crawl's pages, and a finished
+/// crawl's rows no longer change.
+pub async fn finish_crawl(
+    catalog: &SqlitePool,
+    db: &CrawlDb,
+    crawl_id: i64,
+) -> Result<(), sqlx::Error> {
+    close_crawl(catalog, db, crawl_id, chrono::Utc::now().timestamp(), false).await
+}
+
+/// Records a crawl as over, in its own file and in the catalog's list.
+async fn close_crawl(
+    catalog: &SqlitePool,
+    db: &CrawlDb,
+    crawl_id: i64,
+    finished_at: i64,
+    aborted: bool,
+) -> Result<(), sqlx::Error> {
+    let counts = count_crawl_rows(db).await?;
+    sqlx::query("UPDATE crawl_state SET finished = 1")
+        .execute(db.pool())
+        .await?;
     sqlx::query(
         r#"
         UPDATE crawls SET
-            finished_at = ?,
-            page_count = (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = crawls.id),
-            document_count =
-                (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = crawls.id AND p.is_page = 1),
-            unfetched_count = (SELECT COUNT(*) FROM pages p
-                WHERE p.crawl_id = crawls.id AND p.status IS NULL AND p.redirect_url IS NULL)
+            finished_at = ?, aborted = ?, page_count = ?, document_count = ?, unfetched_count = ?
         WHERE id = ?
         "#,
     )
-    .bind(now)
+    .bind(finished_at)
+    .bind(aborted)
+    .bind(counts.pages)
+    .bind(counts.documents)
+    .bind(counts.unfetched)
     .bind(crawl_id)
-    .execute(pool)
+    .execute(catalog)
     .await?;
     Ok(())
 }
@@ -884,25 +918,29 @@ pub async fn finish_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::
 /// mid crawl, so it will never finish. It is closed like a finished one, with
 /// its stored counts, so the history stops calling it running. It finished
 /// when its last page was recorded, or when it started if none was.
-pub async fn abort_unfinished_crawls(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query(
-        r#"
-        UPDATE crawls SET
-            aborted = 1,
-            finished_at = COALESCE(
-                (SELECT MAX(p.crawled_at) FROM pages p WHERE p.crawl_id = crawls.id),
-                started_at),
-            page_count = (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = crawls.id),
-            document_count =
-                (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = crawls.id AND p.is_page = 1),
-            unfetched_count = (SELECT COUNT(*) FROM pages p
-                WHERE p.crawl_id = crawls.id AND p.status IS NULL AND p.redirect_url IS NULL)
-        WHERE finished_at IS NULL
-        "#,
-    )
-    .execute(pool)
-    .await?;
-    Ok(result.rows_affected())
+pub async fn abort_unfinished_crawls(
+    catalog: &SqlitePool,
+    crawls: &CrawlStore,
+) -> Result<u64, sqlx::Error> {
+    let unfinished: Vec<(i64, i64)> =
+        sqlx::query_as("SELECT id, started_at FROM crawls WHERE finished_at IS NULL")
+            .fetch_all(catalog)
+            .await?;
+    for &(crawl_id, started_at) in &unfinished {
+        let db = crawls.open(crawl_id).await?;
+        let last_page: Option<i64> = sqlx::query_scalar("SELECT MAX(crawled_at) FROM pages")
+            .fetch_one(db.pool())
+            .await?;
+        close_crawl(
+            catalog,
+            &db,
+            crawl_id,
+            last_page.unwrap_or(started_at),
+            true,
+        )
+        .await?;
+    }
+    Ok(unfinished.len() as u64)
 }
 
 /// The filter counts stored for a finished crawl under `filter_version`, as the
@@ -952,24 +990,25 @@ pub async fn store_filter_counts(
     Ok(result.rows_affected() > 0)
 }
 
-pub async fn delete_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
+/// Removes a crawl from the list and deletes its file.
+pub async fn delete_crawl(
+    catalog: &SqlitePool,
+    crawls: &CrawlStore,
+    crawl_id: i64,
+) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM crawls WHERE id = ?")
         .bind(crawl_id)
-        .execute(pool)
+        .execute(catalog)
         .await?;
-    Ok(())
+    crawls.remove(crawl_id).await
 }
 
-pub async fn insert_page(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    record: &PageRecord,
-) -> Result<(), sqlx::Error> {
+pub async fn insert_page(db: &CrawlDb, record: &PageRecord) -> Result<(), sqlx::Error> {
     // One transaction per page: a page with a hundred links and forty images
     // is otherwise two hundred autocommits, and a crash mid-page leaves a row
     // with half its links.
-    let mut transaction = pool.begin().await?;
-    if write_page(&mut transaction, crawl_id, record).await? {
+    let mut transaction = db.pool().begin().await?;
+    if write_page(&mut transaction, record).await? {
         transaction.commit().await
     } else {
         transaction.rollback().await
@@ -980,15 +1019,11 @@ pub async fn insert_page(
 /// a URL already recorded leaves nothing behind, as with [`insert_page`]. The
 /// sitemap orphans of a large site are hundreds of thousands of rows, and a
 /// transaction each kept the crawl from finishing for minutes.
-pub async fn insert_pages(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    records: &[PageRecord],
-) -> Result<(), sqlx::Error> {
-    let mut transaction = pool.begin().await?;
+pub async fn insert_pages(db: &CrawlDb, records: &[PageRecord]) -> Result<(), sqlx::Error> {
+    let mut transaction = db.pool().begin().await?;
     for record in records {
         let mut savepoint = sqlx::Connection::begin(&mut *transaction).await?;
-        if write_page(&mut savepoint, crawl_id, record).await? {
+        if write_page(&mut savepoint, record).await? {
             savepoint.commit().await?;
         } else {
             savepoint.rollback().await?;
@@ -1001,7 +1036,6 @@ pub async fn insert_pages(
 /// recorded, in which case the caller rolls back the text it stored.
 async fn write_page(
     conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
     record: &PageRecord,
 ) -> Result<bool, sqlx::Error> {
     let now = chrono::Utc::now().timestamp();
@@ -1027,12 +1061,12 @@ async fn write_page(
         serde_json::to_string(record.headers.as_slice()).ok()
     };
 
-    let mut texts = TextIds::new(crawl_id);
+    let mut texts = TextIds::new();
     let url_id = texts.id(conn, &record.url).await?;
     let inserted = sqlx::query(
         r#"
         INSERT INTO pages (
-            crawl_id, url_id, status, content_type, size_bytes, response_time_ms,
+            url_id, status, content_type, size_bytes, response_time_ms,
             depth, title, meta_description, h1, h2, canonical, robots,
             indexability, word_count, hash, crawled_at,
             sd_errors, sd_warnings, hreflang_tags_json, sd_types_json,
@@ -1044,11 +1078,10 @@ async fn write_page(
             blocked_by_robots, is_resource, resource_initiator, is_page,
             has_mixed_content, hreflang_sources_json, has_body_tag,
             h2_non_sequential, network_fetches, revalidated_fetches, transfer_bytes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(crawl_id, url_id) DO NOTHING
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(url_id) DO NOTHING
         "#,
     )
-    .bind(crawl_id)
     .bind(url_id)
     .bind(record.status.map(|s| s as i64))
     .bind(record.content_type.as_deref())
@@ -1104,20 +1137,19 @@ async fn write_page(
         return Ok(false);
     }
 
-    insert_structured_data(conn, crawl_id, url_id, record).await?;
-    insert_performance(conn, crawl_id, url_id, record).await?;
+    insert_structured_data(conn, url_id, record).await?;
+    insert_performance(conn, url_id, record).await?;
     insert_images(conn, url_id, record, &mut texts).await?;
-    insert_ecommerce(conn, crawl_id, url_id, record).await?;
+    insert_ecommerce(conn, url_id, record).await?;
     insert_links(conn, url_id, record, &mut texts).await?;
     insert_a11y_violations(conn, url_id, record, &mut texts).await?;
-    insert_sd_issues(conn, crawl_id, url_id, record).await?;
+    insert_sd_issues(conn, url_id, record).await?;
 
     Ok(true)
 }
 
 async fn insert_structured_data(
     conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
     url_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
@@ -1128,9 +1160,8 @@ async fn insert_structured_data(
             SdFormat::Microdata => "microdata",
         };
         sqlx::query(
-            "INSERT INTO structured_data (crawl_id, page_url_id, format, type_name, json, errors) VALUES (?, ?, ?, ?, ?, NULL)",
+            "INSERT INTO structured_data (page_url_id, format, type_name, json, errors) VALUES (?, ?, ?, ?, NULL)",
         )
-        .bind(crawl_id)
         .bind(url_id)
         .bind(format_str)
         .bind(&item.type_name)
@@ -1143,7 +1174,6 @@ async fn insert_structured_data(
 
 async fn insert_performance(
     conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
     url_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
@@ -1155,9 +1185,8 @@ async fn insert_performance(
         return Ok(());
     }
     sqlx::query(
-        "INSERT INTO performance (crawl_id, page_url_id, lcp_ms, cls, fcp_ms, ttfb_ms, transfer_kb) VALUES (?, ?, ?, ?, ?, ?, NULL)",
+        "INSERT INTO performance (page_url_id, lcp_ms, cls, fcp_ms, ttfb_ms, transfer_kb) VALUES (?, ?, ?, ?, ?, NULL)",
     )
-    .bind(crawl_id)
     .bind(url_id)
     .bind(record.lcp_ms.map(|ms| ms as i64))
     .bind(record.cls)
@@ -1178,9 +1207,8 @@ async fn insert_images<'a>(
         let src_id = texts.id(conn, &img.src).await?;
         let alt_id = texts.optional_id(conn, img.alt.as_deref()).await?;
         sqlx::query(
-            "INSERT INTO images (crawl_id, page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO images (page_url_id, src_id, alt_id, width, height, has_alt_attr) VALUES (?, ?, ?, ?, ?, ?)",
         )
-        .bind(texts.crawl_id)
         .bind(url_id)
         .bind(src_id)
         .bind(alt_id)
@@ -1195,7 +1223,6 @@ async fn insert_images<'a>(
 
 async fn insert_ecommerce(
     conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
     url_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
@@ -1205,12 +1232,11 @@ async fn insert_ecommerce(
     sqlx::query(
         r#"
         INSERT INTO ecommerce (
-            crawl_id, page_url_id, page_type, price, currency, availability,
+            page_url_id, page_type, price, currency, availability,
             sku, gtin, brand, has_image, has_description, has_review_or_rating
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         "#,
     )
-    .bind(crawl_id)
     .bind(url_id)
     .bind(record.og_type.as_deref())
     .bind(audit.price.as_deref().and_then(|p| p.parse::<f64>().ok()))
@@ -1239,9 +1265,8 @@ async fn insert_links<'a>(
         let anchor_id = texts.optional_id(conn, link.anchor.as_deref()).await?;
         let rel_id = texts.optional_id(conn, link.rel.as_deref()).await?;
         sqlx::query(
-            "INSERT INTO links (crawl_id, src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO links (src_url_id, dst_url_id, anchor_id, rel_id, internal, csr_only) VALUES (?, ?, ?, ?, ?, ?)",
         )
-        .bind(texts.crawl_id)
         .bind(url_id)
         .bind(dst_id)
         .bind(anchor_id)
@@ -1257,15 +1282,12 @@ async fn insert_links<'a>(
 /// Every URL already recorded as a row of this crawl. The resource pass uses
 /// it to skip URLs the crawler already reached or Chrome already reported.
 pub async fn load_page_urls(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) -> Result<std::collections::HashSet<String>, sqlx::Error> {
-    let rows: Vec<(String,)> = sqlx::query_as(
-        "SELECT t.text FROM pages p JOIN texts t ON t.id = p.url_id WHERE p.crawl_id = ?",
-    )
-    .bind(crawl_id)
-    .fetch_all(pool)
-    .await?;
+    let rows: Vec<(String,)> =
+        sqlx::query_as("SELECT t.text FROM pages p JOIN texts t ON t.id = p.url_id")
+            .fetch_all(db.pool())
+            .await?;
     Ok(rows.into_iter().map(|(url,)| url).collect())
 }
 
@@ -1275,18 +1297,15 @@ pub async fn load_page_urls(
 /// cross-origin asset the browser was not allowed to describe, and is worth
 /// a HEAD of its own.
 pub async fn load_described_page_urls(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) -> Result<std::collections::HashSet<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
         r#"
         SELECT t.text FROM pages p JOIN texts t ON t.id = p.url_id
-        WHERE p.crawl_id = ?
-          AND NOT (p.is_resource = 1 AND p.size_bytes = 0 AND p.headers_json IS NULL)
+        WHERE NOT (p.is_resource = 1 AND p.size_bytes = 0 AND p.headers_json IS NULL)
         "#,
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
     Ok(rows.into_iter().map(|(url,)| url).collect())
 }
@@ -1294,19 +1313,17 @@ pub async fn load_described_page_urls(
 /// The resources Chrome reported without describing: rows from the Resource
 /// Timing API with no size and no headers, as (url, initiator).
 pub async fn load_undescribed_resources(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) -> Result<Vec<(String, String)>, sqlx::Error> {
     let rows: Vec<(String, Option<String>)> = sqlx::query_as(
         r#"
         SELECT t.text, p.resource_initiator FROM pages p JOIN texts t ON t.id = p.url_id
-        WHERE p.crawl_id = ? AND p.is_resource = 1 AND p.size_bytes = 0
+        WHERE p.is_resource = 1 AND p.size_bytes = 0
           AND p.headers_json IS NULL
         ORDER BY p.id
         "#,
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
     Ok(rows
         .into_iter()
@@ -1316,11 +1333,7 @@ pub async fn load_undescribed_resources(
 
 /// Records the outcome of a resource check. Updates the row a Resource Timing
 /// entry already created for the URL, otherwise inserts it.
-pub async fn record_resource_check(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    record: &PageRecord,
-) -> Result<(), sqlx::Error> {
+pub async fn record_resource_check(db: &CrawlDb, record: &PageRecord) -> Result<(), sqlx::Error> {
     let headers_json = if record.headers.is_empty() {
         None
     } else {
@@ -1336,8 +1349,8 @@ pub async fn record_resource_check(
             redirect_url = COALESCE(?, redirect_url),
             redirect_status = COALESCE(?, redirect_status),
             indexability = ?
-        WHERE crawl_id = ? AND is_resource = 1
-          AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)
+        WHERE is_resource = 1
+          AND url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?)
         "#,
     )
     .bind(record.status.map(|s| s as i64))
@@ -1348,14 +1361,12 @@ pub async fn record_resource_check(
     .bind(record.redirect_url.as_deref())
     .bind(record.redirect_status.map(|s| s as i64))
     .bind(record.indexability.as_deref().unwrap_or("N/A"))
-    .bind(crawl_id)
-    .bind(crawl_id)
     .bind(text_hash(&record.url))
     .bind(&record.url)
-    .execute(pool)
+    .execute(db.pool())
     .await?;
     if updated.rows_affected() == 0 {
-        insert_page(pool, crawl_id, record).await?;
+        insert_page(db, record).await?;
     }
     Ok(())
 }
@@ -1363,17 +1374,13 @@ pub async fn record_resource_check(
 /// Every document of a crawl that declares a canonical, as (url, canonical).
 /// The canonical is returned exactly as the page wrote it, so the caller
 /// resolves it against the page's own URL before doing anything with it.
-pub async fn load_declared_canonicals(
-    pool: &SqlitePool,
-    crawl_id: i64,
-) -> Result<Vec<(String, String)>, sqlx::Error> {
+pub async fn load_declared_canonicals(db: &CrawlDb) -> Result<Vec<(String, String)>, sqlx::Error> {
     sqlx::query_as(
         "SELECT t.text, p.canonical FROM pages p JOIN texts t ON t.id = p.url_id
-         WHERE p.crawl_id = ? AND p.is_page = 1 AND p.canonical IS NOT NULL
+         WHERE p.is_page = 1 AND p.canonical IS NOT NULL
            AND trim(p.canonical) != ''",
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await
 }
 
@@ -1385,38 +1392,33 @@ pub async fn load_declared_canonicals(
 /// of `/` -> `/sv/` -> `/sv`. The definition here matches
 /// `PageRecord::is_redirect`, so the pass sees every row the app calls a
 /// redirect.
-pub async fn load_redirects(pool: &SqlitePool, crawl_id: i64) -> Result<Vec<String>, sqlx::Error> {
+pub async fn load_redirects(db: &CrawlDb) -> Result<Vec<String>, sqlx::Error> {
     let rows: Vec<(String,)> = sqlx::query_as(
         "SELECT t.text FROM pages p JOIN texts t ON t.id = p.url_id
-         WHERE p.crawl_id = ?
-           AND (p.redirect_url IS NOT NULL OR (p.status >= 300 AND p.status < 400))
+         WHERE (p.redirect_url IS NOT NULL OR (p.status >= 300 AND p.status < 400))
          ORDER BY t.text",
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
     Ok(rows.into_iter().map(|(url,)| url).collect())
 }
 
 /// Records where a redirect went, once we have resolved it ourselves.
 pub async fn set_redirect_target(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     url: &str,
     target: &str,
     status: u16,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         "UPDATE pages SET redirect_url = ?, redirect_status = ?
-         WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
+         WHERE url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?)",
     )
     .bind(target)
     .bind(status as i64)
-    .bind(crawl_id)
-    .bind(crawl_id)
     .bind(text_hash(url))
     .bind(url)
-    .execute(pool)
+    .execute(db.pool())
     .await?;
     Ok(())
 }
@@ -1428,22 +1430,16 @@ pub type AssetFetches = std::collections::HashMap<String, (u32, u32)>;
 /// Writes each asset's final network fetch counts onto its row. A row is
 /// written when the asset is first seen, before later pages fetch it again,
 /// so the counts are only complete once the crawl's pages are done.
-pub async fn set_asset_fetches(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    fetches: &AssetFetches,
-) -> Result<(), sqlx::Error> {
-    let mut transaction = pool.begin().await?;
+pub async fn set_asset_fetches(db: &CrawlDb, fetches: &AssetFetches) -> Result<(), sqlx::Error> {
+    let mut transaction = db.pool().begin().await?;
     for (url, (network, revalidated)) in fetches {
         sqlx::query(
             "UPDATE pages SET network_fetches = ?, revalidated_fetches = ?
-             WHERE crawl_id = ? AND is_resource = 1
-               AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
+             WHERE is_resource = 1
+               AND url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(i64::from(*network))
         .bind(i64::from(*revalidated))
-        .bind(crawl_id)
-        .bind(crawl_id)
         .bind(text_hash(url))
         .bind(url)
         .execute(&mut *transaction)
@@ -1465,9 +1461,8 @@ async fn insert_a11y_violations<'a>(
         let target_id = texts.optional_id(conn, issue.target.as_deref()).await?;
         let html_id = texts.optional_id(conn, issue.html.as_deref()).await?;
         sqlx::query(
-            "INSERT INTO a11y_violations (crawl_id, page_url_id, rule_id, impact_id, target_id, html_id) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO a11y_violations (page_url_id, rule_id, impact_id, target_id, html_id) VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(texts.crawl_id)
         .bind(url_id)
         .bind(rule_id)
         .bind(impact_id)
@@ -1481,7 +1476,6 @@ async fn insert_a11y_violations<'a>(
 
 async fn insert_sd_issues(
     conn: &mut sqlx::SqliteConnection,
-    crawl_id: i64,
     url_id: i64,
     record: &PageRecord,
 ) -> Result<(), sqlx::Error> {
@@ -1491,9 +1485,8 @@ async fn insert_sd_issues(
             SdSeverity::Warning => "warning",
         };
         sqlx::query(
-            "INSERT INTO sd_issues (crawl_id, page_url_id, severity, type_name, code, message) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO sd_issues (page_url_id, severity, type_name, code, message) VALUES (?, ?, ?, ?, ?)",
         )
-        .bind(crawl_id)
         .bind(url_id)
         .bind(severity_str)
         .bind(&issue.type_name)
@@ -1505,58 +1498,48 @@ async fn insert_sd_issues(
     Ok(())
 }
 
-pub async fn update_link_scores(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    scores: &[(String, f32)],
-) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+pub async fn update_link_scores(db: &CrawlDb, scores: &[(String, f32)]) -> Result<(), sqlx::Error> {
+    let mut tx = db.pool().begin().await?;
     for (url, score) in scores {
         sqlx::query(
             "UPDATE pages SET link_score = ?
-             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
+             WHERE url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(*score)
-        .bind(crawl_id)
-        .bind(crawl_id)
         .bind(text_hash(url))
         .bind(url)
-            .execute(&mut *tx)
-            .await?;
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
     Ok(())
 }
 
 pub async fn update_crawl_depths(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     depths: &[(String, u32)],
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db.pool().begin().await?;
     for (url, depth) in depths {
         sqlx::query(
             "UPDATE pages SET depth = ?
-             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
+             WHERE url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(*depth as i64)
-        .bind(crawl_id)
-        .bind(crawl_id)
         .bind(text_hash(url))
         .bind(url)
-            .execute(&mut *tx)
-            .await?;
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
     Ok(())
 }
 
 pub async fn update_hreflang_issues(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     issues: &[(String, Vec<crate::crawl::event::HreflangIssue>)],
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db.pool().begin().await?;
     for (url, page_issues) in issues {
         let json = if page_issues.is_empty() {
             None
@@ -1565,15 +1548,13 @@ pub async fn update_hreflang_issues(
         };
         sqlx::query(
             "UPDATE pages SET hreflang_issues_json = ?
-             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
+             WHERE url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(json)
-        .bind(crawl_id)
-        .bind(crawl_id)
         .bind(text_hash(url))
         .bind(url)
-            .execute(&mut *tx)
-            .await?;
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
     Ok(())
@@ -1593,27 +1574,20 @@ pub struct PageOnDemand {
     pub sd_items: Vec<SdItem>,
 }
 
-pub async fn load_page_on_demand(
-    pool: &SqlitePool,
-    crawl_id: i64,
-    url: &str,
-) -> Result<PageOnDemand, sqlx::Error> {
+pub async fn load_page_on_demand(db: &CrawlDb, url: &str) -> Result<PageOnDemand, sqlx::Error> {
     let backlinks = sqlx::query_as::<_, (String, Option<String>, Option<String>)>(
         r#"
         SELECT s.text, a.text, r.text FROM links l
         JOIN texts s ON s.id = l.src_url_id
         LEFT JOIN texts a ON a.id = l.anchor_id
         LEFT JOIN texts r ON r.id = l.rel_id
-        WHERE l.crawl_id = ?
-          AND l.dst_url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)
+        WHERE l.dst_url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?)
         ORDER BY l.id
         "#,
     )
-    .bind(crawl_id)
-    .bind(crawl_id)
     .bind(text_hash(url))
     .bind(url)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?
     .into_iter()
     .map(|(source_url, anchor, rel)| crate::crawl::event::Backlink {
@@ -1624,15 +1598,12 @@ pub async fn load_page_on_demand(
     .collect();
     let sd_items = sqlx::query_as::<_, (String, String, Vec<u8>)>(
         "SELECT format, type_name, CAST(json AS BLOB) FROM structured_data \
-         WHERE crawl_id = ? \
-           AND page_url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?) \
+         WHERE page_url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?) \
          ORDER BY id",
     )
-    .bind(crawl_id)
-    .bind(crawl_id)
     .bind(text_hash(url))
     .bind(url)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?
     .into_iter()
     .map(|(format, type_name, raw_json)| {
@@ -1678,6 +1649,8 @@ pub struct CrawlRow {
     /// How the crawl recorded page layout, from its stored config. Crawls
     /// recorded before the setting existed read as off.
     pub layout_capture: crate::crawl::LayoutCapture,
+    /// The bytes the crawl's file takes on disk. `None` when it has none.
+    pub size_bytes: Option<u64>,
 }
 
 impl CrawlRow {
@@ -1690,21 +1663,12 @@ impl CrawlRow {
 }
 
 /// The `SELECT` list every crawl-row query shares, so the sidebar and the
-/// baseline lookup describe a crawl the same way.
-// Correlated subqueries rather than a join: a join grouped by crawl
-// aggregates every page of every crawl ever made on each sidebar refresh,
-// where these only touch the pages of the crawls the outer query selects.
-// A finished crawl's counts are stored by `finish_crawl`. COALESCE only runs
-// the subquery when they are missing, for a crawl still running or one that
-// ended without finishing.
+/// baseline lookup describe a crawl the same way. A crawl's counts are stored
+/// when it ends, so a running crawl has none here and [`crawl_row`] counts its
+/// file.
 const CRAWL_ROW_COLUMNS: &str = r#"
     c.id, c.root_url, c.started_at, c.finished_at, c.aborted,
-    COALESCE(c.page_count, (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id)) as page_count,
-    COALESCE(c.document_count,
-        (SELECT COUNT(*) FROM pages p WHERE p.crawl_id = c.id AND p.is_page = 1)) as document_count,
-    COALESCE(c.unfetched_count, (SELECT COUNT(*) FROM pages p
-     WHERE p.crawl_id = c.id AND p.status IS NULL AND p.redirect_url IS NULL)) as unfetched_count,
-    c.render_mode,
+    c.page_count, c.document_count, c.unfetched_count, c.render_mode,
     json_extract(c.config_json, '$.layout_capture') as layout_capture
 "#;
 
@@ -1714,14 +1678,14 @@ type CrawlRowColumns = (
     i64,
     Option<i64>,
     bool,
-    i64,
-    i64,
-    i64,
+    Option<i64>,
+    Option<i64>,
+    Option<i64>,
     String,
     Option<String>,
 );
 
-fn crawl_row(columns: CrawlRowColumns) -> CrawlRow {
+async fn crawl_row(crawls: &CrawlStore, columns: CrawlRowColumns) -> Result<CrawlRow, sqlx::Error> {
     let (
         id,
         root_url,
@@ -1742,21 +1706,33 @@ fn crawl_row(columns: CrawlRowColumns) -> CrawlRow {
             }),
         None => crate::crawl::LayoutCapture::Off,
     };
-    CrawlRow {
+    let counts = match (page_count, document_count, unfetched_count) {
+        (Some(pages), Some(documents), Some(unfetched)) => CrawlCounts {
+            pages,
+            documents,
+            unfetched,
+        },
+        _ => count_crawl_rows(&crawls.open(id).await?).await?,
+    };
+    Ok(CrawlRow {
         id,
         root_url,
         started_at,
         finished_at,
         aborted,
-        page_count,
-        document_count,
-        unfetched_count,
+        page_count: counts.pages,
+        document_count: counts.documents,
+        unfetched_count: counts.unfetched,
         render_mode,
         layout_capture,
-    }
+        size_bytes: crawls.size_on_disk(id),
+    })
 }
 
-pub async fn list_crawls(pool: &SqlitePool) -> Result<Vec<CrawlRow>, sqlx::Error> {
+pub async fn list_crawls(
+    catalog: &SqlitePool,
+    crawls: &CrawlStore,
+) -> Result<Vec<CrawlRow>, sqlx::Error> {
     let rows = sqlx::query_as::<_, CrawlRowColumns>(&format!(
         r#"
         SELECT {CRAWL_ROW_COLUMNS}
@@ -1765,10 +1741,14 @@ pub async fn list_crawls(pool: &SqlitePool) -> Result<Vec<CrawlRow>, sqlx::Error
         LIMIT 100
         "#
     ))
-    .fetch_all(pool)
+    .fetch_all(catalog)
     .await?;
 
-    Ok(rows.into_iter().map(crawl_row).collect())
+    let mut listed = Vec::with_capacity(rows.len());
+    for row in rows {
+        listed.push(crawl_row(crawls, row).await?);
+    }
+    Ok(listed)
 }
 
 /// Finds the crawl to use as a comparison baseline for a given root URL.
@@ -1778,7 +1758,8 @@ pub async fn list_crawls(pool: &SqlitePool) -> Result<Vec<CrawlRow>, sqlx::Error
 /// When `None`, the current crawl is assumed to be the most recent row for the
 /// URL (a just-finished live crawl), so we skip it with `OFFSET 1`.
 pub async fn find_previous_crawl(
-    pool: &SqlitePool,
+    catalog: &SqlitePool,
+    crawls: &CrawlStore,
     root_url: &str,
     current_crawl_id: Option<i64>,
 ) -> Result<Option<CrawlRow>, sqlx::Error> {
@@ -1796,7 +1777,7 @@ pub async fn find_previous_crawl(
             ))
             .bind(root_url)
             .bind(id)
-            .fetch_optional(pool)
+            .fetch_optional(catalog)
             .await?
         }
         None => {
@@ -1810,12 +1791,15 @@ pub async fn find_previous_crawl(
                 "#
             ))
             .bind(root_url)
-            .fetch_optional(pool)
+            .fetch_optional(catalog)
             .await?
         }
     };
 
-    Ok(row.map(crawl_row))
+    match row {
+        Some(row) => Ok(Some(crawl_row(crawls, row).await?)),
+        None => Ok(None),
+    }
 }
 
 /// The parts of reading a crawl back. After the crawl's texts, they run at the
@@ -1838,11 +1822,10 @@ impl LoadStep {
 /// tests read a crawl without it.
 #[allow(dead_code)]
 pub async fn load_pages_for_crawl(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     root_url: &str,
 ) -> Result<Vec<PageRecord>, sqlx::Error> {
-    load_pages_for_crawl_reporting(pool, crawl_id, root_url, |_| {}).await
+    load_pages_for_crawl_reporting(db, root_url, |_| {}).await
 }
 
 /// [`load_pages_for_crawl`], calling `report` as each step finishes.
@@ -1854,34 +1837,30 @@ pub async fn load_pages_for_crawl(
 /// because turning SQLite rows into Rust values costs as much as reading them,
 /// and in one task that work would still run one read at a time.
 pub async fn load_pages_for_crawl_reporting(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     root_url: &str,
     report: impl Fn(LoadStep),
 ) -> Result<Vec<PageRecord>, sqlx::Error> {
     let report = &report;
-    let crawl_finished =
-        sqlx::query_scalar::<_, bool>("SELECT finished_at IS NOT NULL FROM crawls WHERE id = ?")
-            .bind(crawl_id)
-            .fetch_optional(pool)
-            .await?
-            .unwrap_or(false);
-    let texts = std::sync::Arc::new(CrawlTexts::load(pool, crawl_id).await?);
+    let crawl_finished: bool = sqlx::query_scalar("SELECT finished != 0 FROM crawl_state")
+        .fetch_optional(db.pool())
+        .await?
+        .unwrap_or(false);
+    let texts = std::sync::Arc::new(CrawlTexts::load(db).await?);
     report(LoadStep::Texts);
     let links = async_std::task::spawn({
-        let pool = pool.clone();
+        let db = db.clone();
         let texts = texts.clone();
         async move {
             use futures::TryStreamExt as _;
             let mut rows = sqlx::query_as::<_, (i64, i64, Option<i64>, Option<i64>, i64)>(
                 r#"
                 SELECT src_url_id, dst_url_id, anchor_id, rel_id, csr_only
-                FROM links WHERE crawl_id = ?
+                FROM links
                 ORDER BY id
                 "#,
             )
-            .bind(crawl_id)
-            .fetch(&pool);
+            .fetch(db.pool());
             let mut outlinks_by_url: std::collections::HashMap<i64, Vec<Outlink>> =
                 std::collections::HashMap::new();
             while let Some((src_id, dst_id, anchor_id, rel_id, csr_only)) = rows.try_next().await? {
@@ -1896,7 +1875,7 @@ pub async fn load_pages_for_crawl_reporting(
         }
     });
     let page_details = async_std::task::spawn({
-        let pool = pool.clone();
+        let db = db.clone();
         let texts = texts.clone();
         async move {
             let (
@@ -1909,14 +1888,14 @@ pub async fn load_pages_for_crawl_reporting(
                 sitemap_rows,
                 ecom_rows,
             ) = futures::try_join!(
-                load_performance_rows(&pool, crawl_id),
-                load_structured_data_rows(&pool, crawl_id),
-                load_images_by_url(&pool, crawl_id, &texts),
-                load_a11y_by_url(&pool, crawl_id, &texts),
-                load_sd_issue_rows(&pool, crawl_id),
-                load_layout_rows(&pool, crawl_id),
-                load_sitemap_rows(&pool, crawl_id),
-                load_ecommerce_rows(&pool, crawl_id),
+                load_performance_rows(&db),
+                load_structured_data_rows(&db),
+                load_images_by_url(&db, &texts),
+                load_a11y_by_url(&db, &texts),
+                load_sd_issue_rows(&db),
+                load_layout_rows(&db),
+                load_sitemap_rows(&db),
+                load_ecommerce_rows(&db),
             )?;
             let mut layout_by_url: std::collections::HashMap<
                 String,
@@ -2025,7 +2004,7 @@ pub async fn load_pages_for_crawl_reporting(
         }
     });
     let inlinks = async_std::task::spawn({
-        let pool = pool.clone();
+        let db = db.clone();
         async move {
             let rows = sqlx::query_as::<_, (i64, i64, i64, i64, i64)>(
                 r#"
@@ -2034,11 +2013,10 @@ pub async fn load_pages_for_crawl_reporting(
                        COUNT(DISTINCT src_url_id),
                        COALESCE(SUM(csr_only), 0),
                        COUNT(DISTINCT CASE WHEN csr_only = 1 THEN src_url_id END)
-                FROM links WHERE crawl_id = ? GROUP BY dst_url_id
+                FROM links GROUP BY dst_url_id
                 "#,
             )
-            .bind(crawl_id)
-            .fetch_all(&pool)
+            .fetch_all(db.pool())
             .await?;
             // (total, unique sources, rendered-only links, unique rendered-only
             // sources). The unique rendered-only figure is the one that says how
@@ -2059,7 +2037,7 @@ pub async fn load_pages_for_crawl_reporting(
     // position put another page's title on a URL the moment one of them grew a
     // WHERE clause.
     let pages = async_std::task::spawn({
-        let pool = pool.clone();
+        let db = db.clone();
         let texts = texts.clone();
         let root_url = root_url.to_string();
         async move {
@@ -2081,12 +2059,11 @@ pub async fn load_pages_for_crawl_reporting(
                        sd_errors, sd_warnings,
                        CAST(hreflang_tags_json AS BLOB) AS hreflang_tags_json, sd_types_json, hreflang_issues_json, hreflang_sources_json,
                        link_score
-                FROM pages WHERE crawl_id = ?
+                FROM pages
                 ORDER BY id
                 "#,
             )
-            .bind(crawl_id)
-            .fetch(&pool);
+            .fetch(db.pool());
             let mut records = Vec::new();
             let mut shared = SharedTexts::default();
             while let Some(row) = rows.try_next().await? {
@@ -2322,30 +2299,20 @@ type EcommerceRow = (
     i64,
 );
 
-async fn load_performance_rows(
-    pool: &SqlitePool,
-    crawl_id: i64,
-) -> Result<Vec<PerformanceRow>, sqlx::Error> {
-    sqlx::query_as(
-        "SELECT page_url_id, ttfb_ms, lcp_ms, cls, fcp_ms FROM performance WHERE crawl_id = ?",
-    )
-    .bind(crawl_id)
-    .fetch_all(pool)
-    .await
+async fn load_performance_rows(db: &CrawlDb) -> Result<Vec<PerformanceRow>, sqlx::Error> {
+    sqlx::query_as("SELECT page_url_id, ttfb_ms, lcp_ms, cls, fcp_ms FROM performance")
+        .fetch_all(db.pool())
+        .await
 }
 
 /// Every structured data item of a crawl, without its JSON: only the details
 /// panel shows that, and it reads it per page, see [`load_page_on_demand`].
 async fn load_structured_data_rows(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) -> Result<Vec<(i64, String, String)>, sqlx::Error> {
-    sqlx::query_as(
-        "SELECT page_url_id, format, type_name FROM structured_data WHERE crawl_id = ? ORDER BY id",
-    )
-    .bind(crawl_id)
-    .fetch_all(pool)
-    .await
+    sqlx::query_as("SELECT page_url_id, format, type_name FROM structured_data ORDER BY id")
+        .fetch_all(db.pool())
+        .await
 }
 
 /// One copy of each distinct text the `pages` read meets in the columns that
@@ -2368,17 +2335,15 @@ impl SharedTexts {
 /// other large reads: collecting a million rows before grouping them held both
 /// copies at once, and the allocator kept that peak long after.
 async fn load_images_by_url(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     texts: &CrawlTexts,
 ) -> Result<std::collections::HashMap<i64, Vec<ImageRef>>, sqlx::Error> {
     use futures::TryStreamExt as _;
     let mut rows = sqlx::query_as::<_, ImageRow>(
         "SELECT page_url_id, src_id, alt_id, width, height, has_alt_attr FROM images \
-         WHERE crawl_id = ? ORDER BY id",
+ ORDER BY id",
     )
-    .bind(crawl_id)
-    .fetch(pool);
+    .fetch(db.pool());
     let mut images_by_url: std::collections::HashMap<i64, Vec<ImageRef>> =
         std::collections::HashMap::new();
     while let Some((url_id, src_id, alt_id, width, height, has_alt_attr)) = rows.try_next().await? {
@@ -2394,17 +2359,15 @@ async fn load_images_by_url(
 }
 
 async fn load_a11y_by_url(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     texts: &CrawlTexts,
 ) -> Result<std::collections::HashMap<i64, Vec<A11yIssue>>, sqlx::Error> {
     use futures::TryStreamExt as _;
     let mut rows = sqlx::query_as::<_, (i64, i64, i64, Option<i64>, Option<i64>)>(
         "SELECT page_url_id, rule_id, impact_id, target_id, html_id FROM a11y_violations \
-         WHERE crawl_id = ? ORDER BY id",
+ ORDER BY id",
     )
-    .bind(crawl_id)
-    .fetch(pool);
+    .fetch(db.pool());
     let mut a11y_by_url: std::collections::HashMap<i64, Vec<A11yIssue>> =
         std::collections::HashMap::new();
     while let Some((url_id, rule_id, impact_id, target_id, html_id)) = rows.try_next().await? {
@@ -2419,78 +2382,64 @@ async fn load_a11y_by_url(
 }
 
 async fn load_sd_issue_rows(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) -> Result<Vec<(i64, String, String, String, String)>, sqlx::Error> {
     sqlx::query_as(
         "SELECT page_url_id, severity, type_name, code, message FROM sd_issues \
-         WHERE crawl_id = ? ORDER BY id",
+ ORDER BY id",
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await
 }
 
 async fn load_layout_rows(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) -> Result<Vec<(String, Option<String>, Option<String>, Option<String>)>, sqlx::Error> {
     sqlx::query_as(
         r#"
         SELECT pl.url, t.name, t.type_key, pl.assigned_by
         FROM page_layouts pl
-        LEFT JOIN layout_templates t ON t.crawl_id = pl.crawl_id AND t.id = pl.template_id
-        WHERE pl.crawl_id = ?
+        LEFT JOIN layout_templates t ON t.id = pl.template_id
+
         "#,
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await
 }
 
-async fn load_sitemap_rows(
-    pool: &SqlitePool,
-    crawl_id: i64,
-) -> Result<Vec<(i64, i64, Option<i64>)>, sqlx::Error> {
+async fn load_sitemap_rows(db: &CrawlDb) -> Result<Vec<(i64, i64, Option<i64>)>, sqlx::Error> {
     sqlx::query_as(
         "SELECT page_url_id, sitemap_url_id, lastmod_id FROM sitemap_urls \
-         WHERE crawl_id = ? ORDER BY id",
+ ORDER BY id",
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await
 }
 
-async fn load_ecommerce_rows(
-    pool: &SqlitePool,
-    crawl_id: i64,
-) -> Result<Vec<EcommerceRow>, sqlx::Error> {
+async fn load_ecommerce_rows(db: &CrawlDb) -> Result<Vec<EcommerceRow>, sqlx::Error> {
     sqlx::query_as(
         r#"
         SELECT page_url_id, page_type, price, currency, availability,
                sku, gtin, brand, has_image, has_description, has_review_or_rating
-        FROM ecommerce WHERE crawl_id = ?
+        FROM ecommerce
         "#,
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await
 }
 
 pub async fn load_simhashes_for_crawl(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
 ) -> Result<Vec<(String, u64, Option<String>)>, sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, Option<i64>, Option<String>)>(
         r#"
         SELECT t.text, p.simhash, p.hash
         FROM pages p JOIN texts t ON t.id = p.url_id
-        WHERE p.crawl_id = ? AND p.simhash IS NOT NULL
+        WHERE p.simhash IS NOT NULL
         ORDER BY p.id
         "#,
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
 
     Ok(rows
@@ -2500,11 +2449,10 @@ pub async fn load_simhashes_for_crawl(
 }
 
 pub async fn update_near_duplicates(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     results: &[(String, u8, u32, Vec<String>)],
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
+    let mut tx = db.pool().begin().await?;
     for (url, similarity, count, dup_urls) in results {
         let dup_urls_json = if dup_urls.is_empty() {
             None
@@ -2513,13 +2461,11 @@ pub async fn update_near_duplicates(
         };
         sqlx::query(
             "UPDATE pages SET closest_similarity = ?, near_duplicate_count = ?, near_duplicate_urls_json = ?
-             WHERE crawl_id = ? AND url_id = (SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?)",
+             WHERE url_id = (SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?)",
         )
         .bind(*similarity as i64)
         .bind(*count as i64)
         .bind(dup_urls_json.as_deref().map(pack_json))
-        .bind(crawl_id)
-        .bind(crawl_id)
         .bind(text_hash(url))
         .bind(url)
         .execute(&mut *tx)
@@ -2538,8 +2484,7 @@ const SITEMAP_ROWS_PER_INSERT: usize = 500;
 /// time held the crawl back for over half a minute, so the texts and the rows
 /// go in as multi-row inserts and the ids are read back in one query.
 pub async fn insert_sitemap_urls(
-    pool: &SqlitePool,
-    crawl_id: i64,
+    db: &CrawlDb,
     sitemap_urls: &[crate::crawl::sitemap::SitemapUrl],
 ) -> Result<(), sqlx::Error> {
     use futures::TryStreamExt as _;
@@ -2561,24 +2506,20 @@ pub async fn insert_sitemap_urls(
         }
     }
 
-    let mut transaction = pool.begin().await?;
+    let mut transaction = db.pool().begin().await?;
     for chunk in distinct.chunks(SITEMAP_ROWS_PER_INSERT) {
         let mut insert: sqlx::QueryBuilder<sqlx::Sqlite> =
-            sqlx::QueryBuilder::new("INSERT OR IGNORE INTO texts (crawl_id, hash, text) ");
+            sqlx::QueryBuilder::new("INSERT OR IGNORE INTO texts (hash, text) ");
         insert.push_values(chunk, |mut row, text| {
-            row.push_bind(crawl_id)
-                .push_bind(text_hash(text))
-                .push_bind(*text);
+            row.push_bind(text_hash(text)).push_bind(*text);
         });
         insert.build().execute(&mut *transaction).await?;
     }
 
     let mut ids: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     {
-        let mut rows =
-            sqlx::query_as::<_, (i64, String)>("SELECT id, text FROM texts WHERE crawl_id = ?")
-                .bind(crawl_id)
-                .fetch(&mut *transaction);
+        let mut rows = sqlx::query_as::<_, (i64, String)>("SELECT id, text FROM texts")
+            .fetch(&mut *transaction);
         while let Some((id, text)) = rows.try_next().await? {
             if seen.contains(text.as_str()) {
                 ids.insert(text, id);
@@ -2588,7 +2529,7 @@ pub async fn insert_sitemap_urls(
     // The batch insert skipped any text whose hash another text holds.
     for text in &distinct {
         if !ids.contains_key(*text) {
-            let id = text_id(&mut transaction, crawl_id, text).await?;
+            let id = text_id(&mut transaction, text).await?;
             ids.insert(text.to_string(), id);
         }
     }
@@ -2610,11 +2551,10 @@ pub async fn insert_sitemap_urls(
             })
             .collect::<Result<Vec<_>, sqlx::Error>>()?;
         let mut insert: sqlx::QueryBuilder<sqlx::Sqlite> = sqlx::QueryBuilder::new(
-            "INSERT INTO sitemap_urls (crawl_id, sitemap_url_id, page_url_id, lastmod_id) ",
+            "INSERT INTO sitemap_urls (sitemap_url_id, page_url_id, lastmod_id) ",
         );
         insert.push_values(rows, |mut row, (sitemap_id, page_id, lastmod_id)| {
-            row.push_bind(crawl_id)
-                .push_bind(sitemap_id)
+            row.push_bind(sitemap_id)
                 .push_bind(page_id)
                 .push_bind(lastmod_id);
         });
@@ -2631,10 +2571,7 @@ pub struct SitemapStatus {
     pub lastmod: Option<String>,
 }
 
-pub async fn load_sitemap_orphans(
-    pool: &SqlitePool,
-    crawl_id: i64,
-) -> Result<Vec<SitemapStatus>, sqlx::Error> {
+pub async fn load_sitemap_orphans(db: &CrawlDb) -> Result<Vec<SitemapStatus>, sqlx::Error> {
     let rows = sqlx::query_as::<_, (String, String, Option<String>)>(
         r#"
         SELECT page.text, sitemap.text, lastmod.text
@@ -2642,13 +2579,12 @@ pub async fn load_sitemap_orphans(
         JOIN texts page ON page.id = su.page_url_id
         JOIN texts sitemap ON sitemap.id = su.sitemap_url_id
         LEFT JOIN texts lastmod ON lastmod.id = su.lastmod_id
-        LEFT JOIN pages p ON p.crawl_id = su.crawl_id AND p.url_id = su.page_url_id
-        WHERE su.crawl_id = ? AND p.id IS NULL
+        LEFT JOIN pages p ON p.url_id = su.page_url_id
+        WHERE p.id IS NULL
         ORDER BY su.id
         "#,
     )
-    .bind(crawl_id)
-    .fetch_all(pool)
+    .fetch_all(db.pool())
     .await?;
 
     Ok(rows
@@ -2688,16 +2624,8 @@ mod tests {
         }
     }
 
-    async fn test_pool() -> SqlitePool {
-        let pool = SqlitePool::connect_lazy("sqlite::memory:").expect("pool");
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-        )
-        .execute(&pool)
-        .await
-        .expect("migrations table");
-        run_migrations(&pool).await.expect("migrations");
-        pool
+    async fn test_databases() -> (SqlitePool, CrawlStore) {
+        temporary_databases().await.expect("databases")
     }
 
     fn link(dst_url: &str, anchor: &str) -> crate::crawl::event::Outlink {
@@ -2718,7 +2646,7 @@ mod tests {
             .build()
             .expect("runtime");
         runtime.block_on(async {
-            let pool = test_pool().await;
+            let (pool, _crawls) = test_databases().await;
             let settings = crate::crawl::site_settings::SiteSettings {
                 exclude_patterns: vec!["/tag/".to_string()],
                 max_pages: 500,
@@ -2776,7 +2704,7 @@ mod tests {
             .build()
             .expect("runtime");
         let backlinks = runtime.block_on(async {
-            let pool = test_pool().await;
+            let (pool, crawls) = test_databases().await;
             let crawl_id = create_crawl(&pool, "https://a.test/", "http", &config())
                 .await
                 .expect("crawl");
@@ -2794,8 +2722,7 @@ mod tests {
                 ),
             ] {
                 insert_page(
-                    &pool,
-                    crawl_id,
+                    &crawls.open(crawl_id).await.expect("crawl file"),
                     &PageRecord {
                         url: url.into(),
                         status: Some(200),
@@ -2807,10 +2734,13 @@ mod tests {
                 .await
                 .expect("page");
             }
-            load_page_on_demand(&pool, crawl_id, "https://a.test/target")
-                .await
-                .expect("backlinks")
-                .backlinks
+            load_page_on_demand(
+                &crawls.open(crawl_id).await.expect("crawl file"),
+                "https://a.test/target",
+            )
+            .await
+            .expect("backlinks")
+            .backlinks
         });
         let found: Vec<(&str, Option<&str>)> = backlinks
             .iter()
@@ -2835,14 +2765,13 @@ mod tests {
             .build()
             .expect("runtime");
         let (steps, pages) = runtime.block_on(async {
-            let pool = test_pool().await;
+            let (pool, crawls) = test_databases().await;
             let root = "https://a.test/";
             let crawl_id = create_crawl(&pool, root, "http", &config())
                 .await
                 .expect("crawl");
             insert_page(
-                &pool,
-                crawl_id,
+                &crawls.open(crawl_id).await.expect("crawl file"),
                 &PageRecord {
                     url: root.into(),
                     status: Some(200),
@@ -2855,9 +2784,11 @@ mod tests {
             .expect("page");
 
             let steps = std::cell::RefCell::new(Vec::new());
-            let pages = load_pages_for_crawl_reporting(&pool, crawl_id, root, |step| {
-                steps.borrow_mut().push(step)
-            })
+            let pages = load_pages_for_crawl_reporting(
+                &crawls.open(crawl_id).await.expect("crawl file"),
+                root,
+                |step| steps.borrow_mut().push(step),
+            )
             .await
             .expect("load");
             let mut steps = steps.into_inner();
@@ -2886,7 +2817,7 @@ mod tests {
             .build()
             .expect("runtime");
         let (loaded, on_demand) = runtime.block_on(async {
-            let pool = test_pool().await;
+            let (pool, crawls) = test_databases().await;
             let root = "https://a.test/";
             let crawl_id = create_crawl(&pool, root, "http", &config())
                 .await
@@ -2897,8 +2828,7 @@ mod tests {
                 raw_json: raw_json.into(),
             };
             insert_page(
-                &pool,
-                crawl_id,
+                &crawls.open(crawl_id).await.expect("crawl file"),
                 &PageRecord {
                     url: root.into(),
                     status: Some(200),
@@ -2913,12 +2843,14 @@ mod tests {
             )
             .await
             .expect("page");
-            let loaded = load_pages_for_crawl(&pool, crawl_id, root)
-                .await
-                .expect("load");
-            let on_demand = load_page_on_demand(&pool, crawl_id, root)
-                .await
-                .expect("on demand");
+            let loaded =
+                load_pages_for_crawl(&crawls.open(crawl_id).await.expect("crawl file"), root)
+                    .await
+                    .expect("load");
+            let on_demand =
+                load_page_on_demand(&crawls.open(crawl_id).await.expect("crawl file"), root)
+                    .await
+                    .expect("on demand");
             (loaded, on_demand)
         });
         let [page] = loaded.as_slice() else {
@@ -2954,7 +2886,7 @@ mod tests {
             .build()
             .expect("runtime");
         let (finished, running) = runtime.block_on(async {
-            let pool = test_pool().await;
+            let (pool, crawls) = test_databases().await;
             let mut crawl_ids = Vec::new();
             for root in ["https://finished.test/", "https://running.test/"] {
                 let crawl_id = create_crawl(&pool, root, "http", &config())
@@ -2962,8 +2894,7 @@ mod tests {
                     .expect("crawl");
                 for (path, status) in [("", Some(200)), ("unfetched", None)] {
                     insert_page(
-                        &pool,
-                        crawl_id,
+                        &crawls.open(crawl_id).await.expect("crawl file"),
                         &PageRecord {
                             url: format!("{root}{path}"),
                             status,
@@ -2980,13 +2911,18 @@ mod tests {
             let [finished_id, running_id] = crawl_ids[..] else {
                 panic!("two crawls");
             };
-            finish_crawl(&pool, finished_id).await.expect("finish");
+            finish_crawl(
+                &pool,
+                &crawls.open(finished_id).await.expect("crawl file"),
+                finished_id,
+            )
+            .await
+            .expect("finish");
             // Rows written after the finish are not what the finished crawl
             // found, so its listing keeps the stored counts.
             for crawl_id in [finished_id, running_id] {
                 insert_page(
-                    &pool,
-                    crawl_id,
+                    &crawls.open(crawl_id).await.expect("crawl file"),
                     &PageRecord {
                         url: format!("https://late.test/{crawl_id}"),
                         status: Some(200),
@@ -2997,7 +2933,7 @@ mod tests {
                 .await
                 .expect("late page");
             }
-            let crawls = list_crawls(&pool).await.expect("list");
+            let crawls = list_crawls(&pool, &crawls).await.expect("list");
             let counts = |crawl_id: i64| {
                 crawls
                     .iter()
@@ -3027,7 +2963,7 @@ mod tests {
             .build()
             .expect("runtime");
         let (orphans, pages) = runtime.block_on(async {
-            let pool = test_pool().await;
+            let (pool, crawls) = test_databases().await;
             let crawl_id = create_crawl(&pool, "https://a.test/", "http", &config())
                 .await
                 .expect("crawl");
@@ -3039,12 +2975,11 @@ mod tests {
                     hreflang: Vec::new(),
                 })
                 .collect();
-            insert_sitemap_urls(&pool, crawl_id, &entries)
+            insert_sitemap_urls(&crawls.open(crawl_id).await.expect("crawl file"), &entries)
                 .await
                 .expect("sitemap");
             insert_page(
-                &pool,
-                crawl_id,
+                &crawls.open(crawl_id).await.expect("crawl file"),
                 &PageRecord {
                     url: "https://a.test/0".into(),
                     status: Some(200),
@@ -3055,7 +2990,7 @@ mod tests {
             .await
             .expect("crawled page");
 
-            let orphans = load_sitemap_orphans(&pool, crawl_id)
+            let orphans = load_sitemap_orphans(&crawls.open(crawl_id).await.expect("crawl file"))
                 .await
                 .expect("orphans");
             let records: Vec<PageRecord> = ["https://a.test/0", "https://a.test/1"]
@@ -3066,15 +3001,13 @@ mod tests {
                     ..Default::default()
                 })
                 .collect();
-            insert_pages(&pool, crawl_id, &records)
+            insert_pages(&crawls.open(crawl_id).await.expect("crawl file"), &records)
                 .await
                 .expect("batch");
             let pages = sqlx::query_as::<_, (String, Option<i64>)>(
-                "SELECT t.text, p.status FROM pages p JOIN texts t ON t.id = p.url_id \
-                 WHERE p.crawl_id = ? ORDER BY p.id",
+                "SELECT t.text, p.status FROM pages p JOIN texts t ON t.id = p.url_id ORDER BY p.id",
             )
-            .bind(crawl_id)
-            .fetch_all(&pool)
+            .fetch_all(crawls.open(crawl_id).await.expect("crawl file").pool())
             .await
             .expect("pages");
             (orphans, pages)
@@ -3099,8 +3032,6 @@ mod tests {
         );
     }
 
-    /// A crawl left open by an app that went away is closed as aborted, with
-    /// its counts, and a finished crawl is left as it was.
     fn runtime() -> tokio::runtime::Runtime {
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -3111,32 +3042,31 @@ mod tests {
     #[test]
     fn a_text_whose_hash_is_taken_gets_its_own_id() {
         runtime().block_on(async {
-            let pool = test_pool().await;
+            let (pool, crawls) = test_databases().await;
             let crawl_id = create_crawl(&pool, "https://a.test/", "http", &config())
                 .await
                 .expect("crawl");
+            let db = crawls.open(crawl_id).await.expect("crawl file");
             let wanted = "https://a.test/wanted";
             // Another text already holding the wanted text's hash, as a
             // collision would leave it.
-            sqlx::query("INSERT INTO texts (crawl_id, hash, text) VALUES (?, ?, ?)")
-                .bind(crawl_id)
+            sqlx::query("INSERT INTO texts (hash, text) VALUES (?, ?)")
                 .bind(text_hash(wanted))
                 .bind("https://a.test/holder")
-                .execute(&pool)
+                .execute(db.pool())
                 .await
                 .expect("holder");
-            let mut conn = pool.acquire().await.expect("connection");
-            let first = text_id(&mut conn, crawl_id, wanted).await.expect("first");
-            let again = text_id(&mut conn, crawl_id, wanted).await.expect("again");
-            let holder = text_id(&mut conn, crawl_id, "https://a.test/holder")
+            let mut conn = db.pool().acquire().await.expect("connection");
+            let first = text_id(&mut conn, wanted).await.expect("first");
+            let again = text_id(&mut conn, wanted).await.expect("again");
+            let holder = text_id(&mut conn, "https://a.test/holder")
                 .await
                 .expect("holder id");
             assert_eq!(first, again);
             assert_ne!(first, holder);
             let looked_up: Option<i64> = sqlx::query_scalar(
-                "SELECT id FROM texts WHERE crawl_id = ? AND (hash = ? OR hash IS NULL) AND text = ?",
+                "SELECT id FROM texts WHERE (hash = ? OR hash IS NULL) AND text = ?",
             )
-            .bind(crawl_id)
             .bind(text_hash(wanted))
             .bind(wanted)
             .fetch_optional(&mut *conn)
@@ -3161,12 +3091,21 @@ mod tests {
         assert_eq!(unpack_json(long.as_bytes()).expect("plain"), long);
     }
 
+    /// A crawl stored the way the catalog held crawls before they had files
+    /// of their own, its texts unhashed and its JSON plain, comes out of the
+    /// migrations in a file of its own, hashed, compressed and whole.
     #[test]
-    fn the_migrations_hash_and_compress_rows_stored_before_them() {
+    fn a_crawl_stored_in_the_catalog_moves_into_a_file_of_its_own() {
         runtime().block_on(async {
-            let pool = test_pool().await;
+            let crawls = CrawlStore::temporary().expect("store");
+            let catalog = connect_catalog(&crawls.path(0).with_file_name("catalog.db"))
+                .await
+                .expect("catalog");
+            migrate(&catalog, &crawls, Some(TEXT_HASH_MIGRATION))
+                .await
+                .expect("migrations before hashing");
             let root = "https://a.test/";
-            let crawl_id = create_crawl(&pool, root, "http", &config())
+            let crawl_id = create_crawl(&catalog, root, "http", &config())
                 .await
                 .expect("crawl");
             let headers: Vec<(String, String)> = (0..30)
@@ -3177,93 +3116,74 @@ mod tests {
                     )
                 })
                 .collect();
-            insert_page(
-                &pool,
-                crawl_id,
-                &PageRecord {
-                    url: root.to_string(),
-                    status: Some(200),
-                    is_page: true,
-                    is_internal: true,
-                    headers: headers.clone().into(),
-                    outlinks: thin_vec::thin_vec![crate::crawl::event::Outlink {
-                        dst_url: "https://a.test/next".into(),
-                        anchor: Some("next".into()),
-                        rel: None,
-                        csr_only: false,
-                    }],
-                    ..Default::default()
-                },
+            for (id, text) in [(1, root), (2, "https://a.test/next"), (3, "next")] {
+                sqlx::query("INSERT INTO texts (id, crawl_id, text) VALUES (?, ?, ?)")
+                    .bind(id)
+                    .bind(crawl_id)
+                    .bind(text)
+                    .execute(&catalog)
+                    .await
+                    .expect("text");
+            }
+            sqlx::query(
+                "INSERT INTO pages (crawl_id, url_id, status, is_page, crawled_at, headers_json)
+                 VALUES (?, 1, 200, 1, 1, ?)",
             )
+            .bind(crawl_id)
+            .bind(serde_json::to_string(&headers).expect("json"))
+            .execute(&catalog)
             .await
             .expect("page");
-            let ids_before: Vec<(i64, String)> =
-                sqlx::query_as("SELECT id, text FROM texts WHERE crawl_id = ? ORDER BY id")
-                    .bind(crawl_id)
-                    .fetch_all(&pool)
+            sqlx::query(
+                "INSERT INTO links (crawl_id, src_url_id, dst_url_id, anchor_id, internal)
+                 VALUES (?, 1, 2, 3, 1)",
+            )
+            .bind(crawl_id)
+            .execute(&catalog)
+            .await
+            .expect("link");
+            finish_crawl_in_catalog(&catalog, crawl_id).await;
+
+            run_migrations(&catalog, &crawls).await.expect("migrations");
+
+            assert!(crawls.path(crawl_id).exists());
+            let left: Option<String> =
+                sqlx::query_scalar("SELECT name FROM sqlite_master WHERE name = 'pages'")
+                    .fetch_optional(&catalog)
+                    .await
+                    .expect("catalog tables");
+            assert_eq!(left, None, "the catalog keeps no crawl rows");
+            let db = crawls.open(crawl_id).await.expect("crawl file");
+            let texts: Vec<(i64, String, Option<i64>)> =
+                sqlx::query_as("SELECT id, text, hash FROM texts ORDER BY id")
+                    .fetch_all(db.pool())
                     .await
                     .expect("texts");
-
-            // Back to how the rows were stored before: no hashes, and the
-            // headers as plain JSON text.
-            let mut conn = pool.acquire().await.expect("connection");
-            sqlx::query("UPDATE texts SET hash = NULL")
-                .execute(&mut *conn)
-                .await
-                .expect("unhash");
-            sqlx::query("UPDATE pages SET headers_json = ?")
-                .bind(serde_json::to_string(&headers).expect("json"))
-                .execute(&mut *conn)
-                .await
-                .expect("plain headers");
-            for statement in include_str!("../../migrations/0040_text_hashes.sql")
-                .split(";\n")
-                .map(str::trim)
-                .filter(|statement| !statement.is_empty())
-            {
-                sqlx::query(statement)
-                    .execute(&mut *conn)
-                    .await
-                    .expect("texts_hashed");
-            }
-            hash_texts(&mut conn).await.expect("hash texts");
-            compress_json_columns(&mut conn).await.expect("compress");
-            drop(conn);
-
-            let ids_after: Vec<(i64, String, Option<i64>)> =
-                sqlx::query_as("SELECT id, text, hash FROM texts WHERE crawl_id = ? ORDER BY id")
-                    .bind(crawl_id)
-                    .fetch_all(&pool)
-                    .await
-                    .expect("hashed texts");
-            assert_eq!(
-                ids_after
-                    .iter()
-                    .map(|(id, text, _)| (*id, text.clone()))
-                    .collect::<Vec<_>>(),
-                ids_before
-            );
-            for (_, text, hash) in &ids_after {
+            assert_eq!(texts.len(), 3);
+            for (_, text, hash) in &texts {
                 assert_eq!(*hash, Some(text_hash(text)));
             }
             let stored_type: String = sqlx::query_scalar("SELECT typeof(headers_json) FROM pages")
-                .fetch_one(&pool)
+                .fetch_one(db.pool())
                 .await
                 .expect("type");
             assert_eq!(stored_type, "blob");
 
-            let pages = load_pages_for_crawl(&pool, crawl_id, root)
-                .await
-                .expect("load");
+            let pages = load_pages_for_crawl(&db, root).await.expect("load");
             let page = pages
                 .iter()
                 .find(|page| page.url == root)
                 .expect("root page");
             assert_eq!(page.headers.to_vec(), headers);
-            // A URL stored before is found again rather than stored twice.
+            assert_eq!(page.outlinks.len(), 1);
+            assert_eq!(page.outlinks[0].anchor.as_deref(), Some("next"));
+            // Moved crawls keep their finish: One Inlink trusts their counts.
+            assert!(page.inlinks_complete);
+
+            // A URL stored before the move is found again rather than stored
+            // twice.
             insert_page(
-                &pool,
-                crawl_id,
+                &db,
                 &PageRecord {
                     url: root.to_string(),
                     ..Default::default()
@@ -3271,17 +3191,26 @@ mod tests {
             )
             .await
             .expect("again");
-            let stored: i64 =
-                sqlx::query_scalar("SELECT COUNT(*) FROM texts WHERE crawl_id = ? AND text = ?")
-                    .bind(crawl_id)
-                    .bind(root)
-                    .fetch_one(&pool)
-                    .await
-                    .expect("count");
+            let stored: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM texts WHERE text = ?")
+                .bind(root)
+                .fetch_one(db.pool())
+                .await
+                .expect("count");
             assert_eq!(stored, 1);
         });
     }
 
+    /// Marks a crawl finished the way the catalog did before crawls had files.
+    async fn finish_crawl_in_catalog(catalog: &SqlitePool, crawl_id: i64) {
+        sqlx::query("UPDATE crawls SET finished_at = 1 WHERE id = ?")
+            .bind(crawl_id)
+            .execute(catalog)
+            .await
+            .expect("finish");
+    }
+
+    /// A crawl left open by an app that went away is closed as aborted, with
+    /// its counts, and a finished crawl is left as it was.
     #[test]
     fn an_unfinished_crawl_is_marked_aborted() {
         let runtime = tokio::runtime::Builder::new_current_thread()
@@ -3289,15 +3218,14 @@ mod tests {
             .build()
             .expect("runtime");
         let crawls = runtime.block_on(async {
-            let pool = test_pool().await;
+            let (pool, crawls) = test_databases().await;
             let mut crawl_ids = Vec::new();
             for root in ["https://finished.test/", "https://cut-off.test/"] {
                 let crawl_id = create_crawl(&pool, root, "http", &config())
                     .await
                     .expect("crawl");
                 insert_page(
-                    &pool,
-                    crawl_id,
+                    &crawls.open(crawl_id).await.expect("crawl file"),
                     &PageRecord {
                         url: root.to_string(),
                         status: Some(200),
@@ -3313,10 +3241,18 @@ mod tests {
             let [finished_id, _] = crawl_ids[..] else {
                 panic!("two crawls");
             };
-            finish_crawl(&pool, finished_id).await.expect("finish");
-            let aborted = abort_unfinished_crawls(&pool).await.expect("abort");
+            finish_crawl(
+                &pool,
+                &crawls.open(finished_id).await.expect("crawl file"),
+                finished_id,
+            )
+            .await
+            .expect("finish");
+            let aborted = abort_unfinished_crawls(&pool, &crawls)
+                .await
+                .expect("abort");
             assert_eq!(aborted, 1);
-            list_crawls(&pool).await.expect("list")
+            list_crawls(&pool, &crawls).await.expect("list")
         });
         let state = |root: &str| {
             crawls
@@ -3337,7 +3273,7 @@ mod tests {
             .build()
             .expect("runtime");
         runtime.block_on(async {
-            let pool = test_pool().await;
+            let (pool, crawls) = test_databases().await;
             let crawl_id = create_crawl(&pool, "https://a.test/", "http", &config())
                 .await
                 .expect("crawl");
@@ -3351,7 +3287,13 @@ mod tests {
                 None
             );
 
-            finish_crawl(&pool, crawl_id).await.expect("finish");
+            finish_crawl(
+                &pool,
+                &crawls.open(crawl_id).await.expect("crawl file"),
+                crawl_id,
+            )
+            .await
+            .expect("finish");
             assert!(
                 store_filter_counts(&pool, crawl_id, 1, "{\"v\":1}")
                     .await
@@ -3381,7 +3323,14 @@ mod tests {
                 Some("{\"v\":2}".to_string())
             );
 
-            delete_crawl(&pool, crawl_id).await.expect("delete");
+            assert!(crawls.path(crawl_id).exists());
+            delete_crawl(&pool, &crawls, crawl_id)
+                .await
+                .expect("delete");
+            assert!(
+                !crawls.path(crawl_id).exists(),
+                "the crawl's file is deleted"
+            );
             let (left,): (i64,) = sqlx::query_as("SELECT COUNT(*) FROM crawl_filter_counts")
                 .fetch_one(&pool)
                 .await

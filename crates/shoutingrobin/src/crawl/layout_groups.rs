@@ -16,7 +16,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use sqlx::SqlitePool;
+use crate::storage::CrawlDb;
 
 use crate::crawl::layout::{LayoutTables, PageLayout, for_each_layout, page_shape};
 
@@ -381,8 +381,8 @@ struct TypedGroup {
 }
 
 /// Groups the crawl's stored layouts into templates.
-pub async fn group_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<Grouping, sqlx::Error> {
-    let tables = crate::storage::load_layout_tables(pool, crawl_id).await?;
+pub async fn group_crawl(db: &CrawlDb) -> Result<Grouping, sqlx::Error> {
+    let tables = crate::storage::load_layout_tables(db).await?;
     let mut path_ids = PathIds::default();
 
     // Pass 1: how common each path and type is, and samples per type.
@@ -391,7 +391,7 @@ pub async fn group_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<Grouping, s
     let mut type_frequency: HashMap<String, usize> = HashMap::new();
     let mut page_types: Vec<(String, Vec<String>)> = Vec::new();
     let mut samples: HashMap<String, Sample> = HashMap::new();
-    for_each_layout(pool, crawl_id, |url, layout| {
+    for_each_layout(db, |url, layout| {
         let shape = path_ids.shape(&layout, &tables);
         page_count += 1;
         for path in shape.weights.keys() {
@@ -496,7 +496,7 @@ pub async fn group_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<Grouping, s
     let mut assigned: HashMap<String, (usize, Assignment)> = HashMap::new();
     let mut leftovers: Vec<(String, Shape)> = Vec::new();
     let mut overflow: Vec<String> = Vec::new();
-    for_each_layout(pool, crawl_id, |url, layout| {
+    for_each_layout(db, |url, layout| {
         let shape = path_ids.shape(&layout, &tables);
         let type_key = type_keys.get(&url).cloned().flatten();
         let own_group = type_key
@@ -594,7 +594,7 @@ pub async fn group_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<Grouping, s
     if !overflow.is_empty() {
         let overflow: HashSet<String> = overflow.into_iter().collect();
         let mut joined: Vec<(String, Option<i64>)> = Vec::new();
-        for_each_layout(pool, crawl_id, |url, layout| {
+        for_each_layout(db, |url, layout| {
             if !overflow.contains(&url) {
                 return;
             }
@@ -639,12 +639,12 @@ pub async fn group_crawl(pool: &SqlitePool, crawl_id: i64) -> Result<Grouping, s
 
 /// Groups the crawl's layouts and stores the result. A crawl without
 /// captured layouts is left alone.
-pub async fn run_template_grouping(pool: &SqlitePool, crawl_id: i64) -> Result<(), sqlx::Error> {
-    if crate::storage::count_page_layouts(pool, crawl_id).await? == 0 {
+pub async fn run_template_grouping(db: &CrawlDb) -> Result<(), sqlx::Error> {
+    if crate::storage::count_page_layouts(db).await? == 0 {
         return Ok(());
     }
-    let grouping = group_crawl(pool, crawl_id).await?;
-    crate::storage::save_layout_grouping(pool, crawl_id, &grouping).await
+    let grouping = group_crawl(db).await?;
+    crate::storage::save_layout_grouping(db, &grouping).await
 }
 
 #[cfg(test)]

@@ -1,0 +1,14 @@
+DROP TABLE pages;
+DROP TABLE links;
+DROP TABLE texts;
+DROP TABLE images;
+DROP TABLE sitemap_urls;
+DROP TABLE a11y_violations;
+DROP TABLE structured_data;
+DROP TABLE performance;
+DROP TABLE ecommerce;
+DROP TABLE sd_issues;
+DROP TABLE page_layouts;
+DROP TABLE layout_keys;
+DROP TABLE layout_styles;
+DROP TABLE layout_templates;

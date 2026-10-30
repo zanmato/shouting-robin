@@ -956,11 +956,11 @@ fn test_orphans_and_blocked_urls_are_persisted() {
 fn fetch(port: u16, path: &str) -> (String, String) {
     use std::io::{Read, Write};
     let mut stream = std::net::TcpStream::connect(("127.0.0.1", port)).expect("connect");
-    write!(
-        stream,
-        "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
-    )
-    .expect("send request");
+    // One write: `write!` sends each piece of the format on its own, and the
+    // server answers after a single read, so a piece arriving after it had
+    // the connection reset rather than closed.
+    let request = format!("GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).expect("send request");
     let mut response = String::new();
     stream.read_to_string(&mut response).expect("read response");
     let (head, body) = response
@@ -1037,13 +1037,7 @@ fn test_site_icon_misses_are_stored_without_erasing_a_found_icon() {
         .unwrap();
 
     runtime.block_on(async {
-        // One connection, since every connection to `:memory:` is its own database.
-        let pool = sqlx::sqlite::SqlitePoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        shoutingrobin::storage::run_migrations(&pool).await.unwrap();
+        let (pool, _crawls) = shoutingrobin::storage::temporary_databases().await.unwrap();
         let client = shoutingrobin::crawl::site_icon::icon_client().unwrap();
         let host = format!("127.0.0.1:{port}");
 

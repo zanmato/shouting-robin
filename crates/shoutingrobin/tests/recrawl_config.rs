@@ -29,16 +29,8 @@ fn sample_config() -> CrawlConfig {
     }
 }
 
-async fn memory_pool() -> sqlx::SqlitePool {
-    let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-    )
-    .execute(&pool)
-    .await
-    .unwrap();
-    shoutingrobin::storage::run_migrations(&pool).await.unwrap();
-    pool
+async fn test_databases() -> (sqlx::SqlitePool, shoutingrobin::storage::CrawlStore) {
+    shoutingrobin::storage::temporary_databases().await.unwrap()
 }
 
 #[test]
@@ -49,7 +41,7 @@ fn crawl_config_round_trips_through_storage() {
         .unwrap();
 
     rt.block_on(async {
-        let pool = memory_pool().await;
+        let (pool, _crawls) = test_databases().await;
         let config = sample_config();
 
         let crawl_id =
@@ -81,7 +73,7 @@ fn missing_config_reads_back_as_none() {
         .unwrap();
 
     rt.block_on(async {
-        let pool = memory_pool().await;
+        let (pool, _crawls) = test_databases().await;
 
         let result =
             sqlx::query("INSERT INTO crawls (root_url, started_at, render_mode) VALUES (?, ?, ?)")
@@ -108,7 +100,7 @@ fn unknown_crawl_id_reads_back_as_none() {
         .unwrap();
 
     rt.block_on(async {
-        let pool = memory_pool().await;
+        let (pool, _crawls) = test_databases().await;
         let loaded = shoutingrobin::storage::load_crawl_config(&pool, 4242)
             .await
             .expect("a missing row is not an error");
@@ -126,7 +118,7 @@ fn config_stored_before_layout_capture_reads_back_as_off() {
         .unwrap();
 
     rt.block_on(async {
-        let pool = memory_pool().await;
+        let (pool, crawls) = test_databases().await;
         let mut stored = serde_json::to_value(sample_config()).unwrap();
         stored
             .as_object_mut()
@@ -150,7 +142,7 @@ fn config_stored_before_layout_capture_reads_back_as_off() {
             .expect("the config should parse without the new key");
         assert_eq!(loaded.layout_capture, LayoutCapture::Off);
 
-        let crawls = shoutingrobin::storage::list_crawls(&pool).await.unwrap();
+        let crawls = shoutingrobin::storage::list_crawls(&pool, &crawls).await.unwrap();
         assert_eq!(crawls[0].layout_capture, LayoutCapture::Off);
     });
 }
@@ -165,7 +157,7 @@ fn listed_crawls_carry_their_layout_capture() {
         .unwrap();
 
     rt.block_on(async {
-        let pool = memory_pool().await;
+        let (pool, crawls) = test_databases().await;
         for capture in [
             LayoutCapture::Off,
             LayoutCapture::Loaded,
@@ -180,7 +172,7 @@ fn listed_crawls_carry_their_layout_capture() {
                 .expect("create_crawl should succeed");
         }
 
-        let mut listed: Vec<LayoutCapture> = shoutingrobin::storage::list_crawls(&pool)
+        let mut listed: Vec<LayoutCapture> = shoutingrobin::storage::list_crawls(&pool, &crawls)
             .await
             .unwrap()
             .into_iter()

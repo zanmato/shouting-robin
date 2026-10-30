@@ -70,18 +70,21 @@ fn load_crawl() -> Option<Crawl> {
             .fetch_one(&pool)
             .await
             .expect("the crawl exists");
+        let db = crawl_files(&path)
+            .open(crawl_id)
+            .await
+            .expect("open the crawl's file");
         let started = Instant::now();
         let last_read = std::cell::Cell::new(started);
-        let pages =
-            crate::storage::load_pages_for_crawl_reporting(&pool, crawl_id, &root_url, |step| {
-                eprintln!(
-                    "  {step:?} read after {:.0} ms",
-                    milliseconds(started.elapsed())
-                );
-                last_read.set(Instant::now());
-            })
-            .await
-            .expect("load the crawl");
+        let pages = crate::storage::load_pages_for_crawl_reporting(&db, &root_url, |step| {
+            eprintln!(
+                "  {step:?} read after {:.0} ms",
+                milliseconds(started.elapsed())
+            );
+            last_read.set(Instant::now());
+        })
+        .await
+        .expect("load the crawl");
         eprintln!(
             "  assembled the records in {:.0} ms",
             milliseconds(last_read.get().elapsed())
@@ -95,6 +98,12 @@ fn load_crawl() -> Option<Crawl> {
         );
         Some(Crawl { pages, root_url })
     })
+}
+
+/// The crawl files beside the catalog copy at `catalog_path`, as the app
+/// keeps them: copy the `crawls` directory along with the catalog.
+fn crawl_files(catalog_path: &str) -> crate::storage::CrawlStore {
+    crate::storage::CrawlStore::new(std::path::Path::new(catalog_path).with_file_name("crawls"))
 }
 
 fn milliseconds(duration: Duration) -> f64 {
@@ -472,21 +481,13 @@ fn results_grid_open_costs() {
                 .build()
                 .expect("runtime");
             runtime.block_on(async {
-                let options =
-                    sqlx::sqlite::SqliteConnectOptions::from_str(&format!("sqlite://{path}"))
-                        .expect("database path")
-                        .read_only(true);
-                let pool = sqlx::SqlitePool::connect_with(options)
+                let db = crawl_files(&path)
+                    .open(baseline_id)
                     .await
-                    .expect("open the database copy");
-                crate::storage::load_pages_for_crawl_reporting(
-                    &pool,
-                    baseline_id,
-                    &crawl.root_url,
-                    |_| {},
-                )
-                .await
-                .expect("load the baseline")
+                    .expect("open the baseline's file");
+                crate::storage::load_pages_for_crawl_reporting(&db, &crawl.root_url, |_| {})
+                    .await
+                    .expect("load the baseline")
             })
         });
     let pages = shared(crawl.pages.iter().cloned());

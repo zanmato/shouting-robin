@@ -1,12 +1,14 @@
 use gpui_kit::{App, Global};
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePool};
-use sqlx::{ConnectOptions, Row};
+use sqlx::Row;
+use sqlx::sqlite::SqlitePool;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 #[derive(Clone)]
 pub struct AppDatabase {
+    /// The catalog: the list of crawls, site settings and app settings.
     pool: SqlitePool,
+    /// Each crawl's own database.
+    crawls: crate::storage::CrawlStore,
 }
 
 /// Turns off SQLite's allocation statistics for the whole process.
@@ -41,26 +43,15 @@ impl AppDatabase {
     pub async fn new() -> Result<Self, sqlx::Error> {
         disable_sqlite_memory_statistics();
         let db_path = Self::app_db_path();
+        let crawls = crate::storage::CrawlStore::new(db_path.with_file_name("crawls"));
 
-        // WAL lets the grid read a crawl while the crawler is still writing
-        // it, the busy timeout makes a contended write wait instead of
-        // failing, and the cascade that `delete_crawl` relies on only runs
-        // when foreign keys are enforced on this connection.
-        let options = SqliteConnectOptions::from_str(&format!("sqlite://{}", db_path.display()))?
-            .create_if_missing(true)
-            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
-            .synchronous(sqlx::sqlite::SqliteSynchronous::Normal)
-            .busy_timeout(std::time::Duration::from_secs(10))
-            .foreign_keys(true)
-            .disable_statement_logging();
+        let pool = crate::storage::connect_catalog(&db_path).await?;
 
-        let pool = SqlitePool::connect_with(options).await?;
-
-        let mut db = Self { pool };
+        let mut db = Self { pool, crawls };
         db.init_schema().await?;
         // Nothing crawls yet, so a crawl still open was cut off when the app
         // was killed or quit, and is never going to finish.
-        match crate::storage::abort_unfinished_crawls(&db.pool).await {
+        match crate::storage::abort_unfinished_crawls(&db.pool, &db.crawls).await {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "marked unfinished crawls as aborted"),
             Err(error) => tracing::warn!(%error, "failed to mark unfinished crawls as aborted"),
@@ -74,6 +65,10 @@ impl AppDatabase {
 
     pub fn pool(&self) -> &SqlitePool {
         &self.pool
+    }
+
+    pub fn crawls(&self) -> &crate::storage::CrawlStore {
+        &self.crawls
     }
 
     fn app_db_path() -> PathBuf {
@@ -110,7 +105,7 @@ impl AppDatabase {
         .execute(&self.pool)
         .await?;
 
-        crate::storage::run_migrations(&self.pool).await?;
+        crate::storage::run_migrations(&self.pool, &self.crawls).await?;
 
         Ok(())
     }

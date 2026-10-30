@@ -254,7 +254,7 @@ impl ShoutingRobinApp {
                     render_mode,
                 } => {
                     this.set_render_mode(*render_mode, cx);
-                    let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+                    let database = crate::app_database::AppDatabase::global(cx).clone();
                     let crawl_id = *crawl_id;
                     let root_url = root_url.clone();
                     let results_grid = sidebar_results_grid.clone();
@@ -272,7 +272,7 @@ impl ShoutingRobinApp {
                     // showing the spinner rather than the crawl being replaced.
                     results_grid.update(cx, |grid, cx| grid.set_loading(true, cx));
                     Self::load_crawl_into_grid(
-                        pool,
+                        database,
                         crawl_id,
                         root_url,
                         cx.weak_entity(),
@@ -285,12 +285,18 @@ impl ShoutingRobinApp {
                     crawl_id,
                     was_selected,
                 } => {
-                    let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+                    let database = crate::app_database::AppDatabase::global(cx).clone();
                     let crawl_id = *crawl_id;
                     let was_selected = *was_selected;
                     let results_grid = sidebar_results_grid.clone();
                     cx.spawn(async move |this, cx| {
-                        if let Err(e) = crate::storage::delete_crawl(&pool, crawl_id).await {
+                        if let Err(e) = crate::storage::delete_crawl(
+                            database.pool(),
+                            database.crawls(),
+                            crawl_id,
+                        )
+                        .await
+                        {
                             tracing::error!(error=%e, crawl_id, "failed to delete crawl");
                         }
                         cx.update(|cx| {
@@ -388,10 +394,10 @@ impl ShoutingRobinApp {
     }
 
     fn load_crawl_history(&mut self, cx: &mut Context<Self>) {
-        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        let database = crate::app_database::AppDatabase::global(cx).clone();
         let sidebar = self.sidebar.clone();
         cx.spawn(async move |_, cx| {
-            let crawls = crate::storage::list_crawls(&pool).await;
+            let crawls = crate::storage::list_crawls(database.pool(), database.crawls()).await;
             match crawls {
                 Ok(crawls) => {
                     tracing::info!(count = crawls.len(), "loaded crawl history");
@@ -508,10 +514,17 @@ impl ShoutingRobinApp {
     ) {
         self.set_render_mode(mode, cx);
         let (tx, rx) = crate::crawl::engine::channel();
-        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        let database = crate::app_database::AppDatabase::global(cx).clone();
         let (cancel, fut) = {
             let engine = cx.global_mut::<CrawlEngine>();
-            engine.start(url, tx, pool, mode, config)
+            engine.start(
+                url,
+                tx,
+                database.pool().clone(),
+                database.crawls().clone(),
+                mode,
+                config,
+            )
         };
         gpui_tokio::Tokio::spawn(cx, fut).detach();
         self._cancel = Some(cancel);
@@ -597,7 +610,7 @@ impl ShoutingRobinApp {
     /// PageRank, near-duplicates, hreflang validation) write straight to the
     /// database and the streamed records never carried those columns.
     fn load_crawl_into_grid(
-        pool: sqlx::SqlitePool,
+        database: crate::app_database::AppDatabase,
         crawl_id: i64,
         root_url: String,
         app: WeakEntity<Self>,
@@ -606,14 +619,44 @@ impl ShoutingRobinApp {
         cx: &mut App,
     ) {
         cx.spawn(async move |cx| {
-            let previous =
-                match crate::storage::find_previous_crawl(&pool, &root_url, Some(crawl_id)).await {
-                    Ok(previous) => previous,
+            let pool = database.pool().clone();
+            let previous = match crate::storage::find_previous_crawl(
+                &pool,
+                database.crawls(),
+                &root_url,
+                Some(crawl_id),
+            )
+            .await
+            {
+                Ok(previous) => previous,
+                Err(e) => {
+                    tracing::error!(error=%e, "failed to find previous crawl");
+                    None
+                }
+            };
+            let db = match database.crawls().open(crawl_id).await {
+                Ok(db) => db,
+                Err(e) => {
+                    tracing::error!(error=%e, crawl_id, "failed to open the crawl's database");
+                    cx.update(|cx| {
+                        results_grid.update(cx, |grid, cx| grid.set_loading(false, cx));
+                    });
+                    return;
+                }
+            };
+            let baseline_db = match &previous {
+                Some(previous) => match database.crawls().open(previous.id).await {
+                    Ok(db) => Some(db),
                     Err(e) => {
-                        tracing::error!(error=%e, "failed to find previous crawl");
+                        tracing::error!(error=%e, crawl_id = previous.id, "failed to open the baseline's database");
                         None
                     }
-                };
+                },
+                None => None,
+            };
+            // A baseline whose file would not open is left out, as if there
+            // were none.
+            let previous = previous.filter(|_| baseline_db.is_some());
 
             // A finished crawl opened before has its counts stored, and so may
             // its baseline, which spares counting either again.
@@ -674,29 +717,23 @@ impl ShoutingRobinApp {
 
             // The baseline doesn't depend on the crawl, so both are read at once.
             let pages = cx.background_spawn({
-                let pool = pool.clone();
+                let db = db.clone();
                 let root_url = root_url.clone();
                 let report = report.clone();
                 async move {
-                    crate::storage::load_pages_for_crawl_reporting(
-                        &pool,
-                        crawl_id,
-                        &root_url,
-                        |_| report(LoadProgress::ReadFinished),
-                    )
+                    crate::storage::load_pages_for_crawl_reporting(&db, &root_url, |_| {
+                        report(LoadProgress::ReadFinished)
+                    })
                     .await
                 }
             });
-            let baseline = previous.as_ref().map(|previous| {
+            let baseline = previous.as_ref().zip(baseline_db.clone()).map(|(previous, baseline_db)| {
                 cx.background_spawn({
-                    let pool = pool.clone();
-                    let previous_id = previous.id;
                     let previous_root = previous.root_url.clone();
                     let report = report.clone();
                     async move {
                         crate::storage::load_pages_for_crawl_reporting(
-                            &pool,
-                            previous_id,
+                            &baseline_db,
                             &previous_root,
                             |_| report(LoadProgress::ReadFinished),
                         )
@@ -791,12 +828,11 @@ impl ShoutingRobinApp {
                 return;
             };
             let comparison = cx.update(|cx| {
-                let pool = pool.clone();
+                let crawls = database.crawls().clone();
+                let db = db.clone();
                 gpui_tokio::Tokio::spawn_result(cx, async move {
-                    Ok(
-                        crate::crawl::layout::compare_crawls(&pool, baseline_crawl_id, crawl_id)
-                            .await?,
-                    )
+                    let baseline = crawls.open(baseline_crawl_id).await?;
+                    Ok(crate::crawl::layout::compare_crawls(&baseline, &db).await?)
                 })
             });
             match comparison.await {
@@ -840,17 +876,18 @@ impl ShoutingRobinApp {
             );
             return;
         };
-        let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+        let crawls = crate::app_database::AppDatabase::global(cx)
+            .crawls()
+            .clone();
         let load = gpui_tokio::Tokio::spawn_result(cx, {
             let url = url.clone();
             async move {
-                crate::crawl::layout::load_page_comparison(
-                    &pool,
-                    layout.baseline_crawl_id,
-                    crawl_id,
-                    &url,
-                )
-                .await
+                let db = crawls.open(crawl_id).await?;
+                let baseline = match layout.baseline_crawl_id {
+                    Some(baseline_crawl_id) => Some(crawls.open(baseline_crawl_id).await?),
+                    None => None,
+                };
+                crate::crawl::layout::load_page_comparison(baseline.as_ref(), &db, &url).await
             }
         });
         cx.spawn_in(window, async move |_, cx| {
@@ -1253,9 +1290,9 @@ impl ShoutingRobinApp {
                         if let Some(live) = live
                             && this.crawl_on_screen == Some(crawl_id)
                         {
-                            let pool = crate::app_database::AppDatabase::global(cx).pool().clone();
+                            let database = crate::app_database::AppDatabase::global(cx).clone();
                             Self::load_crawl_into_grid(
-                                pool,
+                                database,
                                 crawl_id,
                                 live.root_url,
                                 cx.weak_entity(),
@@ -2092,6 +2129,7 @@ mod layout_context_tests {
             unfetched_count: 0,
             render_mode: "chrome".into(),
             layout_capture,
+            size_bytes: None,
         }
     }
 

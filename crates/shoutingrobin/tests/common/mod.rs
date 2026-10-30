@@ -322,7 +322,8 @@ fn crawl_test_site_inner(
             .crawl_id
             .expect("crawl should report a finished event");
         return crawl.runtime.block_on(async {
-            shoutingrobin::storage::load_pages_for_crawl(&crawl.pool, crawl_id, root_url)
+            let db = crawl.crawls.open(crawl_id).await.expect("crawl file");
+            shoutingrobin::storage::load_pages_for_crawl(&db, root_url)
                 .await
                 .expect("reload pages after crawl")
         });
@@ -335,6 +336,7 @@ struct FinishedTestCrawl {
     /// `None` when the crawl timed out before reporting it finished.
     crawl_id: Option<i64>,
     pool: sqlx::SqlitePool,
+    crawls: shoutingrobin::storage::CrawlStore,
     runtime: tokio::runtime::Runtime,
 }
 
@@ -360,15 +362,27 @@ fn run_test_crawl(
         pages,
         crawl_id,
         pool: database.pool,
+        crawls: database.crawls,
         runtime: database.runtime,
     }
 }
 
-/// An in-memory database and the runtime that drives it, which several
-/// crawls can share, as two crawls of the same site do in the app.
+/// A catalog, crawl files in a temporary directory and the runtime that
+/// drives them, which several crawls can share, as two crawls of the same
+/// site do in the app.
 pub struct TestDatabase {
     pub runtime: tokio::runtime::Runtime,
     pub pool: sqlx::SqlitePool,
+    pub crawls: shoutingrobin::storage::CrawlStore,
+}
+
+impl TestDatabase {
+    /// The crawl's own database.
+    pub fn db(&self, crawl_id: i64) -> shoutingrobin::storage::CrawlDb {
+        self.runtime
+            .block_on(self.crawls.open(crawl_id))
+            .expect("open the crawl's file")
+    }
 }
 
 pub fn test_database() -> TestDatabase {
@@ -377,18 +391,14 @@ pub fn test_database() -> TestDatabase {
         .thread_stack_size(8 * 1024 * 1024)
         .build()
         .unwrap();
-    let pool = runtime.block_on(async {
-        let pool = sqlx::SqlitePool::connect_lazy("sqlite::memory:").unwrap();
-        sqlx::query(
-            "CREATE TABLE IF NOT EXISTS schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
-        )
-        .execute(&pool)
-        .await
-        .unwrap();
-        shoutingrobin::storage::run_migrations(&pool).await.unwrap();
-        pool
-    });
-    TestDatabase { runtime, pool }
+    let (pool, crawls) = runtime
+        .block_on(shoutingrobin::storage::temporary_databases())
+        .expect("test databases");
+    TestDatabase {
+        runtime,
+        pool,
+        crawls,
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -431,6 +441,7 @@ pub fn crawl_into(
             root_url.to_string(),
             tx,
             database.pool.clone(),
+            database.crawls.clone(),
             render_mode,
             shoutingrobin::crawl::CrawlConfig {
                 max_pages: 0,

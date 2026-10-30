@@ -7770,6 +7770,7 @@ dependencies = [
  "takumi-core",
  "takumi-html",
  "takumi-pdf",
+ "tempfile",
  "thin-vec",
  "thiserror 1.0.69",
  "tikv-jemallocator",

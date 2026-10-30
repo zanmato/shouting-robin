@@ -44,6 +44,7 @@ quick-xml = { workspace = true }
 flate2 = { workspace = true }
 xxhash-rust = { workspace = true }
 zstd = { workspace = true }
+tempfile = { workspace = true }
 reqwest = { workspace = true }
 # The engine spider matches include and exclude patterns with, so a pattern
 # that passes the check here is one spider accepts.

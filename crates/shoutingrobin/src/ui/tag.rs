@@ -130,6 +130,25 @@ pub fn count_tone(count: i64, severity: Tone) -> Tone {
     if count > 0 { severity } else { Tone::Ok }
 }
 
+/// A byte count in the largest unit that keeps it at or above one, with one
+/// decimal past bytes (`900 B`, `1.2 KB`, `3.4 GB`). Empty for zero.
+pub fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 3] = ["KB", "MB", "GB"];
+    if bytes == 0 {
+        return String::new();
+    }
+    if bytes < 1024 {
+        return format!("{bytes} B");
+    }
+    let mut value = bytes as f64 / 1024.0;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    format!("{value:.1} {}", UNITS[unit])
+}
+
 /// A count short enough for a badge: exact below a thousand, then thousands
 /// and millions, with one decimal while that is the only precision left
 /// (`1.2k`, `39k`, `1.2M`). Rounds down, so `1k` always means at least a

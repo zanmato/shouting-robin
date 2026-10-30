@@ -293,7 +293,14 @@ impl Render for CrawlsSidebar {
                     .py_1()
                     .children(self.crawls.iter().map(|crawl| {
                         let is_selected = self.selected_id == Some(crawl.id);
-                        let relative = super::relative_time(now, crawl.started_at);
+                        let relative = match crawl.size_bytes.filter(|bytes| *bytes > 0) {
+                            Some(bytes) => format!(
+                                "{} · {}",
+                                super::relative_time(now, crawl.started_at),
+                                crate::ui::tag::format_bytes(bytes)
+                            ),
+                            None => super::relative_time(now, crawl.started_at),
+                        };
                         let running = crawl.finished_at.is_none();
                         let mode_text = if crawl.render_mode == "chrome" {
                             "Chrome"
