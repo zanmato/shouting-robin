@@ -182,7 +182,7 @@ impl LayoutView {
                             div()
                                 .text_xs()
                                 .text_color(cx.theme().muted_foreground)
-                                .child("list"),
+                                .child(SharedString::from(t!("details.layout.list"))),
                         )
                     }),
             )
@@ -207,7 +207,10 @@ impl LayoutView {
                     div()
                         .text_xs()
                         .text_color(cx.theme().muted_foreground)
-                        .child(SharedString::from(format!("and {more} more"))),
+                        .child(SharedString::from(t!(
+                            "details.layout.and_more",
+                            count = more
+                        ))),
                 )
             })
     }
@@ -318,24 +321,33 @@ impl Render for LayoutView {
         let diff = &self.comparison.diff;
         let layout_count = diff.layout_change_count();
         let content_count = diff.content_change_count();
-        let plural = |count: usize| if count == 1 { "" } else { "s" };
         let mut summary = match (&self.comparison.before, layout_count, content_count) {
-            (None, _, _) => {
-                "The baseline crawl has no comparable layout for this page.".to_string()
+            (None, _, _) => t!("details.layout.no_baseline").to_string(),
+            (Some(_), 0, 0) => t!("details.layout.no_changes").to_string(),
+            (Some(_), layout, content) => {
+                let layout_text = if layout == 1 {
+                    t!("details.layout.layout_changes_one", count = layout)
+                } else {
+                    t!("details.layout.layout_changes_other", count = layout)
+                };
+                let content_text = if content == 1 {
+                    t!("details.layout.content_changes_one", count = content)
+                } else {
+                    t!("details.layout.content_changes_other", count = content)
+                };
+                format!("{layout_text}, {content_text}")
             }
-            (Some(_), 0, 0) => "No changes since the baseline crawl.".to_string(),
-            (Some(_), layout, content) => format!(
-                "{layout} layout change{}, {content} text or image change{}",
-                plural(layout),
-                plural(content),
-            ),
         };
         if diff.consequences > 0 {
-            summary.push_str(&format!(
-                ". {} change{} that follow from these are not listed",
-                diff.consequences,
-                plural(diff.consequences)
-            ));
+            let consequences = if diff.consequences == 1 {
+                t!("details.layout.consequences_one", count = diff.consequences)
+            } else {
+                t!(
+                    "details.layout.consequences_other",
+                    count = diff.consequences
+                )
+            };
+            summary.push_str(&consequences);
         }
 
         let after_frame = wireframe(
@@ -357,7 +369,7 @@ impl Render for LayoutView {
             .map(|(index, change)| self.change_row(index, change, cx).into_any_element())
             .collect();
 
-        let column = |label: &'static str, frame: Wireframe, cx: &App| {
+        let column = |label: SharedString, frame: Wireframe, cx: &App| {
             v_flex()
                 .gap_1()
                 .child(
@@ -402,7 +414,9 @@ impl Render for LayoutView {
                                         .p_2()
                                         .text_xs()
                                         .text_color(cx.theme().muted_foreground)
-                                        .child("Nothing to list."),
+                                        .child(SharedString::from(t!(
+                                            "details.layout.nothing_to_list"
+                                        ))),
                                 )
                             })
                             .children(change_rows),
@@ -419,9 +433,17 @@ impl Render for LayoutView {
                                     .items_start()
                                     .gap_3()
                                     .when_some(before_frame, |row, frame| {
-                                        row.child(column("Baseline crawl", frame, cx))
+                                        row.child(column(
+                                            t!("details.layout.baseline_crawl").into(),
+                                            frame,
+                                            cx,
+                                        ))
                                     })
-                                    .child(column("This crawl", after_frame, cx)),
+                                    .child(column(
+                                        t!("details.layout.this_crawl").into(),
+                                        after_frame,
+                                        cx,
+                                    )),
                             ),
                     ),
             )
@@ -432,11 +454,17 @@ impl Render for LayoutView {
 fn legend(cx: &App) -> impl IntoElement {
     h_flex().gap_2().children(
         [
-            (Highlight::Added, "added"),
-            (Highlight::Removed, "removed"),
-            (Highlight::Geometry, "moved or resized"),
-            (Highlight::Style, "restyled"),
-            (Highlight::Content, "text or image"),
+            (Highlight::Added, t!("details.layout.legend.added")),
+            (Highlight::Removed, t!("details.layout.legend.removed")),
+            (
+                Highlight::Geometry,
+                t!("details.layout.legend.moved_or_resized"),
+            ),
+            (Highlight::Style, t!("details.layout.legend.restyled")),
+            (
+                Highlight::Content,
+                t!("details.layout.legend.text_or_image"),
+            ),
         ]
         .into_iter()
         .map(|(highlight, label)| tone_tag(highlight.tone(), cx).child(SharedString::from(label))),

@@ -1,3 +1,5 @@
+use gpui_kit::SharedString;
+
 use crate::ui::tag::Tone;
 use crate::views::ResultTab;
 
@@ -297,154 +299,204 @@ pub enum IssueFilter {
 }
 
 impl IssueFilter {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> SharedString {
         match self {
-            IssueFilter::All => "All",
-            IssueFilter::Missing => "Missing",
-            IssueFilter::Duplicate => "Duplicate",
-            IssueFilter::OverLength => "Over Length",
-            IssueFilter::UnderLength => "Under Length",
-            IssueFilter::Multiple => "Multiple",
-            IssueFilter::SameAsH1 => "Same as H1",
-            IssueFilter::HtmlEntity => "HTML entity",
-            IssueFilter::NonSequential => "Non-Sequential",
-            IssueFilter::NonIndexable => "Non-Indexable",
-            IssueFilter::Html => "HTML",
-            IssueFilter::Images => "Images",
-            IssueFilter::Css => "CSS",
-            IssueFilter::JavaScript => "JavaScript",
-            IssueFilter::Pdf => "PDF",
-            IssueFilter::FetchXhr => "Fetch/XHR",
-            IssueFilter::OtherResource => "Other",
-            IssueFilter::Status2xx => "2xx",
-            IssueFilter::Status3xx => "3xx",
-            IssueFilter::Status4xx => "4xx",
-            IssueFilter::Status5xx => "5xx",
-            IssueFilter::ContainsCanonical => "Contains Canonical",
-            IssueFilter::SelfReferencing => "Self-Referencing",
-            IssueFilter::Canonicalised => "Canonicalised",
-            IssueFilter::MissingCanonical => "Missing",
-            IssueFilter::ContainsHreflang => "Contains Hreflang",
-            IssueFilter::MissingHreflang => "Missing",
-            IssueFilter::HreflangMissingReturnTag => "Missing Return Tags",
-            IssueFilter::HreflangInvalidLang => "Invalid Language Code",
-            IssueFilter::HreflangMissingXDefault => "Missing x-default",
-            IssueFilter::HreflangMissingSelfReference => "Missing Self Reference",
-            IssueFilter::HreflangNonCanonical => "Non-Canonical Target",
-            IssueFilter::HasStructuredData => "Has Structured Data",
-            IssueFilter::MissingStructuredData => "Missing",
-            IssueFilter::SdErrors => "Errors",
-            IssueFilter::SdWarnings => "Warnings",
-            IssueFilter::JsonLdUrls => "JSON-LD",
-            IssueFilter::MicrodataUrls => "Microdata",
-            IssueFilter::ParseErrors => "Parse Errors",
-            IssueFilter::MissingAltText => "Missing Alt Text",
-            IssueFilter::MissingAltAttribute => "Missing Alt Attribute",
-            IssueFilter::AltOver100 => "Alt Over 100",
-            IssueFilter::MissingSizeAttributes => "Missing Size Attrs",
-            IssueFilter::ImageOver100Kb => "Over 100 kB",
-            IssueFilter::ImageBroken => "Broken",
-            IssueFilter::UrlsInSitemap => "In Sitemap",
-            IssueFilter::UrlsNotInSitemap => "Not in Sitemap",
-            IssueFilter::SitemapOrphans => "Orphan URLs",
-            IssueFilter::NonIndexableInSitemap => "Non-Indexable in Sitemap",
-            IssueFilter::SitemapNon200 => "Non-200 in Sitemap",
-            IssueFilter::IsProductPage => "Product Pages",
-            IssueFilter::MissingPrice => "Missing Price",
-            IssueFilter::MissingAvailability => "Missing Availability",
-            IssueFilter::MissingSku => "Missing SKU",
-            IssueFilter::MissingGtin => "Missing GTIN",
-            IssueFilter::InvalidGtin => "Invalid GTIN",
-            IssueFilter::OutOfStockIndexable => "Out of Stock",
-            IssueFilter::MissingBreadcrumbs => "Missing Breadcrumbs",
-            IssueFilter::IndexableParameterUrl => "Indexable Parameter URLs",
-            IssueFilter::RedirectChain => "Redirect Chain",
-            IssueFilter::CanonicalTargetNotIndexable => "Canonical to Non-Indexable",
-            IssueFilter::MissingBrand => "Missing Brand",
-            IssueFilter::MissingReviewRating => "Missing Review/Rating",
-            IssueFilter::MissingProductImage => "Missing Image",
-            IssueFilter::A11yImageAlt => "image-alt",
-            IssueFilter::A11yLabel => "label",
-            IssueFilter::A11yLinkName => "link-name",
-            IssueFilter::A11yButtonName => "button-name",
-            IssueFilter::A11yColorContrast => "color-contrast",
-            IssueFilter::A11yHtmlHasLang => "html-has-lang",
-            IssueFilter::A11yHeadingOrder => "heading-order",
-            IssueFilter::ExactDuplicates => "Exact Duplicates",
-            IssueFilter::NearDuplicates => "Near Duplicates",
-            IssueFilter::LowContent => "Low Content",
-            IssueFilter::SsrContentMissing => "SSR Content Missing",
-            IssueFilter::BlockedByRobots => "Blocked by robots.txt",
-            IssueFilter::SlowLcp => "Slow LCP",
-            IssueFilter::SlowCls => "Slow CLS",
-            IssueFilter::SlowFcp => "Slow FCP",
-            IssueFilter::SlowTtfb => "Slow TTFB",
-            IssueFilter::SdTypeArticle => "Article",
-            IssueFilter::SdTypeProduct => "Product",
-            IssueFilter::SdTypeFaq => "FAQ",
-            IssueFilter::SdTypeHowTo => "HowTo",
-            IssueFilter::SdTypeRecipe => "Recipe",
-            IssueFilter::SdTypeVideo => "Video",
-            IssueFilter::SdTypeBreadcrumb => "Breadcrumb",
-            IssueFilter::SdTypeOrganization => "Organization",
-            IssueFilter::MissingHttps => "Missing HTTPS",
-            IssueFilter::MissingHsts => "Missing HSTS",
-            IssueFilter::MissingCsp => "Missing CSP",
-            IssueFilter::MissingFrameGuard => "Missing Frame Guard",
-            IssueFilter::MissingContentTypeOptions => "Missing X-Content-Type",
-            IssueFilter::MissingReferrerPolicy => "Missing Referrer-Policy",
-            IssueFilter::MixedContent => "Mixed Content",
-            IssueFilter::UrlNonAscii => "Non-ASCII",
-            IssueFilter::UrlUppercase => "Uppercase",
-            IssueFilter::UrlUnderscores => "Underscores",
-            IssueFilter::UrlMultipleSlashes => "Multiple Slashes",
-            IssueFilter::UrlParameters => "Parameters",
-            IssueFilter::UrlOverLength => "Over 115 Chars",
-            IssueFilter::UrlSpaces => "Contains Space",
-            IssueFilter::MissingBodyTag => "Missing <body>",
-            IssueFilter::DirectiveNoindex => "Noindex",
-            IssueFilter::DirectiveNofollow => "Nofollow",
-            IssueFilter::DirectiveNoarchive => "Noarchive",
-            IssueFilter::DirectiveNosnippet => "Nosnippet",
-            IssueFilter::DirectiveNone => "None",
-            IssueFilter::Redirects => "Redirects",
-            IssueFilter::RedirectLoop => "Redirect Loop",
-            IssueFilter::OverPixelWidth => "Over Pixel Width",
-            IssueFilter::UnderPixelWidth => "Under Pixel Width",
-            IssueFilter::IssueTypeError => "Errors",
-            IssueFilter::IssueTypeOpportunity => "Opportunities",
-            IssueFilter::IssueTypeWarning => "Warnings",
-            IssueFilter::PriorityHigh => "High Priority",
-            IssueFilter::PriorityMedium => "Medium Priority",
-            IssueFilter::PriorityLow => "Low Priority",
-            IssueFilter::LinkBroken => "Broken (4xx/5xx)",
-            IssueFilter::LinkRedirected => "Redirected (3xx)",
-            IssueFilter::LinkNofollow => "Nofollow",
-            IssueFilter::LinkNoAnchorText => "No Anchor Text",
-            IssueFilter::LinkExternal => "External",
-            IssueFilter::DepthShallow => "Depth 0-1",
-            IssueFilter::DepthMedium => "Depth 2-3",
-            IssueFilter::DepthDeep => "Depth 4+",
-            IssueFilter::ChangeAdded => "Added",
-            IssueFilter::ChangeRemoved => "Removed",
-            IssueFilter::ChangeChanged => "Changed",
-            IssueFilter::ChangeLayout => "Layout Changed",
-            IssueFilter::LayoutMissingMarkup => "Missing Markup",
-            IssueFilter::LayoutChanged => "Layout Changed",
-            IssueFilter::ProductLayoutWithoutMarkup => "Product Layout, No Markup",
-            IssueFilter::RedirectTemporary => "Temporary Redirect",
-            IssueFilter::RedirectToError => "Redirect to Error",
-            IssueFilter::LinkToHttp => "Links to HTTP",
-            IssueFilter::SingleInlink => "One Inlink",
-            IssueFilter::NoInternalOutlinks => "No Internal Outlinks",
-            IssueFilter::CanonicalToRedirect => "Canonical to Redirect",
-            IssueFilter::CanonicalToError => "Canonical to 4xx/5xx",
-            IssueFilter::CanonicalToHttp => "Canonical to HTTP",
-            IssueFilter::CanonicalChain => "Canonical Chain",
-            IssueFilter::CanonicalisedInSitemap => "Canonicalised in Sitemap",
-            IssueFilter::SlowResponse => "Slow Response",
-            IssueFilter::LargeHtml => "HTML Over 2 MB",
-            IssueFilter::NotCached => "Not Cached",
+            IssueFilter::All => t!("results_grid.filter.all").into(),
+            IssueFilter::Missing => t!("results_grid.filter.missing").into(),
+            IssueFilter::Duplicate => t!("results_grid.filter.duplicate").into(),
+            IssueFilter::OverLength => t!("results_grid.filter.over_length").into(),
+            IssueFilter::UnderLength => t!("results_grid.filter.under_length").into(),
+            IssueFilter::Multiple => t!("results_grid.filter.multiple").into(),
+            IssueFilter::SameAsH1 => t!("results_grid.filter.same_as_h1").into(),
+            IssueFilter::HtmlEntity => t!("results_grid.filter.html_entity").into(),
+            IssueFilter::NonSequential => t!("results_grid.filter.non_sequential").into(),
+            IssueFilter::NonIndexable => t!("results_grid.filter.non_indexable").into(),
+            IssueFilter::Html => "HTML".into(),
+            IssueFilter::Images => t!("results_grid.filter.images").into(),
+            IssueFilter::Css => "CSS".into(),
+            IssueFilter::JavaScript => "JavaScript".into(),
+            IssueFilter::Pdf => "PDF".into(),
+            IssueFilter::FetchXhr => "Fetch/XHR".into(),
+            IssueFilter::OtherResource => t!("results_grid.filter.other_resource").into(),
+            IssueFilter::Status2xx => "2xx".into(),
+            IssueFilter::Status3xx => "3xx".into(),
+            IssueFilter::Status4xx => "4xx".into(),
+            IssueFilter::Status5xx => "5xx".into(),
+            IssueFilter::ContainsCanonical => t!("results_grid.filter.contains_canonical").into(),
+            IssueFilter::SelfReferencing => t!("results_grid.filter.self_referencing").into(),
+            IssueFilter::Canonicalised => t!("results_grid.filter.canonicalised").into(),
+            IssueFilter::MissingCanonical => t!("results_grid.filter.missing_canonical").into(),
+            IssueFilter::ContainsHreflang => t!("results_grid.filter.contains_hreflang").into(),
+            IssueFilter::MissingHreflang => t!("results_grid.filter.missing_hreflang").into(),
+            IssueFilter::HreflangMissingReturnTag => {
+                t!("results_grid.filter.hreflang_missing_return_tag").into()
+            }
+            IssueFilter::HreflangInvalidLang => {
+                t!("results_grid.filter.hreflang_invalid_lang").into()
+            }
+            IssueFilter::HreflangMissingXDefault => {
+                t!("results_grid.filter.hreflang_missing_x_default").into()
+            }
+            IssueFilter::HreflangMissingSelfReference => {
+                t!("results_grid.filter.hreflang_missing_self_reference").into()
+            }
+            IssueFilter::HreflangNonCanonical => {
+                t!("results_grid.filter.hreflang_non_canonical").into()
+            }
+            IssueFilter::HasStructuredData => t!("results_grid.filter.has_structured_data").into(),
+            IssueFilter::MissingStructuredData => {
+                t!("results_grid.filter.missing_structured_data").into()
+            }
+            IssueFilter::SdErrors => t!("results_grid.filter.sd_errors").into(),
+            IssueFilter::SdWarnings => t!("results_grid.filter.sd_warnings").into(),
+            IssueFilter::JsonLdUrls => "JSON-LD".into(),
+            IssueFilter::MicrodataUrls => t!("results_grid.filter.microdata_urls").into(),
+            IssueFilter::ParseErrors => t!("results_grid.filter.parse_errors").into(),
+            IssueFilter::MissingAltText => t!("results_grid.filter.missing_alt_text").into(),
+            IssueFilter::MissingAltAttribute => {
+                t!("results_grid.filter.missing_alt_attribute").into()
+            }
+            IssueFilter::AltOver100 => t!("results_grid.filter.alt_over_100").into(),
+            IssueFilter::MissingSizeAttributes => {
+                t!("results_grid.filter.missing_size_attributes").into()
+            }
+            IssueFilter::ImageOver100Kb => t!("results_grid.filter.image_over_100_kb").into(),
+            IssueFilter::ImageBroken => t!("results_grid.filter.image_broken").into(),
+            IssueFilter::UrlsInSitemap => t!("results_grid.filter.urls_in_sitemap").into(),
+            IssueFilter::UrlsNotInSitemap => t!("results_grid.filter.urls_not_in_sitemap").into(),
+            IssueFilter::SitemapOrphans => t!("results_grid.filter.sitemap_orphans").into(),
+            IssueFilter::NonIndexableInSitemap => {
+                t!("results_grid.filter.non_indexable_in_sitemap").into()
+            }
+            IssueFilter::SitemapNon200 => t!("results_grid.filter.sitemap_non_200").into(),
+            IssueFilter::IsProductPage => t!("results_grid.filter.is_product_page").into(),
+            IssueFilter::MissingPrice => t!("results_grid.filter.missing_price").into(),
+            IssueFilter::MissingAvailability => {
+                t!("results_grid.filter.missing_availability").into()
+            }
+            IssueFilter::MissingSku => t!("results_grid.filter.missing_sku").into(),
+            IssueFilter::MissingGtin => t!("results_grid.filter.missing_gtin").into(),
+            IssueFilter::InvalidGtin => t!("results_grid.filter.invalid_gtin").into(),
+            IssueFilter::OutOfStockIndexable => {
+                t!("results_grid.filter.out_of_stock_indexable").into()
+            }
+            IssueFilter::MissingBreadcrumbs => t!("results_grid.filter.missing_breadcrumbs").into(),
+            IssueFilter::IndexableParameterUrl => {
+                t!("results_grid.filter.indexable_parameter_url").into()
+            }
+            IssueFilter::RedirectChain => t!("results_grid.filter.redirect_chain").into(),
+            IssueFilter::CanonicalTargetNotIndexable => {
+                t!("results_grid.filter.canonical_target_not_indexable").into()
+            }
+            IssueFilter::MissingBrand => t!("results_grid.filter.missing_brand").into(),
+            IssueFilter::MissingReviewRating => {
+                t!("results_grid.filter.missing_review_rating").into()
+            }
+            IssueFilter::MissingProductImage => {
+                t!("results_grid.filter.missing_product_image").into()
+            }
+            IssueFilter::A11yImageAlt => "image-alt".into(),
+            IssueFilter::A11yLabel => "label".into(),
+            IssueFilter::A11yLinkName => "link-name".into(),
+            IssueFilter::A11yButtonName => "button-name".into(),
+            IssueFilter::A11yColorContrast => "color-contrast".into(),
+            IssueFilter::A11yHtmlHasLang => "html-has-lang".into(),
+            IssueFilter::A11yHeadingOrder => "heading-order".into(),
+            IssueFilter::ExactDuplicates => t!("results_grid.filter.exact_duplicates").into(),
+            IssueFilter::NearDuplicates => t!("results_grid.filter.near_duplicates").into(),
+            IssueFilter::LowContent => t!("results_grid.filter.low_content").into(),
+            IssueFilter::SsrContentMissing => t!("results_grid.filter.ssr_content_missing").into(),
+            IssueFilter::BlockedByRobots => t!("results_grid.filter.blocked_by_robots").into(),
+            IssueFilter::SlowLcp => t!("results_grid.filter.slow_lcp").into(),
+            IssueFilter::SlowCls => t!("results_grid.filter.slow_cls").into(),
+            IssueFilter::SlowFcp => t!("results_grid.filter.slow_fcp").into(),
+            IssueFilter::SlowTtfb => t!("results_grid.filter.slow_ttfb").into(),
+            IssueFilter::SdTypeArticle => t!("results_grid.filter.sd_type_article").into(),
+            IssueFilter::SdTypeProduct => t!("results_grid.filter.sd_type_product").into(),
+            IssueFilter::SdTypeFaq => "FAQ".into(),
+            IssueFilter::SdTypeHowTo => "HowTo".into(),
+            IssueFilter::SdTypeRecipe => t!("results_grid.filter.sd_type_recipe").into(),
+            IssueFilter::SdTypeVideo => t!("results_grid.filter.sd_type_video").into(),
+            IssueFilter::SdTypeBreadcrumb => t!("results_grid.filter.sd_type_breadcrumb").into(),
+            IssueFilter::SdTypeOrganization => {
+                t!("results_grid.filter.sd_type_organization").into()
+            }
+            IssueFilter::MissingHttps => t!("results_grid.filter.missing_https").into(),
+            IssueFilter::MissingHsts => t!("results_grid.filter.missing_hsts").into(),
+            IssueFilter::MissingCsp => t!("results_grid.filter.missing_csp").into(),
+            IssueFilter::MissingFrameGuard => t!("results_grid.filter.missing_frame_guard").into(),
+            IssueFilter::MissingContentTypeOptions => {
+                t!("results_grid.filter.missing_content_type_options").into()
+            }
+            IssueFilter::MissingReferrerPolicy => {
+                t!("results_grid.filter.missing_referrer_policy").into()
+            }
+            IssueFilter::MixedContent => t!("results_grid.filter.mixed_content").into(),
+            IssueFilter::UrlNonAscii => t!("results_grid.filter.url_non_ascii").into(),
+            IssueFilter::UrlUppercase => t!("results_grid.filter.url_uppercase").into(),
+            IssueFilter::UrlUnderscores => t!("results_grid.filter.url_underscores").into(),
+            IssueFilter::UrlMultipleSlashes => {
+                t!("results_grid.filter.url_multiple_slashes").into()
+            }
+            IssueFilter::UrlParameters => t!("results_grid.filter.url_parameters").into(),
+            IssueFilter::UrlOverLength => t!("results_grid.filter.url_over_length").into(),
+            IssueFilter::UrlSpaces => t!("results_grid.filter.url_spaces").into(),
+            IssueFilter::MissingBodyTag => t!("results_grid.filter.missing_body_tag").into(),
+            IssueFilter::DirectiveNoindex => "Noindex".into(),
+            IssueFilter::DirectiveNofollow => "Nofollow".into(),
+            IssueFilter::DirectiveNoarchive => "Noarchive".into(),
+            IssueFilter::DirectiveNosnippet => "Nosnippet".into(),
+            IssueFilter::DirectiveNone => t!("results_grid.filter.directive_none").into(),
+            IssueFilter::Redirects => t!("results_grid.filter.redirects").into(),
+            IssueFilter::RedirectLoop => t!("results_grid.filter.redirect_loop").into(),
+            IssueFilter::OverPixelWidth => t!("results_grid.filter.over_pixel_width").into(),
+            IssueFilter::UnderPixelWidth => t!("results_grid.filter.under_pixel_width").into(),
+            IssueFilter::IssueTypeError => t!("results_grid.filter.issue_type_error").into(),
+            IssueFilter::IssueTypeOpportunity => {
+                t!("results_grid.filter.issue_type_opportunity").into()
+            }
+            IssueFilter::IssueTypeWarning => t!("results_grid.filter.issue_type_warning").into(),
+            IssueFilter::PriorityHigh => t!("results_grid.filter.priority_high").into(),
+            IssueFilter::PriorityMedium => t!("results_grid.filter.priority_medium").into(),
+            IssueFilter::PriorityLow => t!("results_grid.filter.priority_low").into(),
+            IssueFilter::LinkBroken => t!("results_grid.filter.link_broken").into(),
+            IssueFilter::LinkRedirected => t!("results_grid.filter.link_redirected").into(),
+            IssueFilter::LinkNofollow => "Nofollow".into(),
+            IssueFilter::LinkNoAnchorText => t!("results_grid.filter.link_no_anchor_text").into(),
+            IssueFilter::LinkExternal => t!("results_grid.filter.link_external").into(),
+            IssueFilter::DepthShallow => t!("results_grid.filter.depth_shallow").into(),
+            IssueFilter::DepthMedium => t!("results_grid.filter.depth_medium").into(),
+            IssueFilter::DepthDeep => t!("results_grid.filter.depth_deep").into(),
+            IssueFilter::ChangeAdded => t!("results_grid.filter.change_added").into(),
+            IssueFilter::ChangeRemoved => t!("results_grid.filter.change_removed").into(),
+            IssueFilter::ChangeChanged => t!("results_grid.filter.change_changed").into(),
+            IssueFilter::ChangeLayout => t!("results_grid.filter.change_layout").into(),
+            IssueFilter::LayoutMissingMarkup => {
+                t!("results_grid.filter.layout_missing_markup").into()
+            }
+            IssueFilter::LayoutChanged => t!("results_grid.filter.layout_changed").into(),
+            IssueFilter::ProductLayoutWithoutMarkup => {
+                t!("results_grid.filter.product_layout_without_markup").into()
+            }
+            IssueFilter::RedirectTemporary => t!("results_grid.filter.redirect_temporary").into(),
+            IssueFilter::RedirectToError => t!("results_grid.filter.redirect_to_error").into(),
+            IssueFilter::LinkToHttp => t!("results_grid.filter.link_to_http").into(),
+            IssueFilter::SingleInlink => t!("results_grid.filter.single_inlink").into(),
+            IssueFilter::NoInternalOutlinks => {
+                t!("results_grid.filter.no_internal_outlinks").into()
+            }
+            IssueFilter::CanonicalToRedirect => {
+                t!("results_grid.filter.canonical_to_redirect").into()
+            }
+            IssueFilter::CanonicalToError => t!("results_grid.filter.canonical_to_error").into(),
+            IssueFilter::CanonicalToHttp => t!("results_grid.filter.canonical_to_http").into(),
+            IssueFilter::CanonicalChain => t!("results_grid.filter.canonical_chain").into(),
+            IssueFilter::CanonicalisedInSitemap => {
+                t!("results_grid.filter.canonicalised_in_sitemap").into()
+            }
+            IssueFilter::SlowResponse => t!("results_grid.filter.slow_response").into(),
+            IssueFilter::LargeHtml => t!("results_grid.filter.large_html").into(),
+            IssueFilter::NotCached => t!("results_grid.filter.not_cached").into(),
         }
     }
 
@@ -616,11 +668,11 @@ pub enum IssueType {
 }
 
 impl IssueType {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> SharedString {
         match self {
-            Self::Issue => "Issue",
-            Self::Opportunity => "Opportunity",
-            Self::Warning => "Warning",
+            Self::Issue => t!("results_grid.issue_type.issue").into(),
+            Self::Opportunity => t!("results_grid.issue_type.opportunity").into(),
+            Self::Warning => t!("results_grid.issue_type.warning").into(),
         }
     }
 
@@ -643,11 +695,11 @@ pub enum IssuePriority {
 }
 
 impl IssuePriority {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> SharedString {
         match self {
-            Self::High => "High",
-            Self::Medium => "Medium",
-            Self::Low => "Low",
+            Self::High => t!("results_grid.priority.high").into(),
+            Self::Medium => t!("results_grid.priority.medium").into(),
+            Self::Low => t!("results_grid.priority.low").into(),
         }
     }
 
@@ -679,11 +731,11 @@ pub enum ChangeKind {
 }
 
 impl ChangeKind {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> SharedString {
         match self {
-            Self::Added => "Added",
-            Self::Removed => "Removed",
-            Self::Changed => "Changed",
+            Self::Added => t!("results_grid.change_kind.added").into(),
+            Self::Removed => t!("results_grid.change_kind.removed").into(),
+            Self::Changed => t!("results_grid.change_kind.changed").into(),
         }
     }
 
@@ -733,8 +785,8 @@ impl ChangeEntry {
 
     pub fn detail_text(&self) -> String {
         match self.kind {
-            ChangeKind::Added => "New page".into(),
-            ChangeKind::Removed => "Page removed".into(),
+            ChangeKind::Added => t!("results_grid.change.new_page").into(),
+            ChangeKind::Removed => t!("results_grid.change.page_removed").into(),
             ChangeKind::Changed => self.changes.join(", "),
         }
     }

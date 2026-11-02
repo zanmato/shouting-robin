@@ -133,8 +133,8 @@ impl Package {
     /// Read the theme-relevant files of a `.vsix`. Files sit under
     /// `extension/` in the archive.
     pub fn from_vsix(bytes: &[u8]) -> anyhow::Result<Self> {
-        let mut archive =
-            zip::ZipArchive::new(std::io::Cursor::new(bytes)).context("not a .vsix archive")?;
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+            .with_context(|| t!("vsx_themes.error.not_vsix").to_string())?;
         let mut files = HashMap::new();
         for index in 0..archive.len() {
             let mut entry = archive.by_index(index)?;
@@ -187,14 +187,16 @@ impl Package {
             Source::Files(files) => files
                 .get(path)
                 .cloned()
-                .ok_or_else(|| anyhow!("{path} is not in the package")),
+                .ok_or_else(|| anyhow!("{}", t!("vsx_themes.error.not_in_package", path = path))),
             Source::Folder(root) => {
                 let full = root.join(path);
                 let size = std::fs::metadata(&full)
-                    .with_context(|| format!("{path} is not in the package"))?
+                    .with_context(|| {
+                        t!("vsx_themes.error.not_in_package", path = path).to_string()
+                    })?
                     .len();
                 if size > MAX_FILE_BYTES {
-                    bail!("{path} is too large to be a theme");
+                    bail!("{}", t!("vsx_themes.error.file_too_large", path = path));
                 }
                 Ok(std::fs::read(full)?)
             }
@@ -203,7 +205,8 @@ impl Package {
 
     fn read_text(&self, path: &str) -> anyhow::Result<String> {
         let bytes = self.read(path)?;
-        let text = String::from_utf8(bytes).with_context(|| format!("{path} is not UTF-8"))?;
+        let text = String::from_utf8(bytes)
+            .with_context(|| t!("vsx_themes.error.not_utf8", path = path).to_string())?;
         Ok(text.trim_start_matches('\u{feff}').to_string())
     }
 
@@ -267,7 +270,7 @@ impl Package {
     /// its own entries over it, as VS Code does.
     fn merge_file(&self, path: &str, theme: &mut VsCodeTheme, depth: usize) -> anyhow::Result<()> {
         if depth > MAX_INCLUDE_DEPTH {
-            bail!("{path}: include chain is too deep");
+            bail!("{}", t!("vsx_themes.error.include_too_deep", path = path));
         }
         let base = Path::new(path).parent().unwrap_or(Path::new(""));
         let text = self.read_text(path)?;
@@ -330,7 +333,10 @@ fn normalize(base: &Path, relative: &str) -> anyhow::Result<String> {
             "" | "." => {}
             ".." => {
                 if parts.pop().is_none() {
-                    bail!("{relative} points outside the package");
+                    bail!(
+                        "{}",
+                        t!("vsx_themes.error.outside_package", path = relative)
+                    );
                 }
             }
             part => parts.push(part.to_string()),
@@ -376,7 +382,7 @@ fn plist_token_rules(bytes: &[u8]) -> anyhow::Result<Vec<TokenRule>> {
         .as_dictionary()
         .and_then(|root| root.get("settings"))
         .and_then(plist::Value::as_array)
-        .ok_or_else(|| anyhow!("tmTheme has no settings"))?;
+        .ok_or_else(|| anyhow!("{}", t!("vsx_themes.error.tm_theme_no_settings")))?;
     Ok(settings
         .iter()
         .filter_map(plist::Value::as_dictionary)

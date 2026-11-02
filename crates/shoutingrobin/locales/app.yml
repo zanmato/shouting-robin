@@ -1,0 +1,571 @@
+_version: 2
+app:
+  menu:
+    file:
+      en: File
+      sv: Arkiv
+    edit:
+      en: Edit
+      sv: Redigera
+    settings:
+      en: Settings
+      sv: Inställningar
+    settings_ellipsis:
+      en: Settings…
+      sv: Inställningar…
+    quit:
+      en: Quit
+      sv: Avsluta
+    quit_app:
+      en: Quit Shouting Robin
+      sv: Avsluta Shouting Robin
+    undo:
+      en: Undo
+      sv: Ångra
+    redo:
+      en: Redo
+      sv: Gör om
+    cut:
+      en: Cut
+      sv: Klipp ut
+    copy:
+      en: Copy
+      sv: Kopiera
+    paste:
+      en: Paste
+      sv: Klistra in
+    select_all:
+      en: Select All
+      sv: Markera allt
+  dialog:
+    settings:
+      en: Settings
+      sv: Inställningar
+    layout:
+      en: Layout
+      sv: Layout
+  notification:
+    recrawl_without_settings:
+      en: This crawl predates saved settings, using the current ones
+      sv: Den här crawlningen är äldre än sparade inställningar, de nuvarande används
+    updated:
+      en: Updated to v%{version}, click to view changelog
+      sv: Uppdaterad till v%{version}, klicka för att se ändringsloggen
+    open_crawl_for_layouts:
+      en: Open the crawl from Historic Crawls to view its layouts.
+      sv: Öppna crawlningen från crawlhistoriken för att se dess layouter.
+    no_layout:
+      en: This crawl captured no layout for the page.
+      sv: Den här crawlningen fångade ingen layout för sidan.
+    layout_failed:
+      en: "Failed to load the layout: %{error}"
+      sv: "Kunde inte läsa in layouten: %{error}"
+    exported_csv:
+      en: Exported %{count} CSV files to %{directory}
+      sv: Exporterade %{count} CSV-filer till %{directory}
+    exported_csv_failed:
+      en: "Exported %{count} CSV files, %{failed} failed: %{failures}"
+      sv: "Exporterade %{count} CSV-filer, %{failed} misslyckades: %{failures}"
+    report_failed:
+      en: "Could not write the report: %{error}"
+      sv: "Kunde inte skriva rapporten: %{error}"
+    write_failed:
+      en: "failed to write %{path}: %{error}"
+      sv: "kunde inte skriva %{path}: %{error}"
+    crawl_finished_title:
+      en: Crawl of %{site} finished
+      sv: Crawlningen av %{site} är klar
+    crawl_finished_body:
+      en: "%{pages} pages, %{resources} resources, %{errors} errors"
+      sv: "%{pages} sidor, %{resources} resurser, %{errors} fel"
+    download_failed:
+      en: "Failed to download update: %{error}"
+      sv: "Kunde inte ladda ner uppdateringen: %{error}"
+    apply_failed:
+      en: "Failed to apply update: %{error}"
+      sv: "Kunde inte installera uppdateringen: %{error}"
+  export_here:
+    en: Export here
+    sv: Exportera hit
+  render_mode:
+    chrome:
+      en: Chrome, JavaScript rendered
+      sv: Chrome, JavaScript renderat
+    http:
+      en: HTTP, no JavaScript
+      sv: HTTP, utan JavaScript
+  update:
+    update:
+      en: Update
+      sv: Uppdatera
+    download_tooltip:
+      en: Download Shouting Robin %{version}
+      sv: Ladda ner Shouting Robin %{version}
+    release_page_tooltip:
+      en: Open the Shouting Robin %{version} release page
+      sv: Öppna versionssidan för Shouting Robin %{version}
+    downloading:
+      en: Downloading
+      sv: Laddar ner
+    restart:
+      en: Restart
+      sv: Starta om
+    restart_tooltip:
+      en: Restart to update to Shouting Robin %{version}
+      sv: Starta om för att uppdatera till Shouting Robin %{version}
+    error:
+      not_available:
+        en: Updates are not available
+        sv: Uppdateringar är inte tillgängliga
+      none_downloaded:
+        en: No update has been downloaded
+        sv: Ingen uppdatering har laddats ner
+      none_staged:
+        en: No staged update found at %{path}
+        sv: Ingen förberedd uppdatering hittades i %{path}
+      no_digest:
+        en: staged update has no recorded digest; download it again
+        sv: den förberedda uppdateringen saknar sparad kontrollsumma, ladda ner den igen
+      digest_mismatch:
+        en: staged update does not match the verified download; discarded it
+        sv: den förberedda uppdateringen stämmer inte med den verifierade nedladdningen och har tagits bort
+      verification_failed:
+        en: downloaded update failed verification
+        sv: den nedladdade uppdateringen klarade inte verifieringen
+      no_checksum:
+        en: "%{file} has no entry for %{asset}"
+        sv: "%{file} saknar en rad för %{asset}"
+      checksum_mismatch:
+        en: "SHA-256 mismatch for %{asset}: expected %{expected}, got %{actual}"
+        sv: "SHA-256 stämmer inte för %{asset}: väntade %{expected}, fick %{actual}"
+      key_malformed:
+        en: embedded update public key is malformed
+        sv: den inbyggda publika nyckeln för uppdateringar är felaktig
+      signature_malformed:
+        en: release signature is malformed
+        sv: versionens signatur är felaktig
+      signature_invalid:
+        en: release signature does not verify against the embedded key
+        sv: versionens signatur stämmer inte med den inbyggda nyckeln
+      no_data_directory:
+        en: Failed to get local data directory
+        sv: Kunde inte hitta den lokala datamappen
+      no_build:
+        en: no release build is published for %{os}/%{arch}
+        sv: ingen version är publicerad för %{os}/%{arch}
+      no_asset:
+        en: release %{version} has no asset %{name}
+        sv: version %{version} saknar filen %{name}
+      no_executable:
+        en: Failed to get current exe path
+        sv: Kunde inte hitta sökvägen till programfilen
+      replace_failed:
+        en: Failed to replace %{path}
+        sv: Kunde inte ersätta %{path}
+  tab:
+    internal:
+      en: Internal
+      sv: Intern
+    external:
+      en: External
+      sv: Extern
+    response_codes:
+      en: Response Codes
+      sv: Svarskoder
+    page_titles:
+      en: Page Titles
+      sv: Sidtitlar
+    meta_desc:
+      en: Meta Desc
+      sv: Metabeskr.
+    content:
+      en: Content
+      sv: Innehåll
+    images:
+      en: Images
+      sv: Bilder
+    canonicals:
+      en: Canonicals
+      sv: Kanoniska
+    structured_data:
+      en: Structured Data
+      sv: Strukturerad data
+    accessibility:
+      en: Accessibility
+      sv: Tillgänglighet
+    performance:
+      en: Performance
+      sv: Prestanda
+    ecommerce:
+      en: Ecommerce
+      sv: E-handel
+    sitemaps:
+      en: Sitemaps
+      sv: Webbplatskartor
+    site_structure:
+      en: Site Structure
+      sv: Webbplatsstruktur
+    security:
+      en: Security
+      sv: Säkerhet
+    directives:
+      en: Directives
+      sv: Direktiv
+    overview:
+      en: Overview
+      sv: Översikt
+    links:
+      en: Links
+      sv: Länkar
+    changes:
+      en: Changes
+      sv: Ändringar
+    layout:
+      en: Layout
+      sv: Layout
+    note:
+      security:
+        en: "Covers every URL that answered, redirects included: an http to https redirect with no HSTS is exactly the hole these headers close."
+        sv: "Omfattar alla URL:er som svarade, omdirigeringar inräknade: en omdirigering från http till https utan HSTS är just det hål som de här HTTP-huvudena täpper till."
+      url:
+        en: Covers every internal URL, stylesheets, scripts and images included, not only HTML pages. Mixed case and query strings are a cache hazard on an asset too.
+        sv: Omfattar alla interna URL:er, stilmallar, skript och bilder inräknade, inte bara HTML-sidor. Blandade versaler och frågesträngar är en cacherisk även för en resurs.
+  badge:
+    errors:
+      en: "%{count} errors"
+      sv: "%{count} fel"
+    warnings:
+      en: "%{count} warnings"
+      sv: "%{count} varningar"
+    rows:
+      en: "%{count} rows"
+      sv: "%{count} rader"
+  results_count:
+    en: "%{count} results"
+    sv: "%{count} resultat"
+  comparing_to:
+    en: Comparing to crawl from %{when}
+    sv: Jämför med crawlningen från %{when}
+  layout_note:
+    comparing:
+      en: Comparing layouts
+      sv: Jämför layouter
+    failed:
+      en: Layout comparison failed
+      sv: Layoutjämförelsen misslyckades
+    baseline_not_captured:
+      en: "Layout not compared: the baseline crawl did not capture layout"
+      sv: "Layouten jämfördes inte: baslinjecrawlningen fångade ingen layout"
+    baseline_scrolled:
+      en: "Layout not compared: the baseline crawl scrolled its pages and this one did not"
+      sv: "Layouten jämfördes inte: baslinjecrawlningen scrollade sina sidor men inte den här"
+    this_scrolled:
+      en: "Layout not compared: this crawl scrolled its pages and the baseline did not"
+      sv: "Layouten jämfördes inte: den här crawlningen scrollade sina sidor men inte baslinjen"
+  button:
+    export_pdf:
+      en: Export PDF
+      sv: Exportera PDF
+    filter:
+      en: Filter
+      sv: Filter
+    filter_tooltip_macos:
+      en: Search and Filter Rows (⌘F)
+      sv: Sök och filtrera rader (⌘F)
+    filter_tooltip:
+      en: Search and Filter Rows (Ctrl+F)
+      sv: Sök och filtrera rader (Ctrl+F)
+    export_csv:
+      en: Export CSV
+      sv: Exportera CSV
+    export_all:
+      en: Export All
+      sv: Exportera alla
+  crawl_bar:
+    placeholder:
+      include:
+        en: Leave empty to crawl every page
+        sv: Lämna tomt för att crawla alla sidor
+      exclude:
+        en: Leave empty to skip nothing
+        sv: Lämna tomt för att inte hoppa över något
+      test_url:
+        en: Paste a URL from the site
+        sv: Klistra in en URL från webbplatsen
+      header_name:
+        en: Name
+        sv: Namn
+      header_value:
+        en: Value
+        sv: Värde
+    summary:
+      fix_settings_one:
+        en: Fix %{count} setting
+        sv: Rätta %{count} inställning
+      fix_settings_other:
+        en: Fix %{count} settings
+        sv: Rätta %{count} inställningar
+      no_page_limit:
+        en: No page limit
+        sv: Ingen sidgräns
+      max_pages_one:
+        en: Max %{count} page
+        sv: Max %{count} sida
+      max_pages_other:
+        en: Max %{count} pages
+        sv: Max %{count} sidor
+      only_patterns_one:
+        en: Only %{count} pattern
+        sv: Endast %{count} mönster
+      only_patterns_other:
+        en: Only %{count} patterns
+        sv: Endast %{count} mönster
+      skipping_patterns_one:
+        en: Skipping %{count} pattern
+        sv: Hoppar över %{count} mönster
+      skipping_patterns_other:
+        en: Skipping %{count} patterns
+        sv: Hoppar över %{count} mönster
+      subdomains:
+        en: Subdomains
+        sv: Underdomäner
+      images_blocked:
+        en: Images blocked
+        sv: Bilder blockeras
+      images_loaded:
+        en: Images loaded
+        sv: Bilder laddas
+      no_layout:
+        en: No layout
+        sv: Ingen layout
+      layout_with_scrolling:
+        en: Layout with scrolling
+        sv: Layout med scrollning
+      layout_captured:
+        en: Layout captured
+        sv: Layout fångas
+      at_a_time:
+        en: "%{count} at a time"
+        sv: "%{count} åt gången"
+      headers_one:
+        en: "%{count} header"
+        sv: "%{count} HTTP-huvud"
+      headers_other:
+        en: "%{count} headers"
+        sv: "%{count} HTTP-huvuden"
+      remembered_for:
+        en: Remembered for %{site}
+        sv: Sparad för %{site}
+    crawl_settings:
+      en: Crawl settings
+      sv: Crawlinställningar
+    crawl:
+      en: Crawl
+      sv: Crawla
+    stop:
+      en: Stop
+      sv: Stoppa
+    verdict:
+      fix_patterns:
+        en: Fix the patterns above to test a URL
+        sv: Rätta mönstren ovan för att testa en URL
+      crawled:
+        en: Crawled
+        sv: Crawlas
+      skipped:
+        en: Skipped
+        sv: Hoppas över
+      matches:
+        en: matches %{pattern}
+        sv: matchar %{pattern}
+      no_pattern_skips:
+        en: no pattern skips it
+        sv: inget mönster hoppar över den
+      no_include_match:
+        en: matches no include pattern
+        sv: matchar inget inkluderingsmönster
+    start_from:
+      site:
+        en: Site
+        sv: Webbplats
+      list:
+        en: List
+        sv: Lista
+    group:
+      what_to_crawl:
+        en: What to crawl
+        sv: Vad som crawlas
+      chrome_rendering:
+        en: Chrome rendering
+        sv: Chrome-rendering
+      requests:
+        en: Requests
+        sv: Förfrågningar
+    urls_to_crawl:
+      en: URLs to crawl
+      sv: URL:er att crawla
+    one_per_line:
+      en: One per line
+      sv: En per rad
+    list_help_empty:
+      en: Only these URLs are fetched. Links on them aren't followed.
+      sv: Endast dessa URL:er hämtas. Länkar på dem följs inte.
+    list_help_one:
+      en: "%{count} URL. Only these are fetched, and links on them aren't followed."
+      sv: "%{count} URL. Endast dessa hämtas, och länkar på dem följs inte."
+    list_help_other:
+      en: "%{count} URLs. Only these are fetched, and links on them aren't followed."
+      sv: "%{count} URL:er. Endast dessa hämtas, och länkar på dem följs inte."
+    include_subdomains:
+      en: Include subdomains
+      sv: Inkludera underdomäner
+    include_subdomains_help:
+      en: Crawl links to other subdomains of the site as part of it.
+      sv: Crawla länkar till webbplatsens andra underdomäner som en del av den.
+    only_crawl_matching:
+      en: Only crawl URLs matching
+      sv: Crawla endast URL:er som matchar
+    skip_matching:
+      en: Skip URLs matching
+      sv: Hoppa över URL:er som matchar
+    regex_per_line:
+      en: Regex, one per line
+      sv: Regex, en per rad
+    test_url_help:
+      en: Test a URL against the patterns
+      sv: Testa en URL mot mönstren
+    stop_after:
+      en: Stop after
+      sv: Stoppa efter
+    stop_after_help:
+      en: 0 crawls every page
+      sv: 0 crawlar alla sidor
+    pages:
+      en: pages
+      sv: sidor
+    not_used_with_http:
+      en: Not used with HTTP
+      sv: Används inte med HTTP
+    need_chrome:
+      en: These need Chrome.
+      sv: Dessa kräver Chrome.
+    switch_to_chrome:
+      en: Switch to Chrome
+      sv: Byt till Chrome
+    block_images:
+      en: Block images
+      sv: Blockera bilder
+    block_images_help:
+      en: Faster and lighter on the site. Image sizes and broken images go unreported.
+      sv: Snabbare och skonsammare mot webbplatsen. Bildstorlekar och trasiga bilder rapporteras inte.
+    capture_layout:
+      en: Capture layout
+      sv: Fånga layout
+    capture_layout_help:
+      en: Groups pages by template and finds layout changes between crawls.
+      sv: Grupperar sidor efter mall och hittar layoutändringar mellan crawlningar.
+    scroll_first:
+      en: Scroll each page first
+      sv: Scrolla varje sida först
+    scroll_first_help:
+      en: Includes content that loads on scroll. Adds a few seconds a page.
+      sv: Tar med innehåll som laddas vid scrollning. Lägger till några sekunder per sida.
+    pages_at_a_time:
+      en: Pages at a time
+      sv: Sidor åt gången
+    pages_at_a_time_help:
+      en: Chrome tabs in a Chrome crawl
+      sv: Chrome-flikar i en Chrome-crawlning
+    custom_headers:
+      en: Custom headers
+      sv: Egna HTTP-huvuden
+    values_not_remembered:
+      en: Values aren't remembered
+      sv: Värden sparas inte
+    remove_header:
+      en: Remove header
+      sv: Ta bort HTTP-huvud
+    add_header:
+      en: Add header
+      sv: Lägg till HTTP-huvud
+    applies_to_list:
+      en: Applies to this list crawl. List crawls aren't remembered.
+      sv: Gäller den här listcrawlningen. Listcrawlningar sparas inte.
+    applies_to_next:
+      en: Applies to the next crawl, and is remembered for its site.
+      sv: Gäller nästa crawlning och sparas för dess webbplats.
+    applies_to_site:
+      en: Applies to %{site} and is remembered for its next crawl.%{restored}
+      sv: Gäller %{site} och sparas till nästa crawlning.%{restored}
+    restored_from:
+      en: " Restored from the crawl on %{date}."
+      sv: " Återställd från crawlningen den %{date}."
+    restored_date_format:
+      en: "%-d %b %Y"
+      sv: "%Y-%m-%d"
+    forget_site:
+      en: Forget for this site
+      sv: Glöm för den här webbplatsen
+    defaults_help:
+      en: Defaults for new sites, robots.txt, timeouts, delays and the user agent are in Settings.
+      sv: Standardvärden för nya webbplatser, robots.txt, tidsgränser, fördröjningar och user agent finns i Inställningar.
+    open_settings:
+      en: Open Settings
+      sv: Öppna inställningar
+  report:
+    heading:
+      en: SEO CRAWL REPORT
+      sv: SEO-CRAWLRAPPORT
+    no_rule_fired:
+      en: No rule fired on this crawl.
+      sv: Ingen regel slog till i den här crawlningen.
+    issues_found:
+      en: Issues found
+      sv: Hittade problem
+    urls_behind:
+      en: The URLs behind each issue
+      sv: URL:erna bakom varje problem
+    column:
+      issue:
+        en: ISSUE
+        sv: PROBLEM
+      type:
+        en: TYPE
+        sv: TYP
+      priority:
+        en: PRIORITY
+        sv: PRIORITET
+      urls:
+        en: URLS
+        sv: URL:ER
+      percent_of_total:
+        en: "% OF TOTAL"
+        sv: "% AV TOTALT"
+    url_count:
+      en: "%{count} URLs"
+      sv: "%{count} URL:er"
+    and_more:
+      en: and %{count} more
+      sv: och %{count} till
+    page:
+      en: Page
+      sv: Sida
+    of:
+      en: of
+      sv: av
+    pdf_title:
+      en: SEO crawl report · %{site}
+      sv: SEO-crawlrapport · %{site}
+    error:
+      font:
+        en: "failed to register the report font: %{error}"
+        sv: "kunde inte registrera rapportens typsnitt: %{error}"
+      markup:
+        en: "the report markup is not usable: %{error}"
+        sv: "rapportens markup går inte att använda: %{error}"
+      footer:
+        en: "the report footer is not usable: %{error}"
+        sv: "rapportens sidfot går inte att använda: %{error}"
+      write:
+        en: "failed to write the report: %{error}"
+        sv: "kunde inte skriva rapporten: %{error}"

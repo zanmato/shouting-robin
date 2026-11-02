@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use gpui_kit::{App, ParentElement, SharedString};
 
 use crate::crawl::engine::is_same_domain;
-use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdItem};
+use crate::crawl::event::{A11yIssue, PageRecord, SdFormat, SdItem, indexability_status_text};
 use crate::ui::tag::{Tone, count_tone, indexability_tone, status_code_tone, tone_tag};
 use crate::views::ResultTab;
 
@@ -69,12 +69,7 @@ pub(super) fn flat_cell_text(
             } else {
                 match col_key {
                     "address" => page_address(record, root_origin),
-                    "indexability" => SharedString::from(
-                        record
-                            .indexability
-                            .clone()
-                            .unwrap_or_else(|| NO_VALUE.into()),
-                    ),
+                    "indexability" => indexability_text(record),
                     _ => SharedString::from(NO_VALUE),
                 }
             }
@@ -134,7 +129,7 @@ pub(super) fn image_aggregate_cell_text(image: &ImageAggregateRow, col_key: &str
         ),
         // "No" whenever any reference is missing the attribute, matching the
         // Missing Alt Attribute filter.
-        "image_has_alt" => SharedString::from(if image.missing_alt_attr { "No" } else { "Yes" }),
+        "image_has_alt" => yes_no(!image.missing_alt_attr),
         _ => SharedString::default(),
     }
 }
@@ -148,15 +143,10 @@ fn a11y_cell_text(
     match col_key {
         "address" => page_address(record, root_origin),
         "a11y_rule" => SharedString::from(issue.rule.clone()),
-        "a11y_impact" => SharedString::from(issue.impact.clone()),
+        "a11y_impact" => a11y_impact_label(&issue.impact),
         "a11y_target" => SharedString::from(issue.target.clone().unwrap_or_default()),
         "a11y_html" => SharedString::from(issue.html.clone().unwrap_or_default()),
-        "indexability" => SharedString::from(
-            record
-                .indexability
-                .clone()
-                .unwrap_or_else(|| NO_VALUE.into()),
-        ),
+        "indexability" => indexability_text(record),
         _ => SharedString::default(),
     }
 }
@@ -170,18 +160,13 @@ fn sd_item_cell_text(
     match col_key {
         "address" => page_address(record, root_origin),
         "sd_format" => SharedString::from(match sd_item.format {
-            SdFormat::JsonLd => "JSON-LD",
-            SdFormat::Microdata => "Microdata",
+            SdFormat::JsonLd => "JSON-LD".into(),
+            SdFormat::Microdata => t!("results_grid.cell.microdata"),
         }),
         "sd_type" => SharedString::from(sd_item.type_name.clone()),
         "sd_errors" => SharedString::from(record.sd_errors.to_string()),
         "sd_warnings" => SharedString::from(record.sd_warnings.to_string()),
-        "indexability" => SharedString::from(
-            record
-                .indexability
-                .clone()
-                .unwrap_or_else(|| NO_VALUE.into()),
-        ),
+        "indexability" => indexability_text(record),
         _ => SharedString::default(),
     }
 }
@@ -224,12 +209,7 @@ pub(super) fn cell_text(
             }
         }
         "status" => status_label(record),
-        "indexability" => SharedString::from(
-            record
-                .indexability
-                .clone()
-                .unwrap_or_else(|| NO_VALUE.into()),
-        ),
+        "indexability" => indexability_text(record),
         "title" => SharedString::from(record.title.clone().unwrap_or_default()),
         "title_length" => record
             .title
@@ -386,12 +366,7 @@ pub(super) fn cell_text(
                 .map(|ms| format!("{ms}ms"))
                 .unwrap_or_else(|| NO_VALUE.into()),
         ),
-        "in_sitemap" => SharedString::from(
-            record
-                .in_sitemap
-                .map(|v| if v { "Yes" } else { "No" })
-                .unwrap_or(NO_VALUE),
-        ),
+        "in_sitemap" => record.in_sitemap.map(yes_no).unwrap_or_default(),
         "sitemap_url" => SharedString::from(record.sitemap_url.clone().unwrap_or_default()),
         "sitemap_lastmod" => SharedString::from(
             record
@@ -441,20 +416,16 @@ pub(super) fn cell_text(
                 .and_then(|a| a.brand.clone())
                 .unwrap_or_default(),
         ),
-        "ecom_has_image" => SharedString::from(
-            record
-                .ecommerce
-                .as_ref()
-                .map(|a| if a.has_image { "Yes" } else { "No" })
-                .unwrap_or(NO_VALUE),
-        ),
-        "ecom_has_review" => SharedString::from(
-            record
-                .ecommerce
-                .as_ref()
-                .map(|a| if a.has_review_or_rating { "Yes" } else { "No" })
-                .unwrap_or(NO_VALUE),
-        ),
+        "ecom_has_image" => record
+            .ecommerce
+            .as_ref()
+            .map(|a| yes_no(a.has_image))
+            .unwrap_or_default(),
+        "ecom_has_review" => record
+            .ecommerce
+            .as_ref()
+            .map(|a| yes_no(a.has_review_or_rating))
+            .unwrap_or_default(),
         "inlinks" => SharedString::from(if record.inlinks_count > 0 {
             record.inlinks_count.to_string()
         } else {
@@ -553,63 +524,38 @@ pub(super) fn cell_text(
                 .unwrap_or(0);
             SharedString::from(depth.to_string())
         }
-        "indexability_status" => SharedString::from(record.indexability_status()),
+        "indexability_status" => SharedString::from(record.indexability_status_text()),
         "content_hash" => SharedString::from(record.content_hash.as_deref().unwrap_or(NO_VALUE)),
-        "sec_https" => SharedString::from(if record.url.starts_with("https://") {
-            "Yes"
-        } else {
-            "No"
-        }),
-        "sec_hsts" => SharedString::from(
-            header_value(&record.headers, "strict-transport-security")
-                .map(|_| "Yes")
-                .unwrap_or("No"),
-        ),
-        "sec_csp" => SharedString::from(
-            header_value(&record.headers, "content-security-policy")
-                .map(|_| "Yes")
-                .unwrap_or("No"),
-        ),
-        "sec_frame_guard" => SharedString::from(
-            header_value(&record.headers, "x-frame-options")
-                .map(|_| "Yes")
-                .unwrap_or("No"),
-        ),
-        "sec_content_type_opts" => SharedString::from(
-            header_value(&record.headers, "x-content-type-options")
-                .map(|_| "Yes")
-                .unwrap_or("No"),
-        ),
+        "sec_https" => yes_no(record.url.starts_with("https://")),
+        "sec_hsts" => yes_no(header_value(&record.headers, "strict-transport-security").is_some()),
+        "sec_csp" => yes_no(header_value(&record.headers, "content-security-policy").is_some()),
+        "sec_frame_guard" => yes_no(header_value(&record.headers, "x-frame-options").is_some()),
+        "sec_content_type_opts" => {
+            yes_no(header_value(&record.headers, "x-content-type-options").is_some())
+        }
         // A policy that still sends the full URL cross-origin counts as absent,
         // matching the filter.
-        "sec_referrer_policy" => {
-            SharedString::from(match header_value(&record.headers, "referrer-policy") {
-                Some(value) if !super::filter::referrer_policy_leaks_url(value) => "Yes",
-                _ => "No",
-            })
-        }
+        "sec_referrer_policy" => yes_no(match header_value(&record.headers, "referrer-policy") {
+            Some(value) => !super::filter::referrer_policy_leaks_url(value),
+            None => false,
+        }),
         // The finding is the out-of-order page, so the cell says what the
         // outline does rather than yes or no to a question nobody asked.
         "h2_sequence" => match record.h2_non_sequential {
-            Some(true) => SharedString::from("H2 before H1"),
-            Some(false) => SharedString::from("Sequential"),
+            Some(true) => t!("results_grid.cell.h2_before_h1").into(),
+            Some(false) => t!("results_grid.cell.sequential").into(),
             None => SharedString::from(NO_VALUE),
         },
         "body_tag" => match record.has_body_tag {
-            Some(true) => SharedString::from("Yes"),
-            Some(false) => SharedString::from("No"),
+            Some(value) => yes_no(value),
             None => SharedString::from(NO_VALUE),
         },
-        "sec_mixed_content" => SharedString::from(if record.has_mixed_content {
-            "Yes"
-        } else {
-            "No"
-        }),
+        "sec_mixed_content" => yes_no(record.has_mixed_content),
         "last_modified" => {
             SharedString::from(header_value(&record.headers, "last-modified").unwrap_or(NO_VALUE))
         }
         "redirect_url" => SharedString::from(record.redirect_url.as_deref().unwrap_or(NO_VALUE)),
-        "redirect_type" => SharedString::from(redirect_type_label(record).unwrap_or(NO_VALUE)),
+        "redirect_type" => redirect_type_label(record).unwrap_or_default(),
         "url_length" => SharedString::from(char_length(&record.url).to_string()),
         "x_robots_tag" => {
             SharedString::from(header_value(&record.headers, "x-robots-tag").unwrap_or(NO_VALUE))
@@ -665,10 +611,10 @@ fn hreflang_pair_cell_text(record: &PageRecord, col_key: &str) -> Option<SharedS
 
 fn status_label(record: &PageRecord) -> SharedString {
     match record.status {
-        Some(c) if (200..300).contains(&c) => SharedString::from("OK"),
-        Some(c) if (300..400).contains(&c) => SharedString::from("Redirect"),
-        Some(c) if (400..500).contains(&c) => SharedString::from("Client Err"),
-        Some(c) if c >= 500 => SharedString::from("Server Err"),
+        Some(c) if (200..300).contains(&c) => t!("results_grid.cell.status_ok").into(),
+        Some(c) if (300..400).contains(&c) => t!("results_grid.cell.status_redirect").into(),
+        Some(c) if (400..500).contains(&c) => t!("results_grid.cell.status_client_error").into(),
+        Some(c) if c >= 500 => t!("results_grid.cell.status_server_error").into(),
         _ => SharedString::from(NO_VALUE),
     }
 }
@@ -703,25 +649,26 @@ pub(super) fn render_cell_tag(
                 record.status.map(status_code_tone).unwrap_or(Tone::Neutral)
             }
         }
-        "indexability" => indexability_tone(text),
-        "in_sitemap" => match text.as_ref() {
-            "Yes" => Tone::Ok,
-            "No" => Tone::Warn,
-            _ => return None,
-        },
-        "ecom_has_image" | "ecom_has_review" | "image_has_alt" => match text.as_ref() {
-            "Yes" => Tone::Ok,
-            "No" => Tone::Warn,
-            _ => return None,
-        },
+        "indexability" => indexability_tone(record.indexability.as_deref().unwrap_or(NO_VALUE)),
+        "in_sitemap" | "ecom_has_image" | "ecom_has_review" | "image_has_alt" => {
+            match yes_no_value(text) {
+                Some(true) => Tone::Ok,
+                Some(false) => Tone::Warn,
+                None => return None,
+            }
+        }
         "sd_errors" => count_tone(record.sd_errors as i64, Tone::Err),
         "sd_warnings" => count_tone(record.sd_warnings as i64, Tone::Warn),
         "sd_format" => Tone::Accent,
-        "a11y_impact" => match text.as_ref() {
-            "critical" | "serious" => Tone::Err,
-            "moderate" => Tone::Warn,
-            _ => Tone::Neutral,
-        },
+        "a11y_impact" => {
+            if *text == a11y_impact_label("critical") || *text == a11y_impact_label("serious") {
+                Tone::Err
+            } else if *text == a11y_impact_label("moderate") {
+                Tone::Warn
+            } else {
+                Tone::Neutral
+            }
+        }
         "near_duplicate_count" => match record.near_duplicate_count {
             Some(c) if c > 0 => Tone::Warn,
             Some(_) => Tone::Ok,
@@ -744,11 +691,13 @@ pub(super) fn render_cell_tag(
         "indexability_status" => {
             // The status lists every reason at once ("Noindex, Canonicalised"),
             // so tone on the most severe reason present rather than the first.
-            if text.contains("Non-Indexable") || text.contains("Noindex") {
+            // The English status is read, since the cell shows a translation.
+            let status = record.indexability_status();
+            if status.contains("Non-Indexable") || status.contains("Noindex") {
                 Tone::Err
-            } else if text.contains("Redirected") || text.contains("Canonicalised") {
+            } else if status.contains("Redirected") || status.contains("Canonicalised") {
                 Tone::Warn
-            } else if text.as_ref() == "N/A" {
+            } else if status == "N/A" {
                 Tone::Neutral
             } else {
                 Tone::Ok
@@ -759,27 +708,27 @@ pub(super) fn render_cell_tag(
         | "sec_csp"
         | "sec_frame_guard"
         | "sec_content_type_opts"
-        | "sec_referrer_policy" => match text.as_ref() {
-            "Yes" => Tone::Ok,
-            "No" => Tone::Warn,
-            _ => return None,
+        | "sec_referrer_policy" => match yes_no_value(text) {
+            Some(true) => Tone::Ok,
+            Some(false) => Tone::Warn,
+            None => return None,
         },
-        "h2_sequence" => match text.as_ref() {
-            "Sequential" => Tone::Ok,
-            "H2 before H1" => Tone::Warn,
-            _ => return None,
+        "h2_sequence" => match record.h2_non_sequential {
+            Some(false) => Tone::Ok,
+            Some(true) => Tone::Warn,
+            None => return None,
         },
         // A missing body inverts it too: "No" is the finding.
-        "body_tag" => match text.as_ref() {
-            "Yes" => Tone::Ok,
-            "No" => Tone::Err,
-            _ => return None,
+        "body_tag" => match yes_no_value(text) {
+            Some(true) => Tone::Ok,
+            Some(false) => Tone::Err,
+            None => return None,
         },
         // Mixed content inverts the polarity: "Yes" means insecure subresources.
-        "sec_mixed_content" => match text.as_ref() {
-            "Yes" => Tone::Err,
-            "No" => Tone::Ok,
-            _ => return None,
+        "sec_mixed_content" => match yes_no_value(text) {
+            Some(true) => Tone::Err,
+            Some(false) => Tone::Ok,
+            None => return None,
         },
         _ => return None,
     };
@@ -994,15 +943,58 @@ mod length_tests {
 /// How a redirect was expressed: the HTTP status family Screaming Frog's
 /// "Redirect Type" column distinguishes, since a 302 that should be a 301 is
 /// the usual finding.
-fn redirect_type_label(record: &PageRecord) -> Option<&'static str> {
+fn redirect_type_label(record: &PageRecord) -> Option<SharedString> {
     record.redirect_url.as_ref()?;
-    Some(match record.redirect_status.or(record.status) {
-        Some(301) => "HTTP 301 Permanent",
-        Some(302) => "HTTP 302 Temporary",
-        Some(303) => "HTTP 303 See Other",
-        Some(307) => "HTTP 307 Temporary",
-        Some(308) => "HTTP 308 Permanent",
-        Some(status) if (300..400).contains(&status) => "HTTP Redirect",
-        _ => "Redirect",
-    })
+    Some(
+        match record.redirect_status.or(record.status) {
+            Some(status @ (301 | 308)) => {
+                t!("results_grid.cell.redirect_permanent", status = status)
+            }
+            Some(status @ (302 | 307)) => {
+                t!("results_grid.cell.redirect_temporary", status = status)
+            }
+            Some(303) => t!("results_grid.cell.redirect_see_other"),
+            Some(status) if (300..400).contains(&status) => t!("results_grid.cell.redirect_http"),
+            _ => t!("results_grid.cell.redirect"),
+        }
+        .into(),
+    )
+}
+
+fn yes_no(value: bool) -> SharedString {
+    if value {
+        t!("results_grid.cell.yes").into()
+    } else {
+        t!("results_grid.cell.no").into()
+    }
+}
+
+/// Reads back a cell [`yes_no`] wrote, which is what the tag tones go by.
+fn yes_no_value(text: &str) -> Option<bool> {
+    if text == t!("results_grid.cell.yes") {
+        Some(true)
+    } else if text == t!("results_grid.cell.no") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+fn indexability_text(record: &PageRecord) -> SharedString {
+    record
+        .indexability
+        .as_deref()
+        .map(|indexability| SharedString::from(indexability_status_text(indexability)))
+        .unwrap_or_default()
+}
+
+/// axe-core's impact levels, which the crawl stores as axe reports them.
+fn a11y_impact_label(impact: &str) -> SharedString {
+    match impact {
+        "critical" => t!("results_grid.cell.impact_critical").into(),
+        "serious" => t!("results_grid.cell.impact_serious").into(),
+        "moderate" => t!("results_grid.cell.impact_moderate").into(),
+        "minor" => t!("results_grid.cell.impact_minor").into(),
+        _ => SharedString::from(impact.to_string()),
+    }
 }

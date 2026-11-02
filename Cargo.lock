@@ -7756,6 +7756,7 @@ dependencies = [
  "reqwest 0.12.28",
  "resvg 0.46.0",
  "rust-embed",
+ "rust-i18n",
  "scraper",
  "self_update",
  "semver",
@@ -7767,6 +7768,7 @@ dependencies = [
  "smol",
  "spider",
  "sqlx",
+ "sys-locale",
  "takumi-core",
  "takumi-html",
  "takumi-pdf",
@@ -7789,6 +7791,7 @@ version = "0.2.3"
 dependencies = [
  "gpui-kit",
  "ropey",
+ "rust-i18n",
  "serde_json",
  "smallvec",
 ]
@@ -9689,6 +9692,7 @@ dependencies = [
  "gpui-pre",
  "plist",
  "reqwest 0.12.28",
+ "rust-i18n",
  "serde",
  "serde_json",
  "tempfile",

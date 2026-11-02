@@ -252,7 +252,7 @@ pub fn convert_package(
     }
     if entries.is_empty() {
         return Err(last_error
-            .unwrap_or_else(|| anyhow::anyhow!("the extension contributes no color themes")));
+            .unwrap_or_else(|| anyhow::anyhow!("{}", t!("vsx_themes.error.no_color_themes"))));
     }
 
     let mut document = Map::new();

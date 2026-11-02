@@ -10,6 +10,7 @@ path = "src/ui.rs"
 
 [dependencies]
 gpui-kit = { workspace = true }
+rust-i18n = { workspace = true }
 ropey = "=2.0.0-beta.1"
 serde_json = { workspace = true }
 smallvec = "1"

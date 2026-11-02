@@ -1,5 +1,5 @@
 use gpui_kit::component::ActiveTheme;
-use gpui_kit::{Context, IntoElement, ParentElement, Render, Styled, Window, div};
+use gpui_kit::{Context, IntoElement, ParentElement, Render, SharedString, Styled, Window, div};
 
 /// Live counts for the footer. Each figure is the number of rows of one kind
 /// the crawl has produced so far, so it only ever goes up.
@@ -38,7 +38,11 @@ impl Default for StatusBar {
 impl Render for StatusBar {
     fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
-        let label = if self.running { "Crawling" } else { "Idle" };
+        let label = if self.running {
+            t!("details.status.crawling")
+        } else {
+            t!("details.status.idle")
+        };
         div()
             .flex()
             .items_center()
@@ -48,9 +52,18 @@ impl Render for StatusBar {
             .bg(theme.background)
             .text_xs()
             .text_color(theme.muted_foreground)
-            .child(div().child(label))
-            .child(div().child(format!("Pages {}", self.pages)))
-            .child(div().child(format!("Resources {}", self.resources)))
-            .child(div().child(format!("Errors {}", self.errors)))
+            .child(div().child(SharedString::from(label)))
+            .child(div().child(SharedString::from(t!(
+                "details.status.pages",
+                count = self.pages
+            ))))
+            .child(div().child(SharedString::from(t!(
+                "details.status.resources",
+                count = self.resources
+            ))))
+            .child(div().child(SharedString::from(t!(
+                "details.status.errors",
+                count = self.errors
+            ))))
     }
 }

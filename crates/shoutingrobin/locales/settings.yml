@@ -1,0 +1,151 @@
+_version: 2
+settings:
+  page:
+    general:
+      en: General
+      sv: Allmänt
+    crawl:
+      en: Crawl
+      sv: Crawl
+    appearance:
+      en: Appearance
+      sv: Utseende
+  group:
+    language:
+      en: Language
+      sv: Språk
+    updates:
+      en: Updates
+      sv: Uppdateringar
+    limits:
+      en: Limits
+      sv: Gränser
+    rate_limiting:
+      en: Rate Limiting
+      sv: Hastighetsbegränsning
+    behavior:
+      en: Behavior
+      sv: Beteende
+    content_analysis:
+      en: Content Analysis
+      sv: Innehållsanalys
+    identification:
+      en: Identification
+      sv: Identifiering
+    theme:
+      en: Theme
+      sv: Tema
+    fonts:
+      en: Fonts
+      sv: Typsnitt
+  language:
+    en: Language
+    sv: Språk
+  language_description:
+    en: The language of the app. System follows the language your computer is set to.
+    sv: Appens språk. System följer språket som datorn är inställd på.
+  language_system:
+    en: System (%{language})
+    sv: System (%{language})
+  check_for_updates:
+    en: Check for Updates
+    sv: Sök efter uppdateringar
+  check_for_updates_description:
+    en: Check for new releases hourly. An Update button appears in the title bar when one is available.
+    sv: Sök efter nya versioner varje timme. En Uppdatera-knapp visas när en finns.
+  max_pages:
+    en: Max Pages
+    sv: Max antal sidor
+  max_pages_description:
+    en: Maximum pages to crawl (0 = unlimited). New sites start with this, and the crawl settings change it for a site.
+    sv: Högsta antal sidor att crawla (0 = obegränsat). Nya webbplatser börjar med detta, och crawlinställningarna ändrar det för en webbplats.
+  max_concurrent:
+    en: Max Concurrent Requests
+    sv: Max samtidiga förfrågningar
+  max_concurrent_description:
+    en: Maximum concurrent requests (HTTP) or Chrome tabs (Chrome mode). New sites start with this, and the crawl settings change it for a site.
+    sv: Högsta antal samtidiga förfrågningar (HTTP) eller Chrome-flikar (Chrome-läge). Nya webbplatser börjar med detta, och crawlinställningarna ändrar det för en webbplats.
+  timeout:
+    en: Request Timeout (seconds)
+    sv: Tidsgräns för förfrågan (sekunder)
+  timeout_description:
+    en: HTTP request timeout in seconds.
+    sv: Tidsgräns för HTTP-förfrågningar i sekunder.
+  delay:
+    en: Delay Between Requests (ms)
+    sv: Fördröjning mellan förfrågningar (ms)
+  delay_description:
+    en: Delay in milliseconds between requests (0 = no delay).
+    sv: Fördröjning i millisekunder mellan förfrågningar (0 = ingen fördröjning).
+  respect_robots_txt:
+    en: Respect robots.txt
+    sv: Följ robots.txt
+  respect_robots_txt_description:
+    en: Obey robots.txt directives.
+    sv: Följ direktiven i robots.txt.
+  follow_sitemaps:
+    en: Follow Sitemaps
+    sv: Följ webbplatskartor
+  follow_sitemaps_description:
+    en: Discover URLs from XML sitemaps.
+    sv: Hitta URL:er i XML-webbplatskartor.
+  block_images:
+    en: Block Images
+    sv: Blockera bilder
+  block_images_description:
+    en: In Chrome mode, skip downloading images, media and fonts during render to speed up crawls. New sites start with this, and the crawl settings change it for a site.
+    sv: I Chrome-läge hoppas bilder, media och typsnitt över vid rendering för snabbare crawlningar. Nya webbplatser börjar med detta, och crawlinställningarna ändrar det för en webbplats.
+  capture_layout:
+    en: Capture Layout
+    sv: Spela in layout
+  capture_layout_description:
+    en: In Chrome mode, record the boxes each page renders, to group pages by template and find layout changes between crawls. New sites start with this, and the crawl settings change it for a site.
+    sv: I Chrome-läge spelas rutorna som varje sida renderar in, för att gruppera sidor efter mall och hitta layoutändringar mellan crawlningar. Nya webbplatser börjar med detta, och crawlinställningarna ändrar det för en webbplats.
+  scroll_for_layout:
+    en: Scroll for Layout
+    sv: Scrolla för layout
+  scroll_for_layout_description:
+    en: Scroll through each page before recording its layout, so content that loads on scroll is included. Seconds slower a page. Only applies while Capture Layout is on. New sites start with this, and the crawl settings change it for a site.
+    sv: Scrolla igenom varje sida innan layouten spelas in, så att innehåll som laddas vid scrollning kommer med. Några sekunder långsammare per sida. Gäller bara när Spela in layout är på. Nya webbplatser börjar med detta, och crawlinställningarna ändrar det för en webbplats.
+  near_duplicate_threshold:
+    en: Near Duplicate Threshold (%)
+    sv: Gräns för nära dubbletter (%)
+  near_duplicate_threshold_description:
+    en: Minimum similarity percentage to flag pages as near duplicates.
+    sv: Minsta likhet i procent för att markera sidor som nära dubbletter.
+  content_selector:
+    en: Content Selector
+    sv: Innehållsväljare
+  content_selector_description:
+    en: CSS selector to scope word count and duplicate detection. Leave empty to use full page body.
+    sv: CSS-väljare som avgränsar ordräkning och dubblettsökning. Lämna tomt för att använda hela sidans body.
+  user_agent:
+    en: User-Agent
+    sv: User-Agent
+  user_agent_description:
+    en: Default User-Agent header for crawls. Leave empty for the built-in default. The crawl bar's Advanced field overrides this per crawl.
+    sv: Standardvärde för User-Agent-huvudet vid crawlning. Lämna tomt för det inbyggda standardvärdet. Fältet Avancerat i crawlfältet ersätter detta per crawlning.
+  theme:
+    en: Theme
+    sv: Tema
+  theme_description:
+    en: Choose the color theme for the application.
+    sv: Välj färgtema för appen.
+  ui_font:
+    en: UI Font
+    sv: Gränssnittets typsnitt
+  ui_font_description:
+    en: Font used for the application UI.
+    sv: Typsnitt för appens gränssnitt.
+  mono_font:
+    en: Monospace Font
+    sv: Typsnitt med fast bredd
+  mono_font_description:
+    en: Monospace font used for URLs and data.
+    sv: Typsnitt med fast bredd för URL:er och data.
+  font_theme_default:
+    en: "%{font} (theme default)"
+    sv: "%{font} (temats standard)"
+  search_fonts:
+    en: Search fonts
+    sv: Sök typsnit

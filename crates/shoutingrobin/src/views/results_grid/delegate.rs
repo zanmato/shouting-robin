@@ -31,8 +31,9 @@ use super::columns::{
 };
 use super::data_build::{
     build_change_entries, build_image_aggregates, build_issues_entries, build_rows_for_tab,
-    change_entry_matches, dir_format_size, issue_entry_matches, layout_template_cell_text,
-    layout_template_matches, overview_issue_target,
+    change_entry_matches, dir_format_size, issue_display_description, issue_display_hint,
+    issue_display_name, issue_entry_matches, layout_template_cell_text, layout_template_matches,
+    overview_issue_target,
 };
 use super::filter::{
     BASELINE_TABS, CountsProgress, count_baseline_tabs, count_every_tab, filter_for_tab,
@@ -688,6 +689,21 @@ impl ResultsDelegate {
         }
     }
 
+    /// Puts the headers in the app's language. Only the names change, so the
+    /// table keeps the widths the user dragged the columns to.
+    pub(super) fn relabel_columns(&mut self) {
+        let labelled = columns_for_tab_with_baseline(
+            self.active_tab,
+            self.baseline.is_some(),
+            self.hreflang_columns,
+        );
+        for column in &mut self.columns {
+            if let Some(fresh) = labelled.iter().find(|fresh| fresh.key == column.key) {
+                column.name = fresh.name.clone();
+            }
+        }
+    }
+
     pub(super) fn columns_version(&self) -> u64 {
         self.columns_version
     }
@@ -967,22 +983,31 @@ impl ResultsDelegate {
             generated_at: chrono::Local::now().format("%Y-%m-%d %H:%M").to_string(),
             render_mode: render_mode.to_string(),
             summary: vec![
-                ("URLs recorded".into(), self.all_pages.len().to_string()),
-                ("Documents".into(), documents.to_string()),
-                ("Indexable".into(), indexable.to_string()),
-                ("Rules firing".into(), issues.len().to_string()),
-                ("Of those, issues".into(), issue_rows.to_string()),
+                (
+                    t!("filters.report.urls_recorded").into(),
+                    self.all_pages.len().to_string(),
+                ),
+                (t!("filters.report.documents").into(), documents.to_string()),
+                (t!("filters.report.indexable").into(), indexable.to_string()),
+                (
+                    t!("filters.report.rules_firing").into(),
+                    issues.len().to_string(),
+                ),
+                (
+                    t!("filters.report.issues_of_those").into(),
+                    issue_rows.to_string(),
+                ),
             ],
             issues: issues
                 .iter()
                 .map(|entry| ReportIssue {
-                    name: entry.name.clone(),
-                    issue_type: entry.issue_type.label().to_string(),
-                    priority: entry.priority.label().to_string(),
+                    name: issue_display_name(&entry.name),
+                    issue_type: entry.issue_type,
+                    priority: entry.priority,
                     count: entry.count,
                     pct: entry.pct,
-                    description: entry.description.clone(),
-                    hint: entry.hint.clone(),
+                    description: issue_display_description(entry),
+                    hint: issue_display_hint(entry),
                     offenders: self.offenders_for(&entry.name),
                 })
                 .collect(),
@@ -1317,7 +1342,7 @@ impl ResultsDelegate {
                     return String::new();
                 };
                 match col_key {
-                    "issue_name" => entry.name.clone(),
+                    "issue_name" => issue_display_name(&entry.name),
                     "issue_type" => entry.issue_type.label().to_string(),
                     "priority" => entry.priority.label().to_string(),
                     "count" => entry.count.to_string(),
@@ -1439,7 +1464,7 @@ impl TableDelegate for ResultsDelegate {
             });
         let text = cell.as_ref().map(|(_, text)| text.clone());
         let has_text = text.is_some();
-        let filter_item = |label: &'static str, icon: Icon, exclude: bool| {
+        let filter_item = |label: SharedString, icon: Icon, exclude: bool| {
             let action = cell.clone().map(|(column, value)| FilterByValue {
                 column,
                 value,
@@ -1455,7 +1480,7 @@ impl TableDelegate for ResultsDelegate {
                 })
         };
         menu.item(
-            PopupMenuItem::new("Copy")
+            PopupMenuItem::new(SharedString::from(t!("filters.menu.copy")))
                 .icon(IconName::Copy)
                 .disabled(!has_text)
                 .on_click(move |_event, _window, cx| {
@@ -1465,8 +1490,16 @@ impl TableDelegate for ResultsDelegate {
                 }),
         )
         .separator()
-        .item(filter_item("Filter by This Value", Icon::Filter, false))
-        .item(filter_item("Exclude This Value", Icon::FilterX, true))
+        .item(filter_item(
+            t!("filters.menu.filter_by_value").into(),
+            Icon::Filter,
+            false,
+        ))
+        .item(filter_item(
+            t!("filters.menu.exclude_value").into(),
+            Icon::FilterX,
+            true,
+        ))
     }
 
     fn render_td(
@@ -1517,17 +1550,17 @@ impl TableDelegate for ResultsDelegate {
                     let previous = self.baseline_issue_count(&entry.name).map(|(c, _)| *c);
                     let delta = entry.count as i64 - previous.unwrap_or(0) as i64;
                     let text = match key.as_ref() {
-                        "issue_name" => SharedString::from(entry.name.clone()),
-                        "issue_type" => SharedString::from(entry.issue_type.label()),
-                        "priority" => SharedString::from(entry.priority.label()),
+                        "issue_name" => SharedString::from(issue_display_name(&entry.name)),
+                        "issue_type" => entry.issue_type.label(),
+                        "priority" => entry.priority.label(),
                         "count" => SharedString::from(entry.count.to_string()),
                         "pct" => SharedString::from(format!("{:.1}%", entry.pct)),
                         "count_prev" => {
                             SharedString::from(previous.map(|c| c.to_string()).unwrap_or_default())
                         }
                         "count_delta" => SharedString::from(format_delta(delta)),
-                        "description" => SharedString::from(entry.description.clone()),
-                        "hint" => SharedString::from(entry.hint.clone()),
+                        "description" => SharedString::from(issue_display_description(entry)),
+                        "hint" => SharedString::from(issue_display_hint(entry)),
                         _ => SharedString::default(),
                     };
                     match key.as_ref() {
@@ -1557,7 +1590,7 @@ impl TableDelegate for ResultsDelegate {
                     };
                     let text = match key.as_ref() {
                         "change_url" => url_to_path(&entry.url, self.root_origin.as_deref()),
-                        "change_kind" => SharedString::from(entry.kind.label()),
+                        "change_kind" => entry.kind.label(),
                         "change_status" => SharedString::from(entry.status_text()),
                         "change_detail" => SharedString::from(entry.detail_text()),
                         _ => SharedString::default(),
@@ -1630,7 +1663,7 @@ impl TableDelegate for ResultsDelegate {
                     let text = flat_cell_text(record, row, &key, self.root_origin.as_deref());
                     if key.as_ref() == "a11y_rule" {
                         if let Some(desc) = rule_description(&issue.rule) {
-                            let desc = SharedString::from(desc.to_string());
+                            let desc = SharedString::from(desc);
                             cell.child(div().id(("a11y-rule-tip", row_ix)).child(text).tooltip(
                                 move |window, cx| Tooltip::new(desc.clone()).build(window, cx),
                             ))

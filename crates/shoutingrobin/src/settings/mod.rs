@@ -87,6 +87,9 @@ impl Settings {
                 "general.check_for_updates" => {
                     settings.general.check_for_updates = value.parse().unwrap_or(true);
                 }
+                "general.locale" => {
+                    settings.general.locale = value.clone();
+                }
                 "crawl.max_pages" => {
                     settings.crawl.max_pages = value.parse().unwrap_or(0);
                 }
@@ -144,12 +147,16 @@ impl Settings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeneralSettings {
     pub check_for_updates: bool,
+    /// A code from `locale::LOCALES`, or empty to follow the system.
+    #[serde(default)]
+    pub locale: String,
 }
 
 impl Default for GeneralSettings {
     fn default() -> Self {
         Self {
             check_for_updates: true,
+            locale: String::new(),
         }
     }
 }

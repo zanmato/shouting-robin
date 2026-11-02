@@ -194,477 +194,605 @@ impl SettingsView {
             .collect();
 
         let ui_font_select = self.ui_font_select.clone();
+        let system_name = crate::locale::LOCALES
+            .iter()
+            .find(|(code, _)| *code == crate::locale::system_locale())
+            .map(|(_, name)| *name)
+            .unwrap_or_default();
+        let locale_options = std::iter::once((
+            SharedString::default(),
+            SharedString::from(t!("settings.language_system", language = system_name)),
+        ))
+        .chain(
+            crate::locale::LOCALES
+                .iter()
+                .map(|(code, name)| (SharedString::from(*code), SharedString::from(*name))),
+        )
+        .collect();
         let mono_font_select = self.mono_font_select.clone();
 
         vec![
-            SettingPage::new("General").resettable(true).groups(vec![
-                SettingGroup::new().title("Updates").items(vec![
-                    SettingItem::new(
-                        "Check for Updates",
-                        SettingField::switch(
-                            move |cx: &App| {
-                                AppSettings::global(cx).settings.general.check_for_updates
-                            },
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx)
-                                        .settings
-                                        .general
-                                        .check_for_updates = val;
-
-                                    let key = "general.check_for_updates".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                        .default_value(default_settings.general.check_for_updates),
-                    )
-                    .description(
-                        "Check for new releases hourly. An Update button appears in the title bar when one is available.",
-                    ),
-                ]),
-            ]),
-            SettingPage::new("Crawl").resettable(true).groups(vec![
-                SettingGroup::new().title("Limits").items(vec![
-                    SettingItem::new(
-                        "Max Pages",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 0.0,
-                                max: 1000000.0,
-                                step: 100.0,
-                            },
-                            move |cx: &App| AppSettings::global(cx).settings.crawl.max_pages as f64,
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: f64, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.max_pages =
-                                        val as u32;
-
-                                    let key = "crawl.max_pages".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                    )
-                    .description(
-                        "Maximum pages to crawl (0 = unlimited). New sites start with this, and \
-                         the crawl settings change it for a site.",
-                    ),
-                    SettingItem::new(
-                        "Max Concurrent Requests",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 1.0,
-                                max: 100.0,
-                                step: 1.0,
-                            },
-                            move |cx: &App| {
-                                AppSettings::global(cx).settings.crawl.max_concurrent as f64
-                            },
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: f64, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.max_concurrent =
-                                        val as u32;
-
-                                    let key = "crawl.max_concurrent".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                    )
-                    .description(
-                        "Maximum concurrent requests (HTTP) or Chrome tabs (Chrome mode). New \
-                         sites start with this, and the crawl settings change it for a site.",
-                    ),
-                    SettingItem::new(
-                        "Request Timeout (seconds)",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 5.0,
-                                max: 300.0,
-                                step: 5.0,
-                            },
-                            move |cx: &App| {
-                                AppSettings::global(cx).settings.crawl.timeout_seconds as f64
-                            },
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: f64, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.timeout_seconds =
-                                        val as u32;
-
-                                    let key = "crawl.timeout_seconds".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                    )
-                    .description("HTTP request timeout in seconds."),
-                ]),
-                SettingGroup::new().title("Rate Limiting").items(vec![
-                    SettingItem::new(
-                        "Delay Between Requests (ms)",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 0.0,
-                                max: 60000.0,
-                                step: 100.0,
-                            },
-                            move |cx: &App| AppSettings::global(cx).settings.crawl.delay_ms as f64,
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: f64, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.delay_ms =
-                                        val as u32;
-
-                                    let key = "crawl.delay_ms".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                    )
-                    .description("Delay in milliseconds between requests (0 = no delay)."),
-                ]),
-                SettingGroup::new().title("Behavior").items(vec![
-                    SettingItem::new(
-                        "Respect robots.txt",
-                        SettingField::switch(
-                            move |cx: &App| {
-                                AppSettings::global(cx).settings.crawl.respect_robots_txt
-                            },
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx)
-                                        .settings
-                                        .crawl
-                                        .respect_robots_txt = val;
-
-                                    let key = "crawl.respect_robots_txt".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                        .default_value(default_settings.crawl.respect_robots_txt),
-                    )
-                    .description("Obey robots.txt directives."),
-                    SettingItem::new(
-                        "Follow Sitemaps",
-                        SettingField::switch(
-                            move |cx: &App| AppSettings::global(cx).settings.crawl.follow_sitemaps,
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.follow_sitemaps =
-                                        val;
-
-                                    let key = "crawl.follow_sitemaps".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                        .default_value(default_settings.crawl.follow_sitemaps),
-                    )
-                    .description("Discover URLs from XML sitemaps."),
-                    SettingItem::new(
-                        "Block Images",
-                        SettingField::switch(
-                            move |cx: &App| AppSettings::global(cx).settings.crawl.block_images,
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.block_images = val;
-
-                                    let key = "crawl.block_images".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                        .default_value(default_settings.crawl.block_images),
-                    )
-                    .description(
-                        "In Chrome mode, skip downloading images, media and fonts during \
-                         render to speed up crawls. New sites start with this, and the crawl \
-                         settings change it for a site.",
-                    ),
-                    SettingItem::new(
-                        "Capture Layout",
-                        SettingField::switch(
-                            move |cx: &App| AppSettings::global(cx).settings.crawl.capture_layout,
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.capture_layout = val;
-
-                                    let key = "crawl.capture_layout".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                        .default_value(default_settings.crawl.capture_layout),
-                    )
-                    .description(
-                        "In Chrome mode, record the boxes each page renders, to group \
-                         pages by template and find layout changes between crawls. New sites \
-                         start with this, and the crawl settings change it for a site.",
-                    ),
-                    SettingItem::new(
-                        "Scroll for Layout",
-                        SettingField::switch(
-                            move |cx: &App| AppSettings::global(cx).settings.crawl.scroll_for_layout,
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: bool, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.scroll_for_layout = val;
-
-                                    let key = "crawl.scroll_for_layout".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                        .default_value(default_settings.crawl.scroll_for_layout),
-                    )
-                    .description(
-                        "Scroll through each page before recording its layout, so content \
-                         that loads on scroll is included. Seconds slower a page. Only \
-                         applies while Capture Layout is on. New sites start with this, and \
-                         the crawl settings change it for a site.",
-                    ),
-                    SettingItem::new(
-                        "Near Duplicate Threshold (%)",
-                        SettingField::number_input(
-                            NumberFieldOptions {
-                                min: 50.0,
-                                max: 100.0,
-                                step: 5.0,
-                            },
-                            move |cx: &App| {
-                                AppSettings::global(cx)
-                                    .settings
-                                    .crawl
-                                    .near_duplicate_threshold as f64
-                            },
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: f64, cx: &mut App| {
-                                    AppSettings::global_mut(cx)
-                                        .settings
-                                        .crawl
-                                        .near_duplicate_threshold = val as u8;
-
-                                    let key = "crawl.near_duplicate_threshold".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                    )
-                    .description("Minimum similarity percentage to flag pages as near duplicates."),
-                ]),
-                SettingGroup::new().title("Content Analysis").items(vec![
-                    SettingItem::new(
-                        "Content Selector",
-                        SettingField::input(
-                            move |cx: &App| {
-                                SharedString::from(AppSettings::global(cx).settings.crawl.content_selector.clone())
-                            },
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: SharedString, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.content_selector = val.to_string();
-
-                                    let key = "crawl.content_selector".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                        .default_value(SharedString::from("")),
-                    )
-                    .description("CSS selector to scope word count and duplicate detection. Leave empty to use full page body."),
-                ]),
-                SettingGroup::new().title("Identification").items(vec![
-                    SettingItem::new(
-                        "User-Agent",
-                        SettingField::input(
-                            move |cx: &App| {
-                                SharedString::from(
-                                    AppSettings::global(cx).settings.crawl.user_agent.clone(),
-                                )
-                            },
-                            {
-                                let view_handle = view_handle.clone();
-                                move |val: SharedString, cx: &mut App| {
-                                    AppSettings::global_mut(cx).settings.crawl.user_agent =
-                                        val.to_string();
-
-                                    let key = "crawl.user_agent".to_string();
-                                    let value = val.to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, value, cx);
-                                        });
-                                    }
-                                }
-                            },
-                        )
-                        .default_value(SharedString::from("")),
-                    )
-                    .description(
-                        "Default User-Agent header for crawls. Leave empty for the built-in default. The crawl bar's Advanced field overrides this per crawl.",
-                    ),
-                ]),
-            ]),
-            SettingPage::new("Appearance").resettable(true).groups(vec![
-                SettingGroup::new().title("Theme").items(vec![
-                    SettingItem::new(
-                        "Theme",
-                        SettingField::dropdown(
-                            sorted_themes,
-                            move |cx: &App| {
-                                SharedString::from(
-                                    AppSettings::global(cx).settings.appearance.theme.clone(),
-                                )
-                            },
-                            {
-                                let view_handle = view_handle;
-                                move |val: SharedString, cx: &mut App| {
-                                    let theme_name = val.to_string();
-                                    AppSettings::global_mut(cx).settings.appearance.theme =
-                                        theme_name.clone();
-
-                                    if let Some(theme_config) =
-                                        ThemeRegistry::global(cx).themes().get(&val).cloned()
+            SettingPage::new(t!("settings.page.general"))
+                .resettable(true)
+                .groups(vec![
+                    SettingGroup::new()
+                        .title(t!("settings.group.language"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.language"),
+                                SettingField::dropdown(
+                                    locale_options,
+                                    move |cx: &App| {
+                                        SharedString::from(
+                                            AppSettings::global(cx).settings.general.locale.clone(),
+                                        )
+                                    },
                                     {
-                                        crate::settings::apply_theme_config(&theme_config, cx);
-                                    }
+                                        let view_handle = view_handle.clone();
+                                        move |val: SharedString, cx: &mut App| {
+                                            let locale = val.to_string();
+                                            AppSettings::global_mut(cx).settings.general.locale =
+                                                locale.clone();
+                                            crate::locale::change(&locale, cx);
 
-                                    let key = "appearance.theme".to_string();
-                                    if let Some(view) = view_handle.upgrade() {
-                                        view.update(cx, |view, cx| {
-                                            view.save_setting_debounced(key, theme_name, cx);
-                                        });
+                                            let key = "general.locale".to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, locale, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(SharedString::from(
+                                    default_settings.general.locale.clone(),
+                                )),
+                            )
+                            .description(SharedString::from(t!("settings.language_description"))),
+                        ]),
+                    SettingGroup::new()
+                        .title(t!("settings.group.updates"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.check_for_updates"),
+                                SettingField::switch(
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.general.check_for_updates
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: bool, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .general
+                                                .check_for_updates = val;
+
+                                            let key = "general.check_for_updates".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(default_settings.general.check_for_updates),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.check_for_updates_description"
+                            ))),
+                        ]),
+                ]),
+            SettingPage::new(t!("settings.page.crawl"))
+                .resettable(true)
+                .groups(vec![
+                    SettingGroup::new()
+                        .title(t!("settings.group.limits"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.max_pages"),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 0.0,
+                                        max: 1000000.0,
+                                        step: 100.0,
+                                    },
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.max_pages as f64
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: f64, cx: &mut App| {
+                                            AppSettings::global_mut(cx).settings.crawl.max_pages =
+                                                val as u32;
+
+                                            let key = "crawl.max_pages".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(SharedString::from(t!("settings.max_pages_description"))),
+                            SettingItem::new(
+                                t!("settings.max_concurrent"),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 1.0,
+                                        max: 100.0,
+                                        step: 1.0,
+                                    },
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.max_concurrent as f64
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: f64, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .max_concurrent = val as u32;
+
+                                            let key = "crawl.max_concurrent".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.max_concurrent_description"
+                            ))),
+                            SettingItem::new(
+                                t!("settings.timeout"),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 5.0,
+                                        max: 300.0,
+                                        step: 5.0,
+                                    },
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.timeout_seconds
+                                            as f64
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: f64, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .timeout_seconds = val as u32;
+
+                                            let key = "crawl.timeout_seconds".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(SharedString::from(t!("settings.timeout_description"))),
+                        ]),
+                    SettingGroup::new()
+                        .title(t!("settings.group.rate_limiting"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.delay"),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 0.0,
+                                        max: 60000.0,
+                                        step: 100.0,
+                                    },
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.delay_ms as f64
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: f64, cx: &mut App| {
+                                            AppSettings::global_mut(cx).settings.crawl.delay_ms =
+                                                val as u32;
+
+                                            let key = "crawl.delay_ms".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(SharedString::from(t!("settings.delay_description"))),
+                        ]),
+                    SettingGroup::new()
+                        .title(t!("settings.group.behavior"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.respect_robots_txt"),
+                                SettingField::switch(
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.respect_robots_txt
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: bool, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .respect_robots_txt = val;
+
+                                            let key = "crawl.respect_robots_txt".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(default_settings.crawl.respect_robots_txt),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.respect_robots_txt_description"
+                            ))),
+                            SettingItem::new(
+                                t!("settings.follow_sitemaps"),
+                                SettingField::switch(
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.follow_sitemaps
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: bool, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .follow_sitemaps = val;
+
+                                            let key = "crawl.follow_sitemaps".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(default_settings.crawl.follow_sitemaps),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.follow_sitemaps_description"
+                            ))),
+                            SettingItem::new(
+                                t!("settings.block_images"),
+                                SettingField::switch(
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.block_images
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: bool, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .block_images = val;
+
+                                            let key = "crawl.block_images".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(default_settings.crawl.block_images),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.block_images_description"
+                            ))),
+                            SettingItem::new(
+                                t!("settings.capture_layout"),
+                                SettingField::switch(
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.capture_layout
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: bool, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .capture_layout = val;
+
+                                            let key = "crawl.capture_layout".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(default_settings.crawl.capture_layout),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.capture_layout_description"
+                            ))),
+                            SettingItem::new(
+                                t!("settings.scroll_for_layout"),
+                                SettingField::switch(
+                                    move |cx: &App| {
+                                        AppSettings::global(cx).settings.crawl.scroll_for_layout
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: bool, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .scroll_for_layout = val;
+
+                                            let key = "crawl.scroll_for_layout".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(default_settings.crawl.scroll_for_layout),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.scroll_for_layout_description"
+                            ))),
+                            SettingItem::new(
+                                t!("settings.near_duplicate_threshold"),
+                                SettingField::number_input(
+                                    NumberFieldOptions {
+                                        min: 50.0,
+                                        max: 100.0,
+                                        step: 5.0,
+                                    },
+                                    move |cx: &App| {
+                                        AppSettings::global(cx)
+                                            .settings
+                                            .crawl
+                                            .near_duplicate_threshold
+                                            as f64
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: f64, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .near_duplicate_threshold = val as u8;
+
+                                            let key = "crawl.near_duplicate_threshold".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                ),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.near_duplicate_threshold_description"
+                            ))),
+                        ]),
+                    SettingGroup::new()
+                        .title(t!("settings.group.content_analysis"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.content_selector"),
+                                SettingField::input(
+                                    move |cx: &App| {
+                                        SharedString::from(
+                                            AppSettings::global(cx)
+                                                .settings
+                                                .crawl
+                                                .content_selector
+                                                .clone(),
+                                        )
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: SharedString, cx: &mut App| {
+                                            AppSettings::global_mut(cx)
+                                                .settings
+                                                .crawl
+                                                .content_selector = val.to_string();
+
+                                            let key = "crawl.content_selector".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(SharedString::from("")),
+                            )
+                            .description(SharedString::from(t!(
+                                "settings.content_selector_description"
+                            ))),
+                        ]),
+                    SettingGroup::new()
+                        .title(t!("settings.group.identification"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.user_agent"),
+                                SettingField::input(
+                                    move |cx: &App| {
+                                        SharedString::from(
+                                            AppSettings::global(cx)
+                                                .settings
+                                                .crawl
+                                                .user_agent
+                                                .clone(),
+                                        )
+                                    },
+                                    {
+                                        let view_handle = view_handle.clone();
+                                        move |val: SharedString, cx: &mut App| {
+                                            AppSettings::global_mut(cx).settings.crawl.user_agent =
+                                                val.to_string();
+
+                                            let key = "crawl.user_agent".to_string();
+                                            let value = val.to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(key, value, cx);
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(SharedString::from("")),
+                            )
+                            .description(SharedString::from(t!("settings.user_agent_description"))),
+                        ]),
+                ]),
+            SettingPage::new(t!("settings.page.appearance"))
+                .resettable(true)
+                .groups(vec![
+                    SettingGroup::new()
+                        .title(t!("settings.group.theme"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.theme"),
+                                SettingField::dropdown(
+                                    sorted_themes,
+                                    move |cx: &App| {
+                                        SharedString::from(
+                                            AppSettings::global(cx)
+                                                .settings
+                                                .appearance
+                                                .theme
+                                                .clone(),
+                                        )
+                                    },
+                                    {
+                                        let view_handle = view_handle;
+                                        move |val: SharedString, cx: &mut App| {
+                                            let theme_name = val.to_string();
+                                            AppSettings::global_mut(cx).settings.appearance.theme =
+                                                theme_name.clone();
+
+                                            if let Some(theme_config) = ThemeRegistry::global(cx)
+                                                .themes()
+                                                .get(&val)
+                                                .cloned()
+                                            {
+                                                crate::settings::apply_theme_config(
+                                                    &theme_config,
+                                                    cx,
+                                                );
+                                            }
+
+                                            let key = "appearance.theme".to_string();
+                                            if let Some(view) = view_handle.upgrade() {
+                                                view.update(cx, |view, cx| {
+                                                    view.save_setting_debounced(
+                                                        key, theme_name, cx,
+                                                    );
+                                                });
+                                            }
+                                        }
+                                    },
+                                )
+                                .default_value(SharedString::from(
+                                    default_settings.appearance.theme,
+                                )),
+                            )
+                            .description(SharedString::from(t!("settings.theme_description"))),
+                        ]),
+                    SettingGroup::new()
+                        .title(t!("settings.group.fonts"))
+                        .items(vec![
+                            SettingItem::new(
+                                t!("settings.ui_font"),
+                                SettingField::render({
+                                    let ui_font_select = ui_font_select;
+                                    move |options, _window, cx| {
+                                        let theme_font = cx.theme().font_family.to_string();
+                                        if let Some(state) = &ui_font_select {
+                                            Select::new(state)
+                                                .with_size(options.size())
+                                                .placeholder(t!(
+                                                    "settings.font_theme_default",
+                                                    font = theme_font
+                                                ))
+                                                .search_placeholder(t!("settings.search_fonts"))
+                                                .cleanable(true)
+                                                .max_h(rems(16.))
+                                                .w(px(240.))
+                                                .into_any_element()
+                                        } else {
+                                            gpui_kit::div().into_any_element()
+                                        }
                                     }
-                                }
-                            },
-                        )
-                        .default_value(SharedString::from(
-                            default_settings.appearance.theme,
-                        )),
-                    )
-                    .description("Choose the color theme for the application."),
+                                }),
+                            )
+                            .description(SharedString::from(t!("settings.ui_font_description"))),
+                            SettingItem::new(
+                                t!("settings.mono_font"),
+                                SettingField::render({
+                                    let mono_font_select = mono_font_select;
+                                    move |options, _window, cx| {
+                                        let theme_font = cx.theme().mono_font_family.to_string();
+                                        if let Some(state) = &mono_font_select {
+                                            Select::new(state)
+                                                .with_size(options.size())
+                                                .placeholder(t!(
+                                                    "settings.font_theme_default",
+                                                    font = theme_font
+                                                ))
+                                                .search_placeholder(t!("settings.search_fonts"))
+                                                .cleanable(true)
+                                                .max_h(rems(16.))
+                                                .w(px(240.))
+                                                .into_any_element()
+                                        } else {
+                                            gpui_kit::div().into_any_element()
+                                        }
+                                    }
+                                }),
+                            )
+                            .description(SharedString::from(t!("settings.mono_font_description"))),
+                        ]),
+                    vsx_themes::browser::setting_group(
+                        self.theme_browser
+                            .clone()
+                            .expect("created before the pages"),
+                    ),
                 ]),
-                SettingGroup::new().title("Fonts").items(vec![
-                    SettingItem::new(
-                        "UI Font",
-                        SettingField::render({
-                            let ui_font_select = ui_font_select;
-                            move |options, _window, cx| {
-                                let theme_font = cx.theme().font_family.to_string();
-                                if let Some(state) = &ui_font_select {
-                                    Select::new(state)
-                                        .with_size(options.size())
-                                        .placeholder(format!("{theme_font} (theme default)"))
-                                        .search_placeholder("Search fonts...")
-                                        .cleanable(true)
-                                        .max_h(rems(16.))
-                                        .w(px(240.))
-                                        .into_any_element()
-                                } else {
-                                    gpui_kit::div().into_any_element()
-                                }
-                            }
-                        }),
-                    )
-                    .description("Font used for the application UI."),
-                    SettingItem::new(
-                        "Monospace Font",
-                        SettingField::render({
-                            let mono_font_select = mono_font_select;
-                            move |options, _window, cx| {
-                                let theme_font = cx.theme().mono_font_family.to_string();
-                                if let Some(state) = &mono_font_select {
-                                    Select::new(state)
-                                        .with_size(options.size())
-                                        .placeholder(format!("{theme_font} (theme default)"))
-                                        .search_placeholder("Search fonts...")
-                                        .cleanable(true)
-                                        .max_h(rems(16.))
-                                        .w(px(240.))
-                                        .into_any_element()
-                                } else {
-                                    gpui_kit::div().into_any_element()
-                                }
-                            }
-                        }),
-                    )
-                    .description("Monospace font used for URLs and data."),
-                ]),
-                vsx_themes::browser::setting_group(
-                    self.theme_browser.clone().expect("created before the pages"),
-                ),
-            ]),
         ]
     }
 }

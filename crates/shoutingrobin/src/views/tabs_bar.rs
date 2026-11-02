@@ -60,30 +60,30 @@ impl ResultTab {
 
     pub fn label(self) -> SharedString {
         match self {
-            ResultTab::Internal => "Internal".into(),
-            ResultTab::External => "External".into(),
-            ResultTab::ResponseCodes => "Response Codes".into(),
-            ResultTab::PageTitles => "Page Titles".into(),
-            ResultTab::MetaDesc => "Meta Desc".into(),
+            ResultTab::Internal => t!("app.tab.internal").into(),
+            ResultTab::External => t!("app.tab.external").into(),
+            ResultTab::ResponseCodes => t!("app.tab.response_codes").into(),
+            ResultTab::PageTitles => t!("app.tab.page_titles").into(),
+            ResultTab::MetaDesc => t!("app.tab.meta_desc").into(),
             ResultTab::H1 => "H1".into(),
             ResultTab::H2 => "H2".into(),
-            ResultTab::Content => "Content".into(),
-            ResultTab::Images => "Images".into(),
-            ResultTab::Canonicals => "Canonicals".into(),
+            ResultTab::Content => t!("app.tab.content").into(),
+            ResultTab::Images => t!("app.tab.images").into(),
+            ResultTab::Canonicals => t!("app.tab.canonicals").into(),
             ResultTab::Hreflang => "Hreflang".into(),
-            ResultTab::StructuredData => "Structured Data".into(),
-            ResultTab::Accessibility => "Accessibility".into(),
-            ResultTab::Performance => "Performance".into(),
-            ResultTab::Ecommerce => "Ecommerce".into(),
-            ResultTab::Sitemaps => "Sitemaps".into(),
-            ResultTab::SiteStructure => "Site Structure".into(),
-            ResultTab::Security => "Security".into(),
+            ResultTab::StructuredData => t!("app.tab.structured_data").into(),
+            ResultTab::Accessibility => t!("app.tab.accessibility").into(),
+            ResultTab::Performance => t!("app.tab.performance").into(),
+            ResultTab::Ecommerce => t!("app.tab.ecommerce").into(),
+            ResultTab::Sitemaps => t!("app.tab.sitemaps").into(),
+            ResultTab::SiteStructure => t!("app.tab.site_structure").into(),
+            ResultTab::Security => t!("app.tab.security").into(),
             ResultTab::Url => "URL".into(),
-            ResultTab::Directives => "Directives".into(),
-            ResultTab::Overview => "Overview".into(),
-            ResultTab::Links => "Links".into(),
-            ResultTab::Changes => "Changes".into(),
-            ResultTab::Layout => "Layout".into(),
+            ResultTab::Directives => t!("app.tab.directives").into(),
+            ResultTab::Overview => t!("app.tab.overview").into(),
+            ResultTab::Links => t!("app.tab.links").into(),
+            ResultTab::Changes => t!("app.tab.changes").into(),
+            ResultTab::Layout => t!("app.tab.layout").into(),
         }
     }
 
@@ -93,17 +93,10 @@ impl ResultTab {
     /// Both notes below record a decision rather than describe the code: other
     /// tools draw these two lines elsewhere, and someone comparing the numbers
     /// deserves to know we chose the wider reading on purpose.
-    pub fn note(self) -> Option<&'static str> {
+    pub fn note(self) -> Option<SharedString> {
         match self {
-            ResultTab::Security => Some(
-                "Covers every URL that answered, redirects included: an http to https \
-                 redirect with no HSTS is exactly the hole these headers close.",
-            ),
-            ResultTab::Url => Some(
-                "Covers every internal URL, stylesheets, scripts and images included, not \
-                 only HTML pages. Mixed case and query strings are a cache hazard on an \
-                 asset too.",
-            ),
+            ResultTab::Security => Some(t!("app.tab.note.security").into()),
+            ResultTab::Url => Some(t!("app.tab.note.url").into()),
             _ => None,
         }
     }

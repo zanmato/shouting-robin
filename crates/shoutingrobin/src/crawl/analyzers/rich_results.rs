@@ -567,6 +567,125 @@ fn validate_product_offers(properties: &Map<String, Value>, issues: &mut Vec<SdI
     }
 }
 
+/// The messages above as the locale files hold them. Each key's English is
+/// the pattern the stored message is matched against, so a message saved by
+/// an earlier crawl is shown in the reader's language without the database
+/// keeping anything but the English it was written in.
+const MESSAGE_KEYS: &[&str] = &[
+    "crawl.sd_issue.unknown_type",
+    "crawl.sd_issue.missing_required",
+    "crawl.sd_issue.missing_recommended",
+    "crawl.sd_issue.relative_url",
+    "crawl.sd_issue.invalid_url",
+    "crawl.sd_issue.invalid_url_value",
+    "crawl.sd_issue.breadcrumb_not_a_list",
+    "crawl.sd_issue.breadcrumb_empty",
+    "crawl.sd_issue.breadcrumb_level_not_an_object",
+    "crawl.sd_issue.breadcrumb_level_wrong_type",
+    "crawl.sd_issue.breadcrumb_level_missing_position",
+    "crawl.sd_issue.breadcrumb_level_invalid_position",
+    "crawl.sd_issue.breadcrumb_level_missing_name",
+    "crawl.sd_issue.breadcrumb_level_missing_item",
+    "crawl.sd_issue.breadcrumb_level_item_without_id",
+    "crawl.sd_issue.breadcrumb_level_invalid_item",
+    "crawl.sd_issue.breadcrumb_position_order",
+    "crawl.sd_issue.product_needs_offer",
+];
+
+/// The reasons `classify_url` gives, which an invalid URL message ends with.
+const URL_REASON_KEYS: &[&str] = &[
+    "crawl.sd_issue.url_reason.empty",
+    "crawl.sd_issue.url_reason.whitespace",
+    "crawl.sd_issue.url_reason.placeholder",
+    "crawl.sd_issue.url_reason.scheme",
+    "crawl.sd_issue.url_reason.no_host",
+    "crawl.sd_issue.url_reason.no_scheme",
+    "crawl.sd_issue.url_reason.not_a_url",
+];
+
+impl SdIssue {
+    /// The message in the app's language. A message no pattern matches, such
+    /// as one written by an older version, is shown as it was stored.
+    pub fn translated_message(&self) -> String {
+        translate_message(&self.message, &rust_i18n::locale())
+    }
+}
+
+fn translate_message(message: &str, locale: &str) -> String {
+    for key in MESSAGE_KEYS {
+        let Some(pattern) = crate::_rust_i18n_try_translate("en", key) else {
+            continue;
+        };
+        let Some(values) = match_pattern(&pattern, message) else {
+            continue;
+        };
+        let Some(translated) = crate::_rust_i18n_try_translate(locale, key) else {
+            return message.to_string();
+        };
+        let (names, values): (Vec<&str>, Vec<String>) = values
+            .into_iter()
+            .map(|(name, value)| {
+                let value = if name == "reason" {
+                    translate_url_reason(value, locale)
+                } else {
+                    value.to_string()
+                };
+                (name, value)
+            })
+            .unzip();
+        return rust_i18n::replace_patterns(&translated, &names, &values);
+    }
+    message.to_string()
+}
+
+fn translate_url_reason(reason: &str, locale: &str) -> String {
+    URL_REASON_KEYS
+        .iter()
+        .find(|key| {
+            crate::_rust_i18n_try_translate("en", key).is_some_and(|english| english == reason)
+        })
+        .and_then(|key| crate::_rust_i18n_try_translate(locale, key))
+        .map_or_else(|| reason.to_string(), |translated| translated.into_owned())
+}
+
+/// The values of a pattern's `%{name}` placeholders in `text`, or `None`
+/// when the text is not that pattern. A placeholder takes the text up to the
+/// first occurrence of the literal after it, and the last literal has to end
+/// the text, so a quoted URL or JSON value with spaces in it still matches.
+fn match_pattern<'a, 'p>(pattern: &'p str, text: &'a str) -> Option<Vec<(&'p str, &'a str)>> {
+    let mut literals = Vec::new();
+    let mut names = Vec::new();
+    let mut rest = pattern;
+    while let Some(start) = rest.find("%{") {
+        let end = start + rest[start..].find('}')?;
+        literals.push(&rest[..start]);
+        names.push(&rest[start + 2..end]);
+        rest = &rest[end + 1..];
+    }
+    literals.push(rest);
+
+    let (first, following) = literals.split_first()?;
+    let mut remaining = text.strip_prefix(first)?;
+    let mut values = Vec::with_capacity(names.len());
+    for (index, (name, literal)) in names.iter().zip(following).enumerate() {
+        let is_last = index + 1 == names.len();
+        let value = if is_last {
+            remaining.strip_suffix(literal)?
+        } else if literal.is_empty() {
+            return None;
+        } else {
+            &remaining[..remaining.find(literal)?]
+        };
+        values.push((*name, value));
+        remaining = if is_last {
+            ""
+        } else {
+            &remaining[value.len() + literal.len()..]
+        };
+    }
+    (!names.is_empty() || remaining.is_empty()).then_some(values)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -850,5 +969,101 @@ mod tests {
             &json!({"@type": "Organization", "name": "Shop", "@id": "{{ site.url }}"}),
         );
         assert!(codes.contains(&"invalid-url:@id".to_string()), "{codes:?}");
+    }
+
+    /// A stored message is matched against the English of its key, so a
+    /// message whose wording drifts from the locale file would stay English.
+    #[test]
+    fn every_message_is_shown_in_swedish() {
+        let fixtures = [
+            ("Product", json!({"name": "Widget"})),
+            (
+                "Product",
+                json!({
+                    "name": "Widget",
+                    "image": "/widget.png",
+                    "logo": 5,
+                    "sameAs": ["", "a b", "{{ url }}", "ftp://x.test/", "http://", "www.x.test/a"],
+                    "offers": {"@type": "Offer"}
+                }),
+            ),
+            ("Article", json!({})),
+            ("BreadcrumbList", json!({"itemListElement": "x"})),
+            ("BreadcrumbList", json!({"itemListElement": []})),
+            (
+                "BreadcrumbList",
+                json!({"itemListElement": [
+                    5,
+                    {"@type": "Thing", "position": "x"},
+                    {"item": {"name": "Shoes"}},
+                    {"position": 4, "name": "Boots", "item": 7},
+                    {"position": 9, "name": "Laces"}
+                ]}),
+            ),
+            (
+                "BreadcrumbList",
+                json!({"itemListElement": [
+                    {"position": 2, "name": "Home", "item": "https://shop.test/"},
+                    {"position": 5, "name": "Widget"}
+                ]}),
+            ),
+        ];
+        let mut messages = vec!["Unknown schema.org type 'Widget'".to_string()];
+        for (type_name, value) in &fixtures {
+            let map = value.as_object().cloned().unwrap_or_default();
+            messages.extend(
+                validate_type(type_name, &map, Some(&base()))
+                    .into_iter()
+                    .map(|issue| issue.message),
+            );
+        }
+        let english_reasons: Vec<String> = URL_REASON_KEYS
+            .iter()
+            .filter_map(|key| crate::_rust_i18n_try_translate("en", key))
+            .map(|reason| reason.into_owned())
+            .collect();
+        for key in MESSAGE_KEYS {
+            let pattern = crate::_rust_i18n_try_translate("en", key).unwrap_or_default();
+            assert!(
+                messages
+                    .iter()
+                    .any(|message| match_pattern(&pattern, message).is_some()),
+                "no fixture produces {key}"
+            );
+        }
+        for message in &messages {
+            assert_eq!(&translate_message(message, "en"), message);
+            let swedish = translate_message(message, "sv");
+            assert_ne!(&swedish, message, "no Swedish for {message:?}");
+            assert!(!swedish.contains("%{"), "{swedish:?}");
+            for reason in &english_reasons {
+                assert!(
+                    !swedish.contains(reason.as_str()),
+                    "{swedish:?} keeps {reason:?}"
+                );
+            }
+        }
+        assert_eq!(
+            translate_message("Something an older version wrote", "sv"),
+            "Something an older version wrote"
+        );
+    }
+
+    #[test]
+    fn a_pattern_takes_quoted_values_that_contain_its_own_literals() {
+        assert_eq!(
+            match_pattern(
+                "Invalid URL '%{url}' in property '%{property}' of %{type_name}: %{reason}",
+                "Invalid URL 'a: b' in property 'image' of Product: the value contains whitespace",
+            ),
+            Some(vec![
+                ("url", "a: b"),
+                ("property", "image"),
+                ("type_name", "Product"),
+                ("reason", "the value contains whitespace"),
+            ])
+        );
+        assert_eq!(match_pattern("No values", "No values"), Some(Vec::new()));
+        assert_eq!(match_pattern("No values", "No values here"), None);
     }
 }

@@ -127,6 +127,15 @@ impl ShoutingRobinApp {
 
         let mut subscriptions = Vec::new();
 
+        // Menus are handed to the platform once, so they are made again in
+        // the new language.
+        subscriptions.push(cx.observe_global::<crate::locale::Locale>(|this, cx| {
+            init_menus(cx);
+            if let Some(app_menu_bar) = &this.app_menu_bar {
+                app_menu_bar.update(cx, |app_menu_bar, cx| app_menu_bar.reload(cx));
+            }
+        }));
+
         let details_for_grid = details_panel.clone();
         let results_for_grid = results_grid.clone();
         let grid_sub = cx.subscribe(
@@ -196,7 +205,8 @@ impl ShoutingRobinApp {
                     let root_url = root_url.clone();
                     let render_mode = *render_mode;
                     cx.spawn_in(window, async move |this, cx| {
-                        let stored = match crate::storage::load_crawl_config(&pool, crawl_id).await {
+                        let stored = match crate::storage::load_crawl_config(&pool, crawl_id).await
+                        {
                             Ok(config) => config,
                             Err(e) => {
                                 tracing::error!(error=%e, crawl_id, "failed to load crawl config");
@@ -233,9 +243,9 @@ impl ShoutingRobinApp {
                             if !had_stored_config {
                                 window.push_notification(
                                     Notification::new()
-                                        .message(
-                                            "This crawl predates saved settings, using the current ones",
-                                        )
+                                        .message(SharedString::from(t!(
+                                            "app.notification.recrawl_without_settings"
+                                        )))
                                         .with_type(NotificationType::Warning),
                                     cx,
                                 );
@@ -352,7 +362,10 @@ impl ShoutingRobinApp {
                 window.defer(cx, move |window, cx| {
                     window.push_notification(
                         Notification::new()
-                            .message(format!("Updated to v{}, click to view changelog", current))
+                            .message(SharedString::from(t!(
+                                "app.notification.updated",
+                                version = current
+                            )))
                             .with_type(NotificationType::Success)
                             .on_click(move |_, _, cx| {
                                 cx.open_url(&UpdateManager::changelog_url(&format!(
@@ -847,7 +860,7 @@ impl ShoutingRobinApp {
                         results_grid.update(cx, |grid, cx| {
                             let mut layout = grid.layout_context().clone();
                             if layout.crawl_id == Some(crawl_id) {
-                                layout.note = Some("Layout comparison failed".into());
+                                layout.note = Some(LAYOUT_COMPARISON_FAILED.into());
                                 grid.set_layout_context(layout, cx);
                             }
                         });
@@ -870,7 +883,9 @@ impl ShoutingRobinApp {
         let Some(crawl_id) = layout.crawl_id else {
             window.push_notification(
                 Notification::new()
-                    .message("Open the crawl from Historic Crawls to view its layouts.")
+                    .message(SharedString::from(t!(
+                        "app.notification.open_crawl_for_layouts"
+                    )))
                     .with_type(NotificationType::Warning),
                 cx,
             );
@@ -896,12 +911,15 @@ impl ShoutingRobinApp {
                 Ok(Some(comparison)) => {
                     let view = cx.new(|_| LayoutView::new(url, comparison));
                     window.open_dialog(cx, move |dialog, _window, _cx| {
-                        dialog.title("Layout").w(px(1120.)).child(view.clone())
+                        dialog
+                            .title(SharedString::from(t!("app.dialog.layout")))
+                            .w(px(1120.))
+                            .child(view.clone())
                     });
                 }
                 Ok(None) => window.push_notification(
                     Notification::new()
-                        .message("This crawl captured no layout for the page.")
+                        .message(SharedString::from(t!("app.notification.no_layout")))
                         .with_type(NotificationType::Warning),
                     cx,
                 ),
@@ -909,7 +927,10 @@ impl ShoutingRobinApp {
                     tracing::error!(error=%e, "failed to load page layout");
                     window.push_notification(
                         Notification::new()
-                            .message(format!("Failed to load the layout: {e:#}"))
+                            .message(SharedString::from(t!(
+                                "app.notification.layout_failed",
+                                error = format!("{e:#}")
+                            )))
                             .with_type(NotificationType::Error),
                         cx,
                     );
@@ -999,7 +1020,7 @@ impl ShoutingRobinApp {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("Export here".into()),
+            prompt: Some(t!("app.export_here").into()),
         });
 
         cx.spawn_in(window, async move |_, cx| {
@@ -1040,17 +1061,24 @@ impl ShoutingRobinApp {
             let (written, failures) = outcome;
             let (message, kind) = if failures.is_empty() {
                 (
-                    format!("Exported {written} CSV files to {}", directory.display()),
+                    t!(
+                        "app.notification.exported_csv",
+                        count = written,
+                        directory = directory.display()
+                    )
+                    .into_owned(),
                     NotificationType::Success,
                 )
             } else {
                 tracing::error!(?failures, "some tabs failed to export");
                 (
-                    format!(
-                        "Exported {written} CSV files, {} failed: {}",
-                        failures.len(),
-                        failures.join(", ")
-                    ),
+                    t!(
+                        "app.notification.exported_csv_failed",
+                        count = written,
+                        failed = failures.len(),
+                        failures = failures.join(", ")
+                    )
+                    .into_owned(),
                     NotificationType::Error,
                 )
             };
@@ -1070,11 +1098,11 @@ impl ShoutingRobinApp {
     /// the site.
     fn export_pdf(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let render_mode = if self.active_render_mode.renders_javascript() {
-            "Chrome, JavaScript rendered"
+            t!("app.render_mode.chrome")
         } else {
-            "HTTP, no JavaScript"
+            t!("app.render_mode.http")
         };
-        let report = self.results_grid.read(cx).build_report(render_mode, cx);
+        let report = self.results_grid.read(cx).build_report(&render_mode, cx);
 
         let hostname_part = self
             .results_grid
@@ -1109,8 +1137,16 @@ impl ShoutingRobinApp {
                 .background_spawn(async move { crate::report::render_pdf(&report) })
                 .await;
             let result = rendered.and_then(|bytes| {
-                std::fs::write(&file_path, bytes)
-                    .map_err(|e| anyhow::anyhow!("failed to write {}: {e}", file_path.display()))
+                std::fs::write(&file_path, bytes).map_err(|e| {
+                    anyhow::anyhow!(
+                        t!(
+                            "app.notification.write_failed",
+                            path = file_path.display(),
+                            error = e
+                        )
+                        .into_owned()
+                    )
+                })
             });
 
             match result {
@@ -1120,7 +1156,10 @@ impl ShoutingRobinApp {
                     if let Err(e) = cx.update(|window, cx| {
                         window.push_notification(
                             Notification::new()
-                                .message(format!("Could not write the report: {e}"))
+                                .message(SharedString::from(t!(
+                                    "app.notification.report_failed",
+                                    error = e
+                                )))
                                 .with_type(NotificationType::Error),
                             cx,
                         );
@@ -1262,12 +1301,12 @@ impl ShoutingRobinApp {
                     let status = status_bar.read(cx);
                     cx.show_system_notification(gpui_kit::SystemNotification {
                         tag: CRAWL_FINISHED_NOTIFICATION_TAG.into(),
-                        title: format!("Crawl of {site} finished").into(),
-                        body: format!(
-                            "{} pages, {} resources, {} errors",
-                            group_digits(status.pages as usize),
-                            group_digits(status.resources as usize),
-                            group_digits(status.errors as usize),
+                        title: t!("app.notification.crawl_finished_title", site = site).into(),
+                        body: t!(
+                            "app.notification.crawl_finished_body",
+                            pages = group_digits(status.pages as usize),
+                            resources = group_digits(status.resources as usize),
+                            errors = group_digits(status.errors as usize),
                         )
                         .into(),
                         actions: Vec::new(),
@@ -1396,13 +1435,16 @@ impl ShoutingRobinApp {
     fn on_settings(&mut self, _: &OpenSettings, window: &mut Window, cx: &mut Context<Self>) {
         let settings_view = cx.new(SettingsView::new);
         window.open_dialog(cx, move |dialog, _window, _cx| {
-            dialog.title("Settings").w(gpui_kit::px(960.)).child(
-                div()
-                    .id("settings-body")
-                    .h(gpui_kit::px(600.))
-                    .overflow_y_scroll()
-                    .child(settings_view.clone()),
-            )
+            dialog
+                .title(SharedString::from(t!("app.dialog.settings")))
+                .w(gpui_kit::px(960.))
+                .child(
+                    div()
+                        .id("settings-body")
+                        .h(gpui_kit::px(600.))
+                        .overflow_y_scroll()
+                        .child(settings_view.clone()),
+                )
         });
     }
 }
@@ -1417,8 +1459,8 @@ impl ShoutingRobinApp {
             UpdateState::UpToDate => None,
             UpdateState::Available(version) => Some(
                 button
-                    .label("Update")
-                    .tooltip(format!("Download Shouting Robin {version}"))
+                    .label(t!("app.update.update"))
+                    .tooltip(t!("app.update.download_tooltip", version = version))
                     .on_click(|_, window, cx| {
                         let download = UpdateManager::download_update(cx);
                         window
@@ -1430,7 +1472,10 @@ impl ShoutingRobinApp {
                                 if let Err(e) = cx.update(|window, cx| {
                                     window.push_notification(
                                         Notification::new()
-                                            .message(format!("Failed to download update: {e:#}"))
+                                            .message(SharedString::from(t!(
+                                                "app.notification.download_failed",
+                                                error = format!("{e:#}")
+                                            )))
                                             .with_type(NotificationType::Error),
                                         cx,
                                     );
@@ -1443,23 +1488,28 @@ impl ShoutingRobinApp {
             ),
             UpdateState::Manual(version) => Some(
                 button
-                    .label("Update")
-                    .tooltip(format!("Open the Shouting Robin {version} release page"))
+                    .label(t!("app.update.update"))
+                    .tooltip(t!("app.update.release_page_tooltip", version = version))
                     .on_click(move |_, _, cx| {
                         cx.open_url(&UpdateManager::changelog_url(&format!("v{version}")));
                     }),
             ),
-            UpdateState::Downloading(_) => Some(button.label("Downloading").loading(true)),
+            UpdateState::Downloading(_) => {
+                Some(button.label(t!("app.update.downloading")).loading(true))
+            }
             UpdateState::Ready(version) => Some(
                 button
-                    .label("Restart")
-                    .tooltip(format!("Restart to update to Shouting Robin {version}"))
+                    .label(t!("app.update.restart"))
+                    .tooltip(t!("app.update.restart_tooltip", version = version))
                     .on_click(|_, window, cx| {
                         if let Err(e) = UpdateManager::apply_pending_update(cx) {
                             tracing::error!("Failed to apply update: {e:#}");
                             window.push_notification(
                                 Notification::new()
-                                    .message(format!("Failed to apply update: {e:#}"))
+                                    .message(SharedString::from(t!(
+                                        "app.notification.apply_failed",
+                                        error = format!("{e:#}")
+                                    )))
                                     .with_type(NotificationType::Error),
                                 cx,
                             );
@@ -1569,13 +1619,21 @@ impl Render for ShoutingRobinApp {
             }
             if let Some(counts) = tab_badges.get(&tab) {
                 let (badge_count, tone, counted) = if counts.errors > 0 {
-                    (counts.errors, crate::ui::tag::Tone::Err, "errors")
+                    (counts.errors, crate::ui::tag::Tone::Err, "app.badge.errors")
                 } else if counts.warnings > 0 {
-                    (counts.warnings, crate::ui::tag::Tone::Warn, "warnings")
+                    (
+                        counts.warnings,
+                        crate::ui::tag::Tone::Warn,
+                        "app.badge.warnings",
+                    )
                 } else if matches!(tab, ResultTab::Ecommerce) {
-                    (counts.total, crate::ui::tag::Tone::Accent, "rows")
+                    (counts.total, crate::ui::tag::Tone::Accent, "app.badge.rows")
                 } else {
-                    (counts.total, crate::ui::tag::Tone::Neutral, "rows")
+                    (
+                        counts.total,
+                        crate::ui::tag::Tone::Neutral,
+                        "app.badge.rows",
+                    )
                 };
                 if badge_count > 0 {
                     // The suffix is a sibling of the padded label, so the label's
@@ -1595,9 +1653,9 @@ impl Render for ShoutingRobinApp {
                                     .child(SharedString::from(compact_count(badge_count))),
                             )
                             .when(badge_count >= 1_000, |badge| {
-                                let exact = SharedString::from(format!(
-                                    "{} {counted}",
-                                    group_digits(badge_count)
+                                let exact = SharedString::from(t!(
+                                    counted,
+                                    count = group_digits(badge_count)
                                 ));
                                 badge.tooltip(move |window, cx| {
                                     Tooltip::new(exact.clone()).build(window, cx)
@@ -1666,7 +1724,7 @@ impl Render for ShoutingRobinApp {
                         el.text_color(cx.theme().tab_foreground)
                             .hover(|el| el.text_color(cx.theme().tab_active_foreground))
                     })
-                    .child(SharedString::from(filter.label()))
+                    .child(filter.label())
                     .when(count > 0, |el| {
                         el.child(
                             crate::ui::tag::tone_tag(filter.tone(), cx)
@@ -1675,7 +1733,8 @@ impl Render for ShoutingRobinApp {
                         )
                     })
                     .when(count >= 1_000, |el| {
-                        let exact = SharedString::from(format!("{} rows", group_digits(count)));
+                        let exact =
+                            SharedString::from(t!("app.badge.rows", count = group_digits(count)));
                         el.tooltip(move |window, cx| Tooltip::new(exact.clone()).build(window, cx))
                     })
                     .on_click(cx.listener(move |this, _event, _window, cx| {
@@ -1707,15 +1766,14 @@ impl Render for ShoutingRobinApp {
                     .py(SEGMENT_PADDING_Y)
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(format!(
-                        "{} results",
-                        self.results_grid.read(cx).row_count(cx)
-                    )),
+                    .child(SharedString::from(t!(
+                        "app.results_count",
+                        count = self.results_grid.read(cx).row_count(cx)
+                    ))),
             );
         }
 
         if let Some(note) = self.active_tab.note() {
-            let note = SharedString::from(note);
             filter_left = filter_left.child(
                 h_flex()
                     .id("tab-note")
@@ -1741,10 +1799,10 @@ impl Render for ShoutingRobinApp {
                     .truncate()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(format!(
-                        "Comparing to crawl from {}",
-                        crate::views::relative_time(now, started_at)
-                    )),
+                    .child(SharedString::from(t!(
+                        "app.comparing_to",
+                        when = crate::views::relative_time(now, started_at)
+                    ))),
             );
         }
         if let Some(note) = self.results_grid.read(cx).layout_context().note.clone() {
@@ -1754,7 +1812,7 @@ impl Render for ShoutingRobinApp {
                     .truncate()
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(note),
+                    .child(layout_note_text(&note)),
             );
         }
 
@@ -1774,7 +1832,7 @@ impl Render for ShoutingRobinApp {
                     .xsmall()
                     .outline()
                     .flex_shrink_0()
-                    .label("Export PDF")
+                    .label(t!("app.button.export_pdf"))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.export_pdf(window, cx);
                     })),
@@ -1790,11 +1848,11 @@ impl Render for ShoutingRobinApp {
                     .flex_shrink_0()
                     .selected(row_filter_open)
                     .icon(UiIcon::from(crate::ui::icon::Icon::Filter))
-                    .label("Filter")
+                    .label(t!("app.button.filter"))
                     .tooltip(if cfg!(target_os = "macos") {
-                        "Search and Filter Rows (⌘F)"
+                        t!("app.button.filter_tooltip_macos")
                     } else {
-                        "Search and Filter Rows (Ctrl+F)"
+                        t!("app.button.filter_tooltip")
                     })
                     .on_click(cx.listener(move |this, _, window, cx| {
                         if row_filter_open {
@@ -1811,7 +1869,7 @@ impl Render for ShoutingRobinApp {
                         .xsmall()
                         .outline()
                         .flex_shrink_0()
-                        .label("Export CSV")
+                        .label(t!("app.button.export_csv"))
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.export_csv(cx);
                         })),
@@ -1821,7 +1879,7 @@ impl Render for ShoutingRobinApp {
                         .xsmall()
                         .outline()
                         .flex_shrink_0()
-                        .label("Export All")
+                        .label(t!("app.button.export_all"))
                         .on_click(cx.listener(|this, _, window, cx| {
                             this.export_all_csv(window, cx);
                         })),
@@ -1966,6 +2024,29 @@ impl Render for ShoutingRobinApp {
     }
 }
 
+/// The layout notes as the grid's layout context keeps them. They stay in
+/// English there, which is what the tests read, and are translated when shown.
+const COMPARING_LAYOUTS: &str = "Comparing layouts";
+const LAYOUT_COMPARISON_FAILED: &str = "Layout comparison failed";
+const BASELINE_NOT_CAPTURED: &str =
+    "Layout not compared: the baseline crawl did not capture layout";
+const BASELINE_SCROLLED: &str =
+    "Layout not compared: the baseline crawl scrolled its pages and this one did not";
+const THIS_SCROLLED: &str =
+    "Layout not compared: this crawl scrolled its pages and the baseline did not";
+
+fn layout_note_text(note: &str) -> SharedString {
+    let key = match note {
+        COMPARING_LAYOUTS => "app.layout_note.comparing",
+        LAYOUT_COMPARISON_FAILED => "app.layout_note.failed",
+        BASELINE_NOT_CAPTURED => "app.layout_note.baseline_not_captured",
+        BASELINE_SCROLLED => "app.layout_note.baseline_scrolled",
+        THIS_SCROLLED => "app.layout_note.this_scrolled",
+        _ => return SharedString::from(note.to_owned()),
+    };
+    t!(key).into()
+}
+
 /// Width over height of `img/shouting-robin.svg`
 const LOGO_ASPECT_RATIO: f32 = 7.95;
 
@@ -1977,19 +2058,19 @@ fn build_menu() -> Vec<Menu> {
         Menu {
             name: "Shouting Robin".into(),
             items: vec![
-                MenuItem::action("Settings…", OpenSettings),
+                MenuItem::action(t!("app.menu.settings_ellipsis"), OpenSettings),
                 MenuItem::separator(),
-                MenuItem::action("Quit Shouting Robin", Quit),
+                MenuItem::action(t!("app.menu.quit_app"), Quit),
             ],
             disabled: false,
         }
     } else {
         Menu {
-            name: "File".into(),
+            name: t!("app.menu.file").into(),
             items: vec![
-                MenuItem::action("Settings", OpenSettings),
+                MenuItem::action(t!("app.menu.settings"), OpenSettings),
                 MenuItem::separator(),
-                MenuItem::action("Quit", Quit),
+                MenuItem::action(t!("app.menu.quit"), Quit),
             ],
             disabled: false,
         }
@@ -1997,16 +2078,19 @@ fn build_menu() -> Vec<Menu> {
     vec![
         application_menu,
         Menu {
-            name: "Edit".into(),
+            name: t!("app.menu.edit").into(),
             items: vec![
-                MenuItem::action("Undo", gpui_kit::component::input::Undo),
-                MenuItem::action("Redo", gpui_kit::component::input::Redo),
+                MenuItem::action(t!("app.menu.undo"), gpui_kit::component::input::Undo),
+                MenuItem::action(t!("app.menu.redo"), gpui_kit::component::input::Redo),
                 MenuItem::separator(),
-                MenuItem::action("Cut", gpui_kit::component::input::Cut),
-                MenuItem::action("Copy", gpui_kit::component::input::Copy),
-                MenuItem::action("Paste", gpui_kit::component::input::Paste),
+                MenuItem::action(t!("app.menu.cut"), gpui_kit::component::input::Cut),
+                MenuItem::action(t!("app.menu.copy"), gpui_kit::component::input::Copy),
+                MenuItem::action(t!("app.menu.paste"), gpui_kit::component::input::Paste),
                 MenuItem::separator(),
-                MenuItem::action("Select All", gpui_kit::component::input::SelectAll),
+                MenuItem::action(
+                    t!("app.menu.select_all"),
+                    gpui_kit::component::input::SelectAll,
+                ),
             ],
             disabled: false,
         },
@@ -2093,18 +2177,14 @@ fn layout_context(
     };
     if previous.layout_capture == layout_capture {
         context.baseline_crawl_id = Some(previous.id);
-        context.note = Some("Comparing layouts".into());
+        context.note = Some(COMPARING_LAYOUTS.into());
         return (context, Some(previous.id));
     }
     context.note = Some(
         match previous.layout_capture {
-            crate::crawl::LayoutCapture::Off => {
-                "Layout not compared: the baseline crawl did not capture layout"
-            }
-            _ if previous.layout_capture.scrolls() => {
-                "Layout not compared: the baseline crawl scrolled its pages and this one did not"
-            }
-            _ => "Layout not compared: this crawl scrolled its pages and the baseline did not",
+            crate::crawl::LayoutCapture::Off => BASELINE_NOT_CAPTURED,
+            _ if previous.layout_capture.scrolls() => BASELINE_SCROLLED,
+            _ => THIS_SCROLLED,
         }
         .into(),
     );

@@ -223,11 +223,11 @@ pub enum HreflangSource {
 }
 
 impl HreflangSource {
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> std::borrow::Cow<'static, str> {
         match self {
-            Self::Html => "HTML",
-            Self::HttpHeader => "HTTP",
-            Self::Sitemap => "Sitemap",
+            Self::Html => "HTML".into(),
+            Self::HttpHeader => "HTTP".into(),
+            Self::Sitemap => t!("crawl.hreflang_source.sitemap"),
         }
     }
 }
@@ -492,6 +492,12 @@ impl PageRecord {
         }
     }
 
+    /// `indexability_status` in the app's language. Filters and sorting keep
+    /// comparing the English.
+    pub fn indexability_status_text(&self) -> String {
+        indexability_status_text(&self.indexability_status())
+    }
+
     pub fn compute_indexability(&mut self) {
         self.indexability = Some(match self.indexability_status().as_str() {
             "Indexable" => "Indexable".to_string().into(),
@@ -499,6 +505,32 @@ impl PageRecord {
             _ => "Non-Indexable".to_string().into(),
         });
     }
+}
+
+/// An `indexability_status` or `indexability` value, as computed or stored
+/// in English, in the app's language. A part it does not know stays as it is.
+pub fn indexability_status_text(status: &str) -> String {
+    status
+        .split(", ")
+        .map(|reason| match reason {
+            "Indexable" => t!("crawl.indexability.indexable").into_owned(),
+            "Non-Indexable" => t!("crawl.indexability.non_indexable").into_owned(),
+            "N/A" => t!("crawl.indexability.not_applicable").into_owned(),
+            "Redirected" => t!("crawl.indexability.redirected").into_owned(),
+            "Noindex" => t!("crawl.indexability.noindex").into_owned(),
+            "Canonicalised" => t!("crawl.indexability.canonicalised").into_owned(),
+            other => match other
+                .strip_prefix("Non-Indexable (")
+                .and_then(|rest| rest.strip_suffix(')'))
+            {
+                Some(status) => {
+                    t!("crawl.indexability.non_indexable_status", status = status).into_owned()
+                }
+                None => other.to_string(),
+            },
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 #[derive(Debug, Clone)]

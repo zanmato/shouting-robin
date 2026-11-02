@@ -95,11 +95,11 @@ impl LayoutCapture {
         self == Self::Scrolled
     }
 
-    pub fn describe(self) -> &'static str {
+    pub fn describe(self) -> std::borrow::Cow<'static, str> {
         match self {
-            Self::Off => "Layout not captured",
-            Self::Loaded => "Layout captured, without scrolling",
-            Self::Scrolled => "Layout captured, with scrolling",
+            Self::Off => t!("crawl.layout_capture.off"),
+            Self::Loaded => t!("crawl.layout_capture.loaded"),
+            Self::Scrolled => t!("crawl.layout_capture.scrolled"),
         }
     }
 }

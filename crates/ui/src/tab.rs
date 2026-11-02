@@ -1158,7 +1158,7 @@ impl RenderOnce for TabBar {
                                 } else if let Some(icon) = icon.clone() {
                                     PopupMenuItem::element(move |_, _| icon.clone())
                                 } else {
-                                    PopupMenuItem::new("Unnamed")
+                                    PopupMenuItem::new(SharedString::from(t!("ui.tab.unnamed")))
                                 };
                                 this = this.item(
                                     base.checked(selected_index == Some(ix))

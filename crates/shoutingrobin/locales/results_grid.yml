@@ -1,0 +1,831 @@
+_version: 2
+results_grid:
+  column:
+    address:
+      en: "Address"
+      sv: "Adress"
+    content:
+      en: "Content"
+      sv: "Innehåll"
+    code:
+      en: "Code"
+      sv: "Kod"
+    status:
+      en: "Status"
+      sv: "Status"
+    indexability:
+      en: "Indexability"
+      sv: "Indexerbarhet"
+    index_status:
+      en: "Index. Status"
+      sv: "Indexstatus"
+    title:
+      en: "Title"
+      sv: "Titel"
+    title_length:
+      en: "Title Len"
+      sv: "Titellängd"
+    meta_desc:
+      en: "Meta Desc"
+      sv: "Metabeskr."
+    meta_robots:
+      en: "Meta Robots"
+      sv: "Meta robots"
+    canonical:
+      en: "Canonical"
+      sv: "Kanonisk"
+    size:
+      en: "Size"
+      sv: "Storlek"
+    transferred:
+      en: "Transferred"
+      sv: "Överfört"
+    response_time:
+      en: "Response Time"
+      sv: "Svarstid"
+    fetches:
+      en: "Fetches"
+      sv: "Hämtningar"
+    not_modified_responses:
+      en: "304s"
+      sv: "304:or"
+    words:
+      en: "Words"
+      sv: "Ord"
+    depth:
+      en: "Depth"
+      sv: "Djup"
+    folder_depth:
+      en: "Folder Depth"
+      sv: "Mappdjup"
+    inlinks:
+      en: "Inlinks"
+      sv: "Inkommande"
+    unique_in:
+      en: "Unique In"
+      sv: "Unika in"
+    csr_in:
+      en: "CSR In"
+      sv: "CSR in"
+    csr_in_percent:
+      en: "CSR In %"
+      sv: "CSR in %"
+    outlinks:
+      en: "Outlinks"
+      sv: "Utgående"
+    unique_out:
+      en: "Unique Out"
+      sv: "Unika ut"
+    external_out:
+      en: "Ext. Out"
+      sv: "Ext. ut"
+    unique_external_out:
+      en: "Unique Ext. Out"
+      sv: "Unika ext. ut"
+    csr_out:
+      en: "CSR Out"
+      sv: "CSR ut"
+    csr_out_percent:
+      en: "CSR Out %"
+      sv: "CSR ut %"
+    last_modified:
+      en: "Last Modified"
+      sv: "Senast ändrad"
+    redirect_uri:
+      en: "Redirect URI"
+      sv: "Omdirigerings-URI"
+    redirect_type:
+      en: "Redirect Type"
+      sv: "Omdirigeringstyp"
+    closest_similarity:
+      en: "Closest Sim."
+      sv: "Största likhet"
+    near_duplicates:
+      en: "Near Dups"
+      sv: "Nära dubbletter"
+    link_score:
+      en: "Link Score"
+      sv: "Länkpoäng"
+    content_type:
+      en: "Content Type"
+      sv: "Innehållstyp"
+    title_2:
+      en: "Title 2"
+      sv: "Titel 2"
+    pixel_width:
+      en: "Pixel Width"
+      sv: "Pixelbredd"
+    occurrences:
+      en: "Occurrences"
+      sv: "Förekomster"
+    meta_desc_2:
+      en: "Meta Desc 2"
+      sv: "Metabeskr. 2"
+    meta_desc_length:
+      en: "Meta Desc Len"
+      sv: "Metabeskr. längd"
+    h1_length:
+      en: "H1 Len"
+      sv: "H1-längd"
+    h2_length:
+      en: "H2 Len"
+      sv: "H2-längd"
+    sequence:
+      en: "Sequence"
+      sv: "Ordning"
+    hash:
+      en: "Hash"
+      sv: "Hash"
+    ssr_words:
+      en: "SSR Words"
+      sv: "SSR-ord"
+    ssr_diff:
+      en: "SSR Diff"
+      sv: "SSR-skillnad"
+    body_tag:
+      en: "Body Tag"
+      sv: "Body-tagg"
+    src:
+      en: "Src"
+      sv: "Src"
+    alt_text:
+      en: "Alt Text"
+      sv: "Alt-text"
+    image_inlinks:
+      en: "IMG Inlinks"
+      sv: "IMG inkommande"
+    width:
+      en: "Width"
+      sv: "Bredd"
+    height:
+      en: "Height"
+      sv: "Höjd"
+    has_alt:
+      en: "Has Alt"
+      sv: "Har alt"
+    tags:
+      en: "Tags"
+      sv: "Taggar"
+    source:
+      en: "Source"
+      sv: "Källa"
+    format:
+      en: "Format"
+      sv: "Format"
+    type:
+      en: "Type"
+      sv: "Typ"
+    errors:
+      en: "Errors"
+      sv: "Fel"
+    warnings:
+      en: "Warnings"
+      sv: "Varningar"
+    in_sitemap:
+      en: "In Sitemap"
+      sv: "I webbplatskarta"
+    last_mod:
+      en: "Last Mod"
+      sv: "Senast ändrad"
+    sitemap_url:
+      en: "Sitemap URL"
+      sv: "Webbplatskartans URL"
+    rule:
+      en: "Rule"
+      sv: "Regel"
+    impact:
+      en: "Impact"
+      sv: "Påverkan"
+    target:
+      en: "Target"
+      sv: "Mål"
+    price:
+      en: "Price"
+      sv: "Pris"
+    currency:
+      en: "Currency"
+      sv: "Valuta"
+    availability:
+      en: "Availability"
+      sv: "Tillgänglighet"
+    brand:
+      en: "Brand"
+      sv: "Varumärke"
+    has_image:
+      en: "Has Image"
+      sv: "Har bild"
+    has_review:
+      en: "Has Review"
+      sv: "Har omdöme"
+    mixed_content:
+      en: "Mixed Content"
+      sv: "Blandat innehåll"
+    length:
+      en: "Length"
+      sv: "Längd"
+    issue:
+      en: "Issue"
+      sv: "Problem"
+    priority:
+      en: "Priority"
+      sv: "Prioritet"
+    urls:
+      en: "URLs"
+      sv: "URL:er"
+    percent_of_total:
+      en: "% of Total"
+      sv: "% av totalt"
+    description:
+      en: "Description"
+      sv: "Beskrivning"
+    hint:
+      en: "Hint"
+      sv: "Tips"
+    unique_csr_in:
+      en: "Unique CSR In"
+      sv: "Unika CSR in"
+    unique_csr_out:
+      en: "Unique CSR Out"
+      sv: "Unika CSR ut"
+    external_csr_out:
+      en: "Ext. CSR Out"
+      sv: "Ext. CSR ut"
+    unique_external_csr_out:
+      en: "Unique Ext. CSR Out"
+      sv: "Unika ext. CSR ut"
+    directory:
+      en: "Directory"
+      sv: "Mapp"
+    pages:
+      en: "Pages"
+      sv: "Sidor"
+    average_words:
+      en: "Avg Words"
+      sv: "Snitt ord"
+    total_size:
+      en: "Total Size"
+      sv: "Total storlek"
+    indexable:
+      en: "Indexable"
+      sv: "Indexerbara"
+    non_indexable:
+      en: "Non-Idx"
+      sv: "Icke idx"
+    change:
+      en: "Change"
+      sv: "Ändring"
+    detail:
+      en: "Detail"
+      sv: "Detalj"
+    template:
+      en: "Template"
+      sv: "Mall"
+    joined_by_layout:
+      en: "Joined by Layout"
+      sv: "Tillagd via layout"
+    missing_markup:
+      en: "Missing Markup"
+      sv: "Saknar märkning"
+    layout_changed:
+      en: "Layout Changed"
+      sv: "Layout ändrad"
+    most_common_change:
+      en: "Most Common Change"
+      sv: "Vanligaste ändring"
+    previous:
+      en: "Prev"
+      sv: "Föreg."
+    hreflang_language:
+      en: "hreflang %{pair}"
+      sv: "hreflang %{pair}"
+    hreflang_url:
+      en: "hreflang %{pair} URL"
+      sv: "hreflang %{pair} URL"
+  filter:
+    all:
+      en: "All"
+      sv: "Alla"
+    missing:
+      en: "Missing"
+      sv: "Saknas"
+    duplicate:
+      en: "Duplicate"
+      sv: "Dubblett"
+    over_length:
+      en: "Over Length"
+      sv: "För lång"
+    under_length:
+      en: "Under Length"
+      sv: "För kort"
+    multiple:
+      en: "Multiple"
+      sv: "Flera"
+    same_as_h1:
+      en: "Same as H1"
+      sv: "Samma som H1"
+    html_entity:
+      en: "HTML entity"
+      sv: "HTML-entitet"
+    non_sequential:
+      en: "Non-Sequential"
+      sv: "Ej i ordning"
+    non_indexable:
+      en: "Non-Indexable"
+      sv: "Icke indexerbar"
+    images:
+      en: "Images"
+      sv: "Bilder"
+    other_resource:
+      en: "Other"
+      sv: "Övrigt"
+    contains_canonical:
+      en: "Contains Canonical"
+      sv: "Har kanonisk"
+    self_referencing:
+      en: "Self-Referencing"
+      sv: "Självrefererande"
+    canonicalised:
+      en: "Canonicalised"
+      sv: "Kanoniserad"
+    missing_canonical:
+      en: "Missing"
+      sv: "Saknas"
+    contains_hreflang:
+      en: "Contains Hreflang"
+      sv: "Har hreflang"
+    missing_hreflang:
+      en: "Missing"
+      sv: "Saknas"
+    hreflang_missing_return_tag:
+      en: "Missing Return Tags"
+      sv: "Saknar returtaggar"
+    hreflang_invalid_lang:
+      en: "Invalid Language Code"
+      sv: "Ogiltig språkkod"
+    hreflang_missing_x_default:
+      en: "Missing x-default"
+      sv: "Saknar x-default"
+    hreflang_missing_self_reference:
+      en: "Missing Self Reference"
+      sv: "Saknar självreferens"
+    hreflang_non_canonical:
+      en: "Non-Canonical Target"
+      sv: "Icke kanoniskt mål"
+    has_structured_data:
+      en: "Has Structured Data"
+      sv: "Har strukturerad data"
+    missing_structured_data:
+      en: "Missing"
+      sv: "Saknas"
+    sd_errors:
+      en: "Errors"
+      sv: "Fel"
+    sd_warnings:
+      en: "Warnings"
+      sv: "Varningar"
+    microdata_urls:
+      en: "Microdata"
+      sv: "Mikrodata"
+    parse_errors:
+      en: "Parse Errors"
+      sv: "Tolkningsfel"
+    missing_alt_text:
+      en: "Missing Alt Text"
+      sv: "Saknar alt-text"
+    missing_alt_attribute:
+      en: "Missing Alt Attribute"
+      sv: "Saknar alt-attribut"
+    alt_over_100:
+      en: "Alt Over 100"
+      sv: "Alt över 100"
+    missing_size_attributes:
+      en: "Missing Size Attrs"
+      sv: "Saknar storleksattribut"
+    image_over_100_kb:
+      en: "Over 100 kB"
+      sv: "Över 100 kB"
+    image_broken:
+      en: "Broken"
+      sv: "Trasiga"
+    urls_in_sitemap:
+      en: "In Sitemap"
+      sv: "I webbplatskarta"
+    urls_not_in_sitemap:
+      en: "Not in Sitemap"
+      sv: "Inte i webbplatskarta"
+    sitemap_orphans:
+      en: "Orphan URLs"
+      sv: "Föräldralösa URL:er"
+    non_indexable_in_sitemap:
+      en: "Non-Indexable in Sitemap"
+      sv: "Icke indexerbara i webbplatskarta"
+    sitemap_non_200:
+      en: "Non-200 in Sitemap"
+      sv: "Ej 200 i webbplatskarta"
+    is_product_page:
+      en: "Product Pages"
+      sv: "Produktsidor"
+    missing_price:
+      en: "Missing Price"
+      sv: "Saknar pris"
+    missing_availability:
+      en: "Missing Availability"
+      sv: "Saknar tillgänglighet"
+    missing_sku:
+      en: "Missing SKU"
+      sv: "Saknar SKU"
+    missing_gtin:
+      en: "Missing GTIN"
+      sv: "Saknar GTIN"
+    invalid_gtin:
+      en: "Invalid GTIN"
+      sv: "Ogiltigt GTIN"
+    out_of_stock_indexable:
+      en: "Out of Stock"
+      sv: "Slut i lager"
+    missing_breadcrumbs:
+      en: "Missing Breadcrumbs"
+      sv: "Saknar brödsmulor"
+    indexable_parameter_url:
+      en: "Indexable Parameter URLs"
+      sv: "Indexerbara parameter-URL:er"
+    redirect_chain:
+      en: "Redirect Chain"
+      sv: "Omdirigeringskedja"
+    canonical_target_not_indexable:
+      en: "Canonical to Non-Indexable"
+      sv: "Kanonisk till icke indexerbar"
+    missing_brand:
+      en: "Missing Brand"
+      sv: "Saknar varumärke"
+    missing_review_rating:
+      en: "Missing Review/Rating"
+      sv: "Saknar omdöme/betyg"
+    missing_product_image:
+      en: "Missing Image"
+      sv: "Saknar bild"
+    exact_duplicates:
+      en: "Exact Duplicates"
+      sv: "Exakta dubbletter"
+    near_duplicates:
+      en: "Near Duplicates"
+      sv: "Nära dubbletter"
+    low_content:
+      en: "Low Content"
+      sv: "Lite innehåll"
+    ssr_content_missing:
+      en: "SSR Content Missing"
+      sv: "SSR-innehåll saknas"
+    blocked_by_robots:
+      en: "Blocked by robots.txt"
+      sv: "Blockerad av robots.txt"
+    slow_lcp:
+      en: "Slow LCP"
+      sv: "Långsam LCP"
+    slow_cls:
+      en: "Slow CLS"
+      sv: "Hög CLS"
+    slow_fcp:
+      en: "Slow FCP"
+      sv: "Långsam FCP"
+    slow_ttfb:
+      en: "Slow TTFB"
+      sv: "Långsam TTFB"
+    sd_type_article:
+      en: "Article"
+      sv: "Artikel"
+    sd_type_product:
+      en: "Product"
+      sv: "Produkt"
+    sd_type_recipe:
+      en: "Recipe"
+      sv: "Recept"
+    sd_type_video:
+      en: "Video"
+      sv: "Video"
+    sd_type_breadcrumb:
+      en: "Breadcrumb"
+      sv: "Brödsmulor"
+    sd_type_organization:
+      en: "Organization"
+      sv: "Organisation"
+    missing_https:
+      en: "Missing HTTPS"
+      sv: "Saknar HTTPS"
+    missing_hsts:
+      en: "Missing HSTS"
+      sv: "Saknar HSTS"
+    missing_csp:
+      en: "Missing CSP"
+      sv: "Saknar CSP"
+    missing_frame_guard:
+      en: "Missing Frame Guard"
+      sv: "Saknar ramskydd"
+    missing_content_type_options:
+      en: "Missing X-Content-Type"
+      sv: "Saknar X-Content-Type"
+    missing_referrer_policy:
+      en: "Missing Referrer-Policy"
+      sv: "Saknar Referrer-Policy"
+    mixed_content:
+      en: "Mixed Content"
+      sv: "Blandat innehåll"
+    url_non_ascii:
+      en: "Non-ASCII"
+      sv: "Icke ASCII"
+    url_uppercase:
+      en: "Uppercase"
+      sv: "Versaler"
+    url_underscores:
+      en: "Underscores"
+      sv: "Understreck"
+    url_multiple_slashes:
+      en: "Multiple Slashes"
+      sv: "Flera snedstreck"
+    url_parameters:
+      en: "Parameters"
+      sv: "Parametrar"
+    url_over_length:
+      en: "Over 115 Chars"
+      sv: "Över 115 tecken"
+    url_spaces:
+      en: "Contains Space"
+      sv: "Innehåller mellanslag"
+    missing_body_tag:
+      en: "Missing <body>"
+      sv: "Saknar <body>"
+    directive_none:
+      en: "None"
+      sv: "Ingen"
+    redirects:
+      en: "Redirects"
+      sv: "Omdirigeringar"
+    redirect_loop:
+      en: "Redirect Loop"
+      sv: "Omdirigeringsloop"
+    over_pixel_width:
+      en: "Over Pixel Width"
+      sv: "Över pixelbredd"
+    under_pixel_width:
+      en: "Under Pixel Width"
+      sv: "Under pixelbredd"
+    issue_type_error:
+      en: "Errors"
+      sv: "Fel"
+    issue_type_opportunity:
+      en: "Opportunities"
+      sv: "Möjligheter"
+    issue_type_warning:
+      en: "Warnings"
+      sv: "Varningar"
+    priority_high:
+      en: "High Priority"
+      sv: "Hög prioritet"
+    priority_medium:
+      en: "Medium Priority"
+      sv: "Medelhög prioritet"
+    priority_low:
+      en: "Low Priority"
+      sv: "Låg prioritet"
+    link_broken:
+      en: "Broken (4xx/5xx)"
+      sv: "Trasiga (4xx/5xx)"
+    link_redirected:
+      en: "Redirected (3xx)"
+      sv: "Omdirigerade (3xx)"
+    link_no_anchor_text:
+      en: "No Anchor Text"
+      sv: "Ingen ankartext"
+    link_external:
+      en: "External"
+      sv: "Externa"
+    depth_shallow:
+      en: "Depth 0-1"
+      sv: "Djup 0-1"
+    depth_medium:
+      en: "Depth 2-3"
+      sv: "Djup 2-3"
+    depth_deep:
+      en: "Depth 4+"
+      sv: "Djup 4+"
+    change_added:
+      en: "Added"
+      sv: "Tillagda"
+    change_removed:
+      en: "Removed"
+      sv: "Borttagna"
+    change_changed:
+      en: "Changed"
+      sv: "Ändrade"
+    change_layout:
+      en: "Layout Changed"
+      sv: "Layout ändrad"
+    layout_missing_markup:
+      en: "Missing Markup"
+      sv: "Saknar märkning"
+    layout_changed:
+      en: "Layout Changed"
+      sv: "Layout ändrad"
+    product_layout_without_markup:
+      en: "Product Layout, No Markup"
+      sv: "Produktlayout utan märkning"
+    redirect_temporary:
+      en: "Temporary Redirect"
+      sv: "Tillfällig omdirigering"
+    redirect_to_error:
+      en: "Redirect to Error"
+      sv: "Omdirigering till fel"
+    link_to_http:
+      en: "Links to HTTP"
+      sv: "Länkar till HTTP"
+    single_inlink:
+      en: "One Inlink"
+      sv: "En inkommande länk"
+    no_internal_outlinks:
+      en: "No Internal Outlinks"
+      sv: "Inga interna utgående länkar"
+    canonical_to_redirect:
+      en: "Canonical to Redirect"
+      sv: "Kanonisk till omdirigering"
+    canonical_to_error:
+      en: "Canonical to 4xx/5xx"
+      sv: "Kanonisk till 4xx/5xx"
+    canonical_to_http:
+      en: "Canonical to HTTP"
+      sv: "Kanonisk till HTTP"
+    canonical_chain:
+      en: "Canonical Chain"
+      sv: "Kanonisk kedja"
+    canonicalised_in_sitemap:
+      en: "Canonicalised in Sitemap"
+      sv: "Kanoniserade i webbplatskarta"
+    slow_response:
+      en: "Slow Response"
+      sv: "Långsamt svar"
+    large_html:
+      en: "HTML Over 2 MB"
+      sv: "HTML över 2 MB"
+    not_cached:
+      en: "Not Cached"
+      sv: "Inte cachad"
+  issue_type:
+    issue:
+      en: Issue
+      sv: Problem
+    opportunity:
+      en: Opportunity
+      sv: Möjlighet
+    warning:
+      en: Warning
+      sv: Varning
+  priority:
+    high:
+      en: High
+      sv: Hög
+    medium:
+      en: Medium
+      sv: Medel
+    low:
+      en: Low
+      sv: Låg
+  change_kind:
+    added:
+      en: Added
+      sv: Tillagd
+    removed:
+      en: Removed
+      sv: Borttagen
+    changed:
+      en: Changed
+      sv: Ändrad
+  change:
+    new_page:
+      en: New page
+      sv: Ny sida
+    page_removed:
+      en: Page removed
+      sv: Sidan borttagen
+  loading:
+    loading_crawl:
+      en: "Loading crawl…"
+      sv: "Läser in crawlning…"
+    reading_with_baseline:
+      en: Reading the crawl and the previous one to compare with
+      sv: Läser crawlningen och den föregående att jämföra med
+    reading:
+      en: Reading the crawl
+      sv: Läser crawlningen
+    counting:
+      en: Counting issues
+      sv: Räknar problem
+  cell:
+    "yes":
+      en: "Yes"
+      sv: "Ja"
+    "no":
+      en: "No"
+      sv: "Nej"
+    microdata:
+      en: Microdata
+      sv: Mikrodata
+    h2_before_h1:
+      en: H2 before H1
+      sv: H2 före H1
+    sequential:
+      en: Sequential
+      sv: I ordning
+    status_ok:
+      en: OK
+      sv: OK
+    status_redirect:
+      en: Redirect
+      sv: Omdirigering
+    status_client_error:
+      en: Client Err
+      sv: Klientfel
+    status_server_error:
+      en: Server Err
+      sv: Serverfel
+    redirect_permanent:
+      en: "HTTP %{status} Permanent"
+      sv: "HTTP %{status} Permanent"
+    redirect_temporary:
+      en: "HTTP %{status} Temporary"
+      sv: "HTTP %{status} Tillfällig"
+    redirect_see_other:
+      en: HTTP 303 See Other
+      sv: HTTP 303 Se annan
+    redirect_http:
+      en: HTTP Redirect
+      sv: HTTP-omdirigering
+    redirect:
+      en: Redirect
+      sv: Omdirigering
+    impact_critical:
+      en: critical
+      sv: kritisk
+    impact_serious:
+      en: serious
+      sv: allvarlig
+    impact_moderate:
+      en: moderate
+      sv: måttlig
+    impact_minor:
+      en: minor
+      sv: mindre
+  relative_time:
+    just_now:
+      en: just now
+      sv: nyss
+    minutes_ago:
+      en: "%{count}m ago"
+      sv: "%{count} min sedan"
+    hours_ago:
+      en: "%{count}h ago"
+      sv: "%{count} h sedan"
+    days_ago:
+      en: "%{count}d ago"
+      sv: "%{count} d sedan"
+    date:
+      en: "%{month} %{day}"
+      sv: "%{day} %{month}"
+    unknown:
+      en: unknown
+      sv: okänt
+  month:
+    january:
+      en: Jan
+      sv: jan
+    february:
+      en: Feb
+      sv: feb
+    march:
+      en: Mar
+      sv: mar
+    april:
+      en: Apr
+      sv: apr
+    may:
+      en: May
+      sv: maj
+    june:
+      en: Jun
+      sv: jun
+    july:
+      en: Jul
+      sv: jul
+    august:
+      en: Aug
+      sv: aug
+    september:
+      en: Sep
+      sv: sep
+    october:
+      en: Oct
+      sv: okt
+    november:
+      en: Nov
+      sv: nov
+    december:
+      en: Dec
+      sv: dec

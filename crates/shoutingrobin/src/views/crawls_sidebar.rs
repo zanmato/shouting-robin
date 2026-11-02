@@ -20,7 +20,7 @@ use crate::ui::icon::Icon;
 use crate::ui::tag::{Tone, compact_count, group_digits, tone_tag};
 
 /// One "label ..... count" line of the crawl badge's hover card.
-fn count_line(label: &'static str, count: i64, cx: &App) -> impl IntoElement {
+fn count_line(label: SharedString, count: i64, cx: &App) -> impl IntoElement {
     div()
         .flex()
         .flex_row()
@@ -282,7 +282,7 @@ impl Render for CrawlsSidebar {
                     .text_xs()
                     .font_bold()
                     .text_color(theme.primary)
-                    .child("Historic Crawls"),
+                    .child(SharedString::from(t!("details.sidebar.historic_crawls"))),
             )
             .child(
                 div()
@@ -339,8 +339,10 @@ impl Render for CrawlsSidebar {
                                         .id(("crawl-layout", crawl.id as usize))
                                         .child(UiIcon::from(Icon::LayoutPanelLeft).xsmall())
                                         .tooltip(move |window, cx| {
-                                            Tooltip::new(layout_capture.describe())
-                                                .build(window, cx)
+                                            Tooltip::new(SharedString::from(
+                                                layout_capture.describe(),
+                                            ))
+                                            .build(window, cx)
                                         }),
                                 )
                             })
@@ -349,7 +351,7 @@ impl Render for CrawlsSidebar {
                         let count_tag = if running {
                             tone_tag(Tone::Warn, cx)
                                 .rounded_full()
-                                .child(SharedString::from("running"))
+                                .child(SharedString::from(t!("details.sidebar.running")))
                                 .into_any_element()
                         } else {
                             // The badge counts every URL the crawl recorded,
@@ -375,14 +377,26 @@ impl Render for CrawlsSidebar {
                                             div()
                                                 .font_semibold()
                                                 .text_color(cx.theme().foreground)
-                                                .child(SharedString::from(format!(
-                                                    "{} URLs recorded",
-                                                    group_digits(total)
+                                                .child(SharedString::from(t!(
+                                                    "details.sidebar.urls_recorded",
+                                                    count = group_digits(total)
                                                 ))),
                                         )
-                                        .child(count_line("HTML pages", documents, cx))
-                                        .child(count_line("Resources and other URLs", others, cx))
-                                        .child(count_line("Discovered, not fetched", unfetched, cx))
+                                        .child(count_line(
+                                            t!("details.sidebar.html_pages").into(),
+                                            documents,
+                                            cx,
+                                        ))
+                                        .child(count_line(
+                                            t!("details.sidebar.resources_and_other_urls").into(),
+                                            others,
+                                            cx,
+                                        ))
+                                        .child(count_line(
+                                            t!("details.sidebar.discovered_not_fetched").into(),
+                                            unfetched,
+                                            cx,
+                                        ))
                                 })
                                 .into_any_element()
                         };
@@ -453,9 +467,11 @@ impl Render for CrawlsSidebar {
                                             .gap_1()
                                             .when(crawl.aborted, |el| {
                                                 el.child(
-                                                    tone_tag(Tone::Err, cx)
-                                                        .rounded_full()
-                                                        .child(SharedString::from("aborted")),
+                                                    tone_tag(Tone::Err, cx).rounded_full().child(
+                                                        SharedString::from(t!(
+                                                            "details.sidebar.aborted"
+                                                        )),
+                                                    ),
                                                 )
                                             })
                                             .child(count_tag),
@@ -472,7 +488,7 @@ impl Render for CrawlsSidebar {
                                     let sidebar_for_delete = sidebar.clone();
                                     let crawl_root = crawl_root.clone();
                                     menu.item(
-                                        PopupMenuItem::new("Recrawl")
+                                        PopupMenuItem::new(t!("details.sidebar.recrawl"))
                                             .icon(crate::ui::icon::Icon::RefreshCw)
                                             .on_click(window.listener_for(
                                                 &sidebar,
@@ -487,7 +503,7 @@ impl Render for CrawlsSidebar {
                                     )
                                     .separator()
                                     .item(
-                                        PopupMenuItem::new("Delete")
+                                        PopupMenuItem::new(t!("details.sidebar.delete"))
                                             .icon(IconName::Delete)
                                             .on_click(window.listener_for(
                                                 &sidebar_for_delete,

@@ -5,6 +5,11 @@
 //! Nothing here knows the app it runs in. An app gives the panel the folder
 //! its custom themes load from at startup, and what "use this theme" means.
 
+#[macro_use]
+extern crate rust_i18n;
+
+rust_i18n::i18n!("locales", fallback = "en");
+
 pub mod browser;
 pub mod color;
 pub mod convert;
@@ -50,19 +55,22 @@ pub fn install(
     extension_id: &str,
     themes: &ConvertedThemes,
 ) -> anyhow::Result<PathBuf> {
-    std::fs::create_dir_all(themes_dir)
-        .with_context(|| format!("creating {}", themes_dir.display()))?;
+    std::fs::create_dir_all(themes_dir).with_context(|| {
+        t!("vsx_themes.error.creating", path = themes_dir.display()).to_string()
+    })?;
     let path = installed_path(themes_dir, extension_id);
     let temporary = path.with_extension("json.partial");
     std::fs::write(&temporary, themes.to_json())
-        .with_context(|| format!("writing {}", temporary.display()))?;
-    std::fs::rename(&temporary, &path).with_context(|| format!("writing {}", path.display()))?;
+        .with_context(|| t!("vsx_themes.error.writing", path = temporary.display()).to_string())?;
+    std::fs::rename(&temporary, &path)
+        .with_context(|| t!("vsx_themes.error.writing", path = path.display()).to_string())?;
     Ok(path)
 }
 
 pub fn uninstall(themes_dir: &Path, extension_id: &str) -> anyhow::Result<()> {
     let path = installed_path(themes_dir, extension_id);
-    std::fs::remove_file(&path).with_context(|| format!("removing {}", path.display()))
+    std::fs::remove_file(&path)
+        .with_context(|| t!("vsx_themes.error.removing", path = path.display()).to_string())
 }
 
 /// The theme names an installed file holds.

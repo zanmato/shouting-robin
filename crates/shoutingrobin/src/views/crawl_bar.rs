@@ -126,12 +126,12 @@ impl CrawlBar {
 
         let include_input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("Leave empty to crawl every page")
+                .placeholder(t!("app.crawl_bar.placeholder.include"))
                 .auto_grow(2, 8)
         });
         let exclude_input = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("Leave empty to skip nothing")
+                .placeholder(t!("app.crawl_bar.placeholder.exclude"))
                 .auto_grow(2, 8)
         });
         let list_urls_input = cx.new(|cx| {
@@ -139,8 +139,9 @@ impl CrawlBar {
                 .placeholder("https://example.com/page-1\nhttps://example.com/page-2")
                 .auto_grow(6, 16)
         });
-        let test_url_input =
-            cx.new(|cx| InputState::new(window, cx).placeholder("Paste a URL from the site"));
+        let test_url_input = cx.new(|cx| {
+            InputState::new(window, cx).placeholder(t!("app.crawl_bar.placeholder.test_url"))
+        });
         let max_pages_input = cx.new(|cx| {
             InputState::new(window, cx)
                 .default_value(defaults.max_pages.to_string())
@@ -156,7 +157,12 @@ impl CrawlBar {
                 .max(MAX_CONCURRENT as f64)
         });
 
-        let mut subscriptions = vec![url_subscription];
+        let mut subscriptions = vec![
+            url_subscription,
+            cx.observe_global_in::<crate::locale::Locale>(window, |this, window, cx| {
+                this.translate_placeholders(window, cx);
+            }),
+        ];
         for input in [&include_input, &exclude_input] {
             subscriptions.push(cx.subscribe(input, |this, _state, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
@@ -212,6 +218,28 @@ impl CrawlBar {
         }
     }
 
+    /// Placeholders live in the input states, so a change of language has to
+    /// set them again.
+    fn translate_placeholders(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        for (input, key) in [
+            (&self.include_input, "app.crawl_bar.placeholder.include"),
+            (&self.exclude_input, "app.crawl_bar.placeholder.exclude"),
+        ] {
+            input.update(cx, |state, cx| state.set_placeholder(t!(key), window, cx));
+        }
+        self.test_url_input.update(cx, |state, cx| {
+            state.set_placeholder(t!("app.crawl_bar.placeholder.test_url"), window, cx)
+        });
+        for row in &self.headers {
+            row.name.update(cx, |state, cx| {
+                state.set_placeholder(t!("app.crawl_bar.placeholder.header_name"), window, cx)
+            });
+            row.value.update(cx, |state, cx| {
+                state.set_placeholder(t!("app.crawl_bar.placeholder.header_value"), window, cx)
+            });
+        }
+    }
+
     fn check_patterns(&mut self, cx: &mut Context<Self>) {
         self.include = PatternList::parse(&self.include_input.read(cx).value());
         self.exclude = PatternList::parse(&self.exclude_input.read(cx).value());
@@ -248,12 +276,12 @@ impl CrawlBar {
     fn add_header(&mut self, name: &str, value: &str, window: &mut Window, cx: &mut Context<Self>) {
         let name_input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Name")
+                .placeholder(t!("app.crawl_bar.placeholder.header_name"))
                 .default_value(name.to_string())
         });
         let value_input = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Value")
+                .placeholder(t!("app.crawl_bar.placeholder.header_value"))
                 .masked(true)
                 .default_value(value.to_string())
         });
@@ -631,46 +659,46 @@ impl CrawlBar {
         let problems = self.problem_count(cx);
         if problems > 0 {
             summary.push((
-                format!("Fix {}", plural(problems, "setting", "settings")).into(),
+                counted(problems, "app.crawl_bar.summary.fix_settings").into(),
                 Tone::Err,
             ));
         }
         if !self.list_mode && current.max_pages != defaults.max_pages {
             let label = if current.max_pages == 0 {
-                "No page limit".to_string()
+                t!("app.crawl_bar.summary.no_page_limit").into_owned()
             } else {
-                format!(
-                    "Max {}",
-                    plural(current.max_pages as usize, "page", "pages")
+                counted(
+                    current.max_pages as usize,
+                    "app.crawl_bar.summary.max_pages",
                 )
             };
             summary.push((label.into(), Tone::Neutral));
         }
         if !self.list_mode && !self.include.is_empty() {
             summary.push((
-                format!("Only {}", plural(self.include.len(), "pattern", "patterns")).into(),
+                counted(self.include.len(), "app.crawl_bar.summary.only_patterns").into(),
                 Tone::Neutral,
             ));
         }
         if !self.list_mode && !self.exclude.is_empty() {
             summary.push((
-                format!(
-                    "Skipping {}",
-                    plural(self.exclude.len(), "pattern", "patterns")
+                counted(
+                    self.exclude.len(),
+                    "app.crawl_bar.summary.skipping_patterns",
                 )
                 .into(),
                 Tone::Neutral,
             ));
         }
         if !self.list_mode && current.crawl_subdomains {
-            summary.push(("Subdomains".into(), Tone::Neutral));
+            summary.push((t!("app.crawl_bar.summary.subdomains").into(), Tone::Neutral));
         }
         if self.default_mode.renders_javascript() {
             if current.block_images != defaults.block_images {
                 let label = if current.block_images {
-                    "Images blocked"
+                    t!("app.crawl_bar.summary.images_blocked")
                 } else {
-                    "Images loaded"
+                    t!("app.crawl_bar.summary.images_loaded")
                 };
                 summary.push((label.into(), Tone::Neutral));
             }
@@ -679,22 +707,29 @@ impl CrawlBar {
                     && current.scroll_for_layout != defaults.scroll_for_layout)
             {
                 let label = match (current.capture_layout, current.scroll_for_layout) {
-                    (false, _) => "No layout",
-                    (true, true) => "Layout with scrolling",
-                    (true, false) => "Layout captured",
+                    (false, _) => t!("app.crawl_bar.summary.no_layout"),
+                    (true, true) => t!("app.crawl_bar.summary.layout_with_scrolling"),
+                    (true, false) => t!("app.crawl_bar.summary.layout_captured"),
                 };
                 summary.push((label.into(), Tone::Neutral));
             }
         }
         if current.max_concurrent != defaults.max_concurrent {
             summary.push((
-                format!("{} at a time", current.max_concurrent).into(),
+                t!(
+                    "app.crawl_bar.summary.at_a_time",
+                    count = current.max_concurrent
+                )
+                .into(),
                 Tone::Neutral,
             ));
         }
         let headers = self.header_entries(cx).len();
         if headers > 0 {
-            summary.push((plural(headers, "header", "headers").into(), Tone::Neutral));
+            summary.push((
+                counted(headers, "app.crawl_bar.summary.headers").into(),
+                Tone::Neutral,
+            ));
         }
         summary
     }
@@ -721,8 +756,10 @@ fn lines(text: &str) -> Vec<String> {
         .collect()
 }
 
-fn plural(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
+/// The text under `key` with `_one` or `_other` appended, for `count`.
+fn counted(count: usize, key: &str) -> String {
+    let form = if count == 1 { "one" } else { "other" };
+    t!(&format!("{key}_{form}"), count = count).into_owned()
 }
 
 fn set_text(
@@ -742,7 +779,7 @@ impl Focusable for CrawlBar {
     }
 }
 
-fn group(title: &'static str, trailing: Option<AnyElement>, cx: &App) -> gpui_kit::Div {
+fn group(title: impl Into<SharedString>, trailing: Option<AnyElement>, cx: &App) -> gpui_kit::Div {
     v_flex()
         .flex_1()
         .min_w(px(0.))
@@ -756,7 +793,7 @@ fn group(title: &'static str, trailing: Option<AnyElement>, cx: &App) -> gpui_ki
             h_flex()
                 .justify_between()
                 .gap_2()
-                .child(div().text_sm().font_semibold().child(title))
+                .child(div().text_sm().font_semibold().child(title.into()))
                 .children(trailing),
         )
 }
@@ -768,11 +805,15 @@ fn help(text: impl Into<SharedString>, cx: &App) -> gpui_kit::Div {
         .child(text.into())
 }
 
-fn field_label(label: &'static str, hint: &'static str, cx: &App) -> gpui_kit::Div {
+fn field_label(
+    label: impl Into<SharedString>,
+    hint: impl Into<SharedString>,
+    cx: &App,
+) -> gpui_kit::Div {
     h_flex()
         .justify_between()
         .gap_2()
-        .child(div().text_sm().child(label))
+        .child(div().text_sm().child(label.into()))
         .child(help(hint, cx))
 }
 
@@ -799,7 +840,7 @@ fn problem_lines(problems: &[InputProblem], cx: &App) -> Option<AnyElement> {
 /// without hovering.
 fn switch_setting(
     switch: Switch,
-    help_text: &'static str,
+    help_text: impl Into<SharedString>,
     indented: bool,
     cx: &App,
 ) -> gpui_kit::Div {
@@ -832,7 +873,7 @@ impl CrawlBar {
                             .small()
                             .ghost()
                             .icon(Icon::Sliders)
-                            .tooltip("Crawl settings")
+                            .tooltip(t!("app.crawl_bar.crawl_settings"))
                             .selected(self.settings_open)
                             .disabled(running)
                             .on_click(cx.listener(|this, _, _, cx| {
@@ -901,7 +942,7 @@ impl CrawlBar {
                         .small()
                         .primary()
                         .icon(Icon::Play)
-                        .tooltip("Crawl")
+                        .tooltip(t!("app.crawl_bar.crawl"))
                         .on_click(cx.listener(move |this, _, _, cx| {
                             this.start_crawl(default_mode, cx);
                         })),
@@ -913,7 +954,7 @@ impl CrawlBar {
                         .danger()
                         .small()
                         .icon(Icon::Stop)
-                        .tooltip("Stop")
+                        .tooltip(t!("app.crawl_bar.stop"))
                         .on_click(cx.listener(Self::on_stop)),
                 )
             })
@@ -934,7 +975,7 @@ impl CrawlBar {
             .flatten();
         let mut tooltip: Vec<String> = Vec::new();
         if let Some(site) = &remembered {
-            tooltip.push(format!("Remembered for {site}"));
+            tooltip.push(t!("app.crawl_bar.summary.remembered_for", site = site).into_owned());
         }
         tooltip.extend(summary.iter().map(|(label, _)| label.to_string()));
         let tooltip = SharedString::from(tooltip.join("\n"));
@@ -974,28 +1015,34 @@ impl CrawlBar {
             let url = self.test_url_input.read(cx).value().trim().to_string();
             (!url.is_empty()).then(|| {
                 if !self.include.problems.is_empty() || !self.exclude.problems.is_empty() {
-                    return h_flex().child(help("Fix the patterns above to test a URL", cx));
+                    return h_flex().child(help(t!("app.crawl_bar.verdict.fix_patterns"), cx));
                 }
                 let (tone, label, reason) = match url_verdict(&url, &self.include, &self.exclude) {
                     UrlVerdict::Crawled { included_by } => (
                         Tone::Ok,
-                        "Crawled",
+                        t!("app.crawl_bar.verdict.crawled"),
                         match included_by {
-                            Some(pattern) => format!("matches {pattern}"),
-                            None => "no pattern skips it".to_string(),
+                            Some(pattern) => {
+                                t!("app.crawl_bar.verdict.matches", pattern = pattern)
+                            }
+                            None => t!("app.crawl_bar.verdict.no_pattern_skips"),
                         },
                     ),
-                    UrlVerdict::Excluded { by } => (Tone::Err, "Skipped", format!("matches {by}")),
+                    UrlVerdict::Excluded { by } => (
+                        Tone::Err,
+                        t!("app.crawl_bar.verdict.skipped"),
+                        t!("app.crawl_bar.verdict.matches", pattern = by),
+                    ),
                     UrlVerdict::NotIncluded => (
                         Tone::Err,
-                        "Skipped",
-                        "matches no include pattern".to_string(),
+                        t!("app.crawl_bar.verdict.skipped"),
+                        t!("app.crawl_bar.verdict.no_include_match"),
                     ),
                 };
                 h_flex()
                     .gap_2()
                     .text_xs()
-                    .child(tone_tag(tone, cx).child(label))
+                    .child(tone_tag(tone, cx).child(SharedString::from(label)))
                     .child(
                         div()
                             .text_color(cx.theme().muted_foreground)
@@ -1010,12 +1057,12 @@ impl CrawlBar {
             .xsmall()
             .child(
                 Button::new("start-from-site")
-                    .label("Site")
+                    .label(t!("app.crawl_bar.start_from.site"))
                     .selected(!list_mode),
             )
             .child(
                 Button::new("start-from-list")
-                    .label("List")
+                    .label(t!("app.crawl_bar.start_from.list"))
                     .selected(list_mode),
             )
             .on_click(cx.listener(|this, selected: &Vec<usize>, _, cx| {
@@ -1023,26 +1070,30 @@ impl CrawlBar {
                 cx.notify();
             }))
             .into_any_element();
-        let scope = group("What to crawl", Some(start_from), cx)
-            .flex_grow(1.6)
-            .flex_basis(px(360.));
+        let scope = group(
+            t!("app.crawl_bar.group.what_to_crawl"),
+            Some(start_from),
+            cx,
+        )
+        .flex_grow(1.6)
+        .flex_basis(px(360.));
         if list_mode {
             let count = self.list_urls(cx).len();
             return scope
                 .child(
                     v_flex()
                         .gap_1()
-                        .child(field_label("URLs to crawl", "One per line", cx))
+                        .child(field_label(
+                            t!("app.crawl_bar.urls_to_crawl"),
+                            t!("app.crawl_bar.one_per_line"),
+                            cx,
+                        ))
                         .child(Textarea::new(&self.list_urls_input))
                         .child(help(
                             if count == 0 {
-                                "Only these URLs are fetched. Links on them aren't followed."
-                                    .to_string()
+                                t!("app.crawl_bar.list_help_empty").into_owned()
                             } else {
-                                format!(
-                                    "{}. Only these are fetched, and links on them aren't followed.",
-                                    plural(count, "URL", "URLs")
-                                )
+                                counted(count, "app.crawl_bar.list_help")
                             },
                             cx,
                         )),
@@ -1053,13 +1104,13 @@ impl CrawlBar {
             .child(switch_setting(
                 Switch::new("subdomains-toggle")
                     .small()
-                    .label("Include subdomains")
+                    .label(SharedString::from(t!("app.crawl_bar.include_subdomains")))
                     .checked(self.crawl_subdomains)
                     .on_click(cx.listener(|this, checked: &bool, _, cx| {
                         this.crawl_subdomains = *checked;
                         cx.notify();
                     })),
-                "Crawl links to other subdomains of the site as part of it.",
+                t!("app.crawl_bar.include_subdomains_help"),
                 false,
                 cx,
             ))
@@ -1067,8 +1118,8 @@ impl CrawlBar {
                 v_flex()
                     .gap_1()
                     .child(field_label(
-                        "Only crawl URLs matching",
-                        "Regex, one per line",
+                        t!("app.crawl_bar.only_crawl_matching"),
+                        t!("app.crawl_bar.regex_per_line"),
                         cx,
                     ))
                     .child(
@@ -1081,7 +1132,11 @@ impl CrawlBar {
             .child(
                 v_flex()
                     .gap_1()
-                    .child(field_label("Skip URLs matching", "Regex, one per line", cx))
+                    .child(field_label(
+                        t!("app.crawl_bar.skip_matching"),
+                        t!("app.crawl_bar.regex_per_line"),
+                        cx,
+                    ))
                     .child(
                         div()
                             .font_family(cx.theme().mono_font_family.clone())
@@ -1095,7 +1150,7 @@ impl CrawlBar {
                     .pt_2()
                     .border_t_1()
                     .border_color(cx.theme().border)
-                    .child(help("Test a URL against the patterns", cx))
+                    .child(help(t!("app.crawl_bar.test_url_help"), cx))
                     .child(Input::new(&self.test_url_input).small())
                     .children(verdict),
             )
@@ -1105,8 +1160,12 @@ impl CrawlBar {
                     .gap_3()
                     .child(
                         v_flex()
-                            .child(div().text_sm().child("Stop after"))
-                            .child(help("0 crawls every page", cx)),
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .child(SharedString::from(t!("app.crawl_bar.stop_after"))),
+                            )
+                            .child(help(t!("app.crawl_bar.stop_after_help"), cx)),
                     )
                     .child(
                         h_flex()
@@ -1116,7 +1175,7 @@ impl CrawlBar {
                                     .w(px(110.))
                                     .child(NumberInput::new(&self.max_pages_input).small()),
                             )
-                            .child(help("pages", cx)),
+                            .child(help(t!("app.crawl_bar.pages"), cx)),
                     ),
             )
             .into_any_element()
@@ -1126,8 +1185,8 @@ impl CrawlBar {
         let chrome = self.default_mode.renders_javascript();
         let capture_layout = self.capture_layout;
         group(
-            "Chrome rendering",
-            (!chrome).then(|| help("Not used with HTTP", cx).into_any_element()),
+            t!("app.crawl_bar.group.chrome_rendering"),
+            (!chrome).then(|| help(t!("app.crawl_bar.not_used_with_http"), cx).into_any_element()),
             cx,
         )
         .flex_basis(px(240.))
@@ -1142,12 +1201,12 @@ impl CrawlBar {
                     .border_color(cx.theme().border)
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child("These need Chrome.")
+                    .child(SharedString::from(t!("app.crawl_bar.need_chrome")))
                     .child(
                         Button::new("switch-to-chrome")
                             .link()
                             .xsmall()
-                            .label("Switch to Chrome")
+                            .label(t!("app.crawl_bar.switch_to_chrome"))
                             .on_click(cx.listener(|this, _, _, cx| {
                                 this.default_mode = RenderMode::Chrome;
                                 cx.notify();
@@ -1162,41 +1221,41 @@ impl CrawlBar {
                 .child(switch_setting(
                     Switch::new("block-images-toggle")
                         .small()
-                        .label("Block images")
+                        .label(SharedString::from(t!("app.crawl_bar.block_images")))
                         .disabled(!chrome)
                         .checked(self.block_images)
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.block_images = *checked;
                             cx.notify();
                         })),
-                    "Faster and lighter on the site. Image sizes and broken images go unreported.",
+                    t!("app.crawl_bar.block_images_help"),
                     false,
                     cx,
                 ))
                 .child(switch_setting(
                     Switch::new("capture-layout-toggle")
                         .small()
-                        .label("Capture layout")
+                        .label(SharedString::from(t!("app.crawl_bar.capture_layout")))
                         .disabled(!chrome)
                         .checked(capture_layout)
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.set_capture_layout(*checked, cx);
                         })),
-                    "Groups pages by template and finds layout changes between crawls.",
+                    t!("app.crawl_bar.capture_layout_help"),
                     false,
                     cx,
                 ))
                 .child(switch_setting(
                     Switch::new("scroll-for-layout-toggle")
                         .small()
-                        .label("Scroll each page first")
+                        .label(SharedString::from(t!("app.crawl_bar.scroll_first")))
                         .disabled(!chrome || !capture_layout)
                         .checked(capture_layout && self.scroll_for_layout)
                         .on_click(cx.listener(|this, checked: &bool, _, cx| {
                             this.scroll_for_layout = *checked;
                             cx.notify();
                         })),
-                    "Includes content that loads on scroll. Adds a few seconds a page.",
+                    t!("app.crawl_bar.scroll_first_help"),
                     true,
                     cx,
                 )),
@@ -1205,7 +1264,7 @@ impl CrawlBar {
 
     fn render_requests_group(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let problems = self.header_problems(cx);
-        group("Requests", None, cx)
+        group(t!("app.crawl_bar.group.requests"), None, cx)
             .flex_basis(px(280.))
             .child(
                 h_flex()
@@ -1213,8 +1272,12 @@ impl CrawlBar {
                     .gap_3()
                     .child(
                         v_flex()
-                            .child(div().text_sm().child("Pages at a time"))
-                            .child(help("Chrome tabs in a Chrome crawl", cx)),
+                            .child(
+                                div()
+                                    .text_sm()
+                                    .child(SharedString::from(t!("app.crawl_bar.pages_at_a_time"))),
+                            )
+                            .child(help(t!("app.crawl_bar.pages_at_a_time_help"), cx)),
                     )
                     .child(
                         div()
@@ -1227,8 +1290,8 @@ impl CrawlBar {
                 v_flex()
                     .gap_1p5()
                     .child(field_label(
-                        "Custom headers",
-                        "Values aren't remembered",
+                        t!("app.crawl_bar.custom_headers"),
+                        t!("app.crawl_bar.values_not_remembered"),
                         cx,
                     ))
                     .children(self.headers.iter().map(|row| {
@@ -1259,7 +1322,7 @@ impl CrawlBar {
                                             .ghost()
                                             .xsmall()
                                             .icon(IconName::Close)
-                                            .tooltip("Remove header")
+                                            .tooltip(t!("app.crawl_bar.remove_header"))
                                             .on_click(cx.listener(move |this, _, _, cx| {
                                                 this.headers.retain(|row| row.id != id);
                                                 cx.notify();
@@ -1278,7 +1341,7 @@ impl CrawlBar {
                                 .ghost()
                                 .xsmall()
                                 .icon(IconName::Plus)
-                                .label("Add header")
+                                .label(t!("app.crawl_bar.add_header"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.add_header("", "", window, cx);
                                 })),
@@ -1297,20 +1360,27 @@ impl CrawlBar {
         let max_height = (window.viewport_size().height - bar.bottom() - px(48.)).max(px(240.));
         let site = site_host(&self.url_input.read(cx).value());
         let site_line: SharedString = match (&site, self.list_mode) {
-            (_, true) => "Applies to this list crawl. List crawls aren't remembered.".into(),
-            (None, false) => "Applies to the next crawl, and is remembered for its site.".into(),
+            (_, true) => t!("app.crawl_bar.applies_to_list").into(),
+            (None, false) => t!("app.crawl_bar.applies_to_next").into(),
             (Some(site), false) => {
                 let restored = self
                     .remembered_at
                     .and_then(|saved_at| chrono::DateTime::from_timestamp(saved_at, 0))
                     .map(|saved_at| {
-                        format!(
-                            " Restored from the crawl on {}.",
-                            saved_at.with_timezone(&chrono::Local).format("%-d %b %Y")
+                        let date_format = t!("app.crawl_bar.restored_date_format");
+                        t!(
+                            "app.crawl_bar.restored_from",
+                            date = saved_at.with_timezone(&chrono::Local).format(&date_format)
                         )
+                        .into_owned()
                     })
                     .unwrap_or_default();
-                format!("Applies to {site} and is remembered for its next crawl.{restored}").into()
+                t!(
+                    "app.crawl_bar.applies_to_site",
+                    site = site,
+                    restored = restored
+                )
+                .into()
             }
         };
         let can_forget = self.remembered_at.is_some() && !self.list_mode;
@@ -1328,7 +1398,7 @@ impl CrawlBar {
                             Button::new("forget-site")
                                 .link()
                                 .xsmall()
-                                .label("Forget for this site")
+                                .label(t!("app.crawl_bar.forget_site"))
                                 .on_click(cx.listener(|this, _, window, cx| {
                                     this.forget_site(window, cx);
                                 })),
@@ -1348,15 +1418,12 @@ impl CrawlBar {
                 h_flex()
                     .justify_between()
                     .gap_2()
-                    .child(help(
-                        "Defaults for new sites, robots.txt, timeouts, delays and the user agent are in Settings.",
-                        cx,
-                    ))
+                    .child(help(t!("app.crawl_bar.defaults_help"), cx))
                     .child(
                         Button::new("open-crawl-defaults")
                             .link()
                             .xsmall()
-                            .label("Open Settings")
+                            .label(t!("app.crawl_bar.open_settings"))
                             .on_click(|_, window, cx| {
                                 window.dispatch_action(Box::new(crate::app::OpenSettings), cx);
                             }),

@@ -809,16 +809,16 @@ impl LayoutChangeKind {
         !matches!(self, Self::Text | Self::Image)
     }
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> std::borrow::Cow<'static, str> {
         match self {
-            Self::Added => "added",
-            Self::Removed => "removed",
-            Self::Moved => "moved",
-            Self::Resized => "resized",
-            Self::Restyled => "restyled",
-            Self::Count => "item count",
-            Self::Text => "text",
-            Self::Image => "image",
+            Self::Added => t!("crawl.layout_change.added"),
+            Self::Removed => t!("crawl.layout_change.removed"),
+            Self::Moved => t!("crawl.layout_change.moved"),
+            Self::Resized => t!("crawl.layout_change.resized"),
+            Self::Restyled => t!("crawl.layout_change.restyled"),
+            Self::Count => t!("crawl.layout_change.count"),
+            Self::Text => t!("crawl.layout_change.text"),
+            Self::Image => t!("crawl.layout_change.image"),
         }
     }
 }
@@ -885,7 +885,7 @@ impl LayoutDiff {
         let parts: Vec<String> = self
             .layout_changes()
             .map(|change| {
-                let kinds: Vec<&str> = change
+                let kinds: Vec<std::borrow::Cow<'static, str>> = change
                     .kinds
                     .iter()
                     .filter(|kind| kind.is_layout())
@@ -897,7 +897,12 @@ impl LayoutDiff {
         match parts.len() {
             0 => String::new(),
             1..=3 => parts.join("; "),
-            count => format!("{}; and {} more", parts[..3].join("; "), count - 3),
+            count => t!(
+                "crawl.layout_change.summary_more",
+                changes = parts[..3].join("; "),
+                count = count - 3
+            )
+            .into_owned(),
         }
     }
 }
@@ -943,6 +948,7 @@ pub fn diff_layouts(
     let all_paths: HashSet<&String> = before_by_path.keys().chain(after_by_path.keys()).collect();
     let empty = Vec::new();
     let mut changes: HashMap<String, LayoutChange> = HashMap::new();
+    let mut detail_kinds: HashMap<String, Vec<LayoutChangeKind>> = HashMap::new();
     for path in all_paths {
         let boxes_before = before_by_path.get(path).unwrap_or(&empty);
         let boxes_after = after_by_path.get(path).unwrap_or(&empty);
@@ -953,6 +959,8 @@ pub fn diff_layouts(
             sides.compare_single(boxes_before.first().copied(), boxes_after.first().copied())
         };
         if let Some((kinds, details)) = found {
+            let (kinds_of_details, details) = details.into_iter().unzip();
+            detail_kinds.insert(path.clone(), kinds_of_details);
             changes.insert(
                 path.clone(),
                 LayoutChange {
@@ -1018,16 +1026,16 @@ pub fn diff_layouts(
         let details = change
             .details
             .iter()
-            .filter(|detail| {
-                if detail.starts_with("moved") {
-                    kinds.contains(&LayoutChangeKind::Moved)
-                } else if detail.contains('×') {
-                    kinds.contains(&LayoutChangeKind::Resized)
-                } else {
-                    true
-                }
+            .zip(
+                detail_kinds
+                    .get(&change.path)
+                    .map_or(&[][..], Vec::as_slice),
+            )
+            .filter(|(_, kind)| match kind {
+                LayoutChangeKind::Moved | LayoutChangeKind::Resized => kinds.contains(kind),
+                _ => true,
             })
-            .cloned()
+            .map(|(detail, _)| detail.clone())
             .collect();
         roots.push(LayoutChange {
             kinds,
@@ -1064,7 +1072,10 @@ struct Sides<'a> {
     after_by_path: &'a HashMap<String, Vec<usize>>,
 }
 
-type Found = Option<(Vec<LayoutChangeKind>, Vec<String>)>;
+/// The kinds of change found at a path, and each detail with the kind it
+/// describes, so a detail can be dropped with its kind whatever language it
+/// is written in.
+type Found = Option<(Vec<LayoutChangeKind>, Vec<(LayoutChangeKind, String)>)>;
 
 fn signed_delta(value: i32) -> String {
     if value > 0 {
@@ -1097,19 +1108,26 @@ impl Sides<'_> {
         let b = relative(self.after, other);
         if (a.0 - b.0).abs() > TOLERANCE || (a.1 - b.1).abs() > TOLERANCE {
             kinds.push(LayoutChangeKind::Moved);
-            details.push(format!(
-                "moved {}, {}",
-                signed_delta(b.0 - a.0),
-                signed_delta(b.1 - a.1)
+            details.push((
+                LayoutChangeKind::Moved,
+                t!(
+                    "crawl.layout_change.moved_by",
+                    x = signed_delta(b.0 - a.0),
+                    y = signed_delta(b.1 - a.1)
+                )
+                .into_owned(),
             ));
         }
         if (node.rect.width - other.rect.width).abs() > TOLERANCE
             || (node.rect.height - other.rect.height).abs() > TOLERANCE
         {
             kinds.push(LayoutChangeKind::Resized);
-            details.push(format!(
-                "{}×{} → {}×{}",
-                node.rect.width, node.rect.height, other.rect.width, other.rect.height
+            details.push((
+                LayoutChangeKind::Resized,
+                format!(
+                    "{}×{} → {}×{}",
+                    node.rect.width, node.rect.height, other.rect.width, other.rect.height
+                ),
             ));
         }
         let style_before = self.before_tables.style(node.style);
@@ -1126,15 +1144,25 @@ impl Sides<'_> {
             .collect();
         if !style_changes.is_empty() {
             kinds.push(LayoutChangeKind::Restyled);
-            details.extend(style_changes);
+            details.extend(
+                style_changes
+                    .into_iter()
+                    .map(|change| (LayoutChangeKind::Restyled, change)),
+            );
         }
         if node.text_hash != other.text_hash {
             kinds.push(LayoutChangeKind::Text);
-            details.push("text changed".into());
+            details.push((
+                LayoutChangeKind::Text,
+                t!("crawl.layout_change.text_changed").into_owned(),
+            ));
         }
         if node.image_hash != other.image_hash {
             kinds.push(LayoutChangeKind::Image);
-            details.push("image source changed".into());
+            details.push((
+                LayoutChangeKind::Image,
+                t!("crawl.layout_change.image_changed").into_owned(),
+            ));
         }
         (!kinds.is_empty()).then_some((kinds, details))
     }
@@ -1160,26 +1188,36 @@ impl Sides<'_> {
             if before.is_empty() {
                 return Some((
                     vec![LayoutChangeKind::Added],
-                    vec![format!("{} items", after.len())],
+                    vec![(LayoutChangeKind::Added, item_count(after.len()))],
                 ));
             }
             if after.is_empty() {
                 return Some((
                     vec![LayoutChangeKind::Removed],
-                    vec![format!("{} items", before.len())],
+                    vec![(LayoutChangeKind::Removed, item_count(before.len()))],
                 ));
             }
         }
         if !is_item {
             if before.is_empty() {
-                return (share(after.len(), items_after) >= 0.5)
-                    .then(|| (vec![LayoutChangeKind::Added], vec!["in most items".into()]));
+                return (share(after.len(), items_after) >= 0.5).then(|| {
+                    (
+                        vec![LayoutChangeKind::Added],
+                        vec![(
+                            LayoutChangeKind::Added,
+                            t!("crawl.layout_change.in_most_items").into_owned(),
+                        )],
+                    )
+                });
             }
             if after.is_empty() {
                 return (share(before.len(), items_before) >= 0.5).then(|| {
                     (
                         vec![LayoutChangeKind::Removed],
-                        vec!["from most items".into()],
+                        vec![(
+                            LayoutChangeKind::Removed,
+                            t!("crawl.layout_change.from_most_items").into_owned(),
+                        )],
                     )
                 });
             }
@@ -1192,7 +1230,15 @@ impl Sides<'_> {
         let mut details = Vec::new();
         if is_item && before.len() != after.len() {
             kinds.push(LayoutChangeKind::Count);
-            details.push(format!("{} → {} items", before.len(), after.len()));
+            details.push((
+                LayoutChangeKind::Count,
+                t!(
+                    "crawl.layout_change.items_before_after",
+                    before = before.len(),
+                    after = after.len()
+                )
+                .into_owned(),
+            ));
         }
         let typical = |layout: &PageLayout, boxes: &[usize], field: fn(&Rect) -> i32| {
             mode(boxes.iter().map(|index| {
@@ -1221,10 +1267,14 @@ impl Sides<'_> {
                     height.map_or(0, |(value, _)| value * i64::from(TOLERANCE))
                 )
             };
-            details.push(format!(
-                "typical {} → {}",
-                size(&width_before, &height_before),
-                size(&width_after, &height_after)
+            details.push((
+                LayoutChangeKind::Resized,
+                t!(
+                    "crawl.layout_change.typical_size",
+                    before = size(&width_before, &height_before),
+                    after = size(&width_after, &height_after)
+                )
+                .into_owned(),
             ));
         }
         let mut style_changes = Vec::new();
@@ -1252,9 +1302,23 @@ impl Sides<'_> {
         }
         if !style_changes.is_empty() {
             kinds.push(LayoutChangeKind::Restyled);
-            details.extend(style_changes);
+            details.extend(
+                style_changes
+                    .into_iter()
+                    .map(|change| (LayoutChangeKind::Restyled, change)),
+            );
         }
         (!kinds.is_empty()).then_some((kinds, details))
+    }
+}
+
+/// How many items a list has. rust-i18n has no plurals, so the count picks
+/// the key.
+fn item_count(count: usize) -> String {
+    if count == 1 {
+        t!("crawl.layout_change.items_one", count = count).into_owned()
+    } else {
+        t!("crawl.layout_change.items_other", count = count).into_owned()
     }
 }
 

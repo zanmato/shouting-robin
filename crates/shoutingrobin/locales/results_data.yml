@@ -1,0 +1,809 @@
+_version: 2
+results_data:
+  issue:
+    missing_page_title:
+      name:
+        en: "Missing Page Title"
+        sv: "Sidtitel saknas"
+      description:
+        en: "Pages with an empty or missing <title> tag."
+        sv: "Sidor med en tom eller saknad <title>-tagg."
+      hint:
+        en: "Add a unique, descriptive title (30-60 chars) to each page."
+        sv: "Ge varje sida en unik, beskrivande titel (30-60 tecken)."
+    duplicate_page_title:
+      name:
+        en: "Duplicate Page Title"
+        sv: "Dubblett av sidtitel"
+      description:
+        en: "Multiple pages share the same title text."
+        sv: "Flera sidor har samma titeltext."
+      hint:
+        en: "Give each page a unique title that reflects its content."
+        sv: "Ge varje sida en unik titel som speglar dess innehåll."
+    page_title_over_60_characters:
+      name:
+        en: "Page Title Over 60 Characters"
+        sv: "Sidtitel över 60 tecken"
+      description:
+        en: "Titles exceeding 60 characters may be truncated in search results."
+        sv: "Titlar över 60 tecken kan kortas av i sökresultaten."
+      hint:
+        en: "Keep titles between 30 and 60 characters."
+        sv: "Håll titlar mellan 30 och 60 tecken."
+    missing_meta_description:
+      name:
+        en: "Missing Meta Description"
+        sv: "Metabeskrivning saknas"
+      description:
+        en: "Pages with an empty or missing meta description."
+        sv: "Sidor med en tom eller saknad metabeskrivning."
+      hint:
+        en: "Write a compelling meta description (50-160 chars) for each page."
+        sv: "Skriv en lockande metabeskrivning (50-160 tecken) för varje sida."
+    duplicate_meta_description:
+      name:
+        en: "Duplicate Meta Description"
+        sv: "Dubblett av metabeskrivning"
+      description:
+        en: "Multiple pages share the same meta description."
+        sv: "Flera sidor har samma metabeskrivning."
+      hint:
+        en: "Write a unique meta description for each page."
+        sv: "Skriv en unik metabeskrivning för varje sida."
+    missing_h1:
+      name:
+        en: "Missing H1"
+        sv: "H1 saknas"
+      description:
+        en: "Pages with an empty or missing H1 heading."
+        sv: "Sidor med en tom eller saknad H1-rubrik."
+      hint:
+        en: "Add a single H1 heading that describes the page topic."
+        sv: "Lägg till en enda H1-rubrik som beskriver sidans ämne."
+    duplicate_h1:
+      name:
+        en: "Duplicate H1"
+        sv: "Dubblett av H1"
+      description:
+        en: "Multiple pages share the same H1 heading text."
+        sv: "Flera sidor har samma H1-rubrik."
+      hint:
+        en: "Make each H1 unique to the page's primary topic."
+        sv: "Gör varje H1 unik för sidans huvudämne."
+    non_indexable_pages:
+      name:
+        en: "Non-Indexable Pages"
+        sv: "Icke indexerbara sidor"
+      description:
+        en: "Pages excluded from the index by a noindex directive, a canonical pointing elsewhere, a redirect or an error status."
+        sv: "Sidor som hålls utanför indexet av ett noindex-direktiv, en kanonisk länk som pekar någon annanstans, en omdirigering eller en felstatus."
+      hint:
+        en: "Verify each non-indexable page is intentionally excluded. Remove noindex from pages that should rank."
+        sv: "Kontrollera att varje icke indexerbar sida är utesluten med avsikt. Ta bort noindex från sidor som ska ranka."
+    http_errors_4xx_5xx:
+      name:
+        en: "HTTP Errors (4xx/5xx)"
+        sv: "HTTP-fel (4xx/5xx)"
+      description:
+        en: "Pages returning client or server error status codes."
+        sv: "Sidor som svarar med en statuskod för klient- eller serverfel."
+      hint:
+        en: "Fix broken links (404), resolve server errors, and redirect moved content."
+        sv: "Laga trasiga länkar (404), åtgärda serverfel och omdirigera flyttat innehåll."
+    redirects:
+      name:
+        en: "Redirects"
+        sv: "Omdirigeringar"
+      description:
+        en: "URLs that redirect to another location."
+        sv: "URL:er som omdirigerar till en annan plats."
+      hint:
+        en: "Update internal links to point directly to the final URL."
+        sv: "Uppdatera interna länkar så att de pekar direkt på den slutliga URL:en."
+    structured_data_errors:
+      name:
+        en: "Structured Data Errors"
+        sv: "Fel i strukturerad data"
+      description:
+        en: "Pages with invalid structured data that may prevent rich results."
+        sv: "Sidor med ogiltig strukturerad data som kan hindra rika resultat."
+      hint:
+        en: "Fix JSON-LD or microdata syntax errors. Test with Google's Rich Results Test."
+        sv: "Rätta syntaxfel i JSON-LD eller mikrodata. Testa med Googles test för rika resultat."
+    near_duplicate_content:
+      name:
+        en: "Near Duplicate Content"
+        sv: "Nära dubblett av innehåll"
+      description:
+        en: "Pages with highly similar content (90%+ match)."
+        sv: "Sidor med mycket likartat innehåll (90 % eller mer lika)."
+      hint:
+        en: "Differentiate pages with unique content, merge thin variants, or use canonical tags."
+        sv: "Skilj sidorna åt med unikt innehåll, slå ihop tunna varianter eller använd kanoniska taggar."
+    low_content_pages:
+      name:
+        en: "Low Content Pages"
+        sv: "Sidor med lite innehåll"
+      description:
+        en: "Pages with fewer than %{count} words of body text."
+        sv: "Sidor med färre än %{count} ord brödtext."
+      hint:
+        en: "Add substantive content or consolidate thin pages."
+        sv: "Lägg till innehåll med substans eller slå ihop tunna sidor."
+    content_requires_javascript_ssr:
+      name:
+        en: "Content Requires JavaScript (SSR)"
+        sv: "Innehåll kräver JavaScript (SSR)"
+      description:
+        en: "The server-rendered HTML is missing content that only appears after client-side JavaScript runs."
+        sv: "Den serverrenderade HTML-koden saknar innehåll som bara visas efter att JavaScript har körts i webbläsaren."
+      hint:
+        en: "Ensure critical content (headings, copy) is present in the initial HTML so search engines relying on the server response can index it."
+        sv: "Se till att viktigt innehåll (rubriker, text) finns i den första HTML-koden så att sökmotorer som läser serverns svar kan indexera det."
+    blocked_by_robots_txt:
+      name:
+        en: "Blocked by robots.txt"
+        sv: "Blockerad av robots.txt"
+      description:
+        en: "These internal URLs are disallowed by the site's robots.txt file."
+        sv: "Dessa interna URL:er är otillåtna enligt webbplatsens robots.txt."
+      hint:
+        en: "Review robots.txt rules to ensure important pages are not accidentally blocked."
+        sv: "Gå igenom reglerna i robots.txt så att viktiga sidor inte blockeras av misstag."
+    slow_largest_contentful_paint:
+      name:
+        en: "Slow Largest Contentful Paint"
+        sv: "Långsam Largest Contentful Paint"
+      description:
+        en: "Pages with LCP over 4 seconds."
+        sv: "Sidor med LCP över 4 sekunder."
+      hint:
+        en: "Optimize images, eliminate render-blocking resources, improve server response time."
+        sv: "Optimera bilder, ta bort renderingsblockerande resurser och förbättra serverns svarstid."
+    high_cumulative_layout_shift:
+      name:
+        en: "High Cumulative Layout Shift"
+        sv: "Hög Cumulative Layout Shift"
+      description:
+        en: "Pages with CLS above 0.25, causing visible layout shifts."
+        sv: "Sidor med CLS över 0,25, vilket ger synliga layoutförskjutningar."
+      hint:
+        en: "Set explicit dimensions on images/videos, avoid inserting content above existing content."
+        sv: "Ange uttryckliga mått på bilder och videor och undvik att infoga innehåll ovanför befintligt innehåll."
+    accessibility_critical_serious_issues:
+      name:
+        en: "Accessibility Critical & Serious Issues"
+        sv: "Kritiska och allvarliga tillgänglighetsproblem"
+      description:
+        en: "Pages with accessibility violations rated critical or serious."
+        sv: "Sidor med tillgänglighetsbrister som klassas som kritiska eller allvarliga."
+      hint:
+        en: "Fix missing labels, ARIA roles, color contrast, and heading hierarchy."
+        sv: "Åtgärda saknade etiketter, ARIA-roller, färgkontrast och rubrikhierarki."
+    missing_https:
+      name:
+        en: "Missing HTTPS"
+        sv: "HTTPS saknas"
+      description:
+        en: "Pages served over HTTP instead of HTTPS."
+        sv: "Sidor som serveras över HTTP i stället för HTTPS."
+      hint:
+        en: "Enable HTTPS across the entire site and redirect HTTP to HTTPS."
+        sv: "Aktivera HTTPS på hela webbplatsen och omdirigera HTTP till HTTPS."
+    missing_hsts_header:
+      name:
+        en: "Missing HSTS Header"
+        sv: "HSTS-header saknas"
+      description:
+        en: "Pages missing the Strict-Transport-Security header."
+        sv: "Sidor som saknar headern Strict-Transport-Security."
+      hint:
+        en: "Add the Strict-Transport-Security header to enforce HTTPS."
+        sv: "Lägg till headern Strict-Transport-Security för att tvinga fram HTTPS."
+    mixed_content:
+      name:
+        en: "Mixed Content"
+        sv: "Blandat innehåll"
+      description:
+        en: "HTTPS pages that load scripts, styles, images or other subresources over insecure HTTP."
+        sv: "HTTPS-sidor som laddar skript, stilmallar, bilder eller andra delresurser över osäker HTTP."
+      hint:
+        en: "Serve every subresource over HTTPS. Browsers block or warn on mixed content, which can break the page and weaken security."
+        sv: "Servera varje delresurs över HTTPS. Webbläsare blockerar eller varnar för blandat innehåll, vilket kan förstöra sidan och försvaga säkerheten."
+    hreflang_missing_return_tags:
+      name:
+        en: "Hreflang Missing Return Tags"
+        sv: "Hreflang saknar returtaggar"
+      description:
+        en: "Pages with hreflang tags that are not reciprocated by the target URL."
+        sv: "Sidor med hreflang-taggar som mål-URL:en inte besvarar."
+      hint:
+        en: "Ensure every hreflang link is bidirectional: if A links to B, B must link back to A."
+        sv: "Se till att varje hreflang-länk går åt båda hållen: om A länkar till B måste B länka tillbaka till A."
+    hreflang_invalid_language_codes:
+      name:
+        en: "Hreflang Invalid Language Codes"
+        sv: "Ogiltiga språkkoder i hreflang"
+      description:
+        en: "Pages using hreflang codes that don't follow the BCP-47 standard."
+        sv: "Sidor med hreflang-koder som inte följer standarden BCP-47."
+      hint:
+        en: "Use valid ISO 639-1 language codes (e.g. 'en', 'de') and optional region subtags (e.g. 'en-US')."
+        sv: "Använd giltiga språkkoder enligt ISO 639-1 (t.ex. 'en', 'de') och valfria regionkoder (t.ex. 'en-US')."
+    hreflang_missing_x_default:
+      name:
+        en: "Hreflang Missing x-default"
+        sv: "Hreflang saknar x-default"
+      description:
+        en: "Pages with hreflang but no x-default fallback tag."
+        sv: "Sidor med hreflang men utan reservtaggen x-default."
+      hint:
+        en: "Add an hreflang x-default tag pointing to the default page for unmatched languages."
+        sv: "Lägg till en hreflang-tagg x-default som pekar på standardsidan för språk utan egen version."
+    hreflang_non_canonical_targets:
+      name:
+        en: "Hreflang Non-Canonical Targets"
+        sv: "Hreflang pekar på icke kanoniska mål"
+      description:
+        en: "Hreflang URLs pointing to pages whose canonical differs from the hreflang target."
+        sv: "Hreflang-URL:er som pekar på sidor vars kanoniska URL skiljer sig från hreflang-målet."
+      hint:
+        en: "Ensure hreflang URLs match the canonical URL of the target page."
+        sv: "Se till att hreflang-URL:er stämmer med målsidans kanoniska URL."
+    internal_outlinks_with_no_anchor_text:
+      name:
+        en: "Internal Outlinks With No Anchor Text"
+        sv: "Interna utgående länkar utan ankartext"
+      description:
+        en: "Pages linking internally with no anchor text at all."
+        sv: "Sidor med interna länkar som saknar ankartext helt."
+      hint:
+        en: "Anchor text tells search engines what the target page is about. Give every link words, or an image link alt text."
+        sv: "Ankartexten berättar för sökmotorer vad målsidan handlar om. Ge varje länk ord, eller en bildlänk alt-text."
+    page_title_below_30_characters:
+      name:
+        en: "Page Title Below 30 Characters"
+        sv: "Sidtitel under 30 tecken"
+      description:
+        en: "Titles short enough to leave SERP space unused."
+        sv: "Titlar som är så korta att utrymme i sökresultatet blir oanvänt."
+      hint:
+        en: "Work the page's primary keyword and a qualifier into the title."
+        sv: "Arbeta in sidans viktigaste sökord och en precisering i titeln."
+    page_title_below_200_pixels:
+      name:
+        en: "Page Title Below 200 Pixels"
+        sv: "Sidtitel under 200 pixlar"
+      description:
+        en: "Titles that render narrower than 200 pixels in search results."
+        sv: "Titlar som visas smalare än 200 pixlar i sökresultaten."
+      hint:
+        en: "Lengthen the title; Google renders roughly 580 pixels of it."
+        sv: "Förläng titeln. Google visar ungefär 580 pixlar av den."
+    meta_description_below_70_characters:
+      name:
+        en: "Meta Description Below 70 Characters"
+        sv: "Metabeskrivning under 70 tecken"
+      description:
+        en: "Descriptions short enough to leave SERP space unused."
+        sv: "Beskrivningar som är så korta att utrymme i sökresultatet blir oanvänt."
+      hint:
+        en: "Describe the page in 70 to 155 characters, with a reason to click."
+        sv: "Beskriv sidan med 70 till 155 tecken och ge ett skäl att klicka."
+    meta_description_below_400_pixels:
+      name:
+        en: "Meta Description Below 400 Pixels"
+        sv: "Metabeskrivning under 400 pixlar"
+      description:
+        en: "Descriptions that render narrower than 400 pixels in search results."
+        sv: "Beskrivningar som visas smalare än 400 pixlar i sökresultaten."
+      hint:
+        en: "Lengthen the description; Google renders roughly 970 pixels of it."
+        sv: "Förläng beskrivningen. Google visar ungefär 970 pixlar av den."
+    missing_h2:
+      name:
+        en: "Missing H2"
+        sv: "H2 saknas"
+      description:
+        en: "Pages with no H2 subheading."
+        sv: "Sidor utan H2-underrubrik."
+      hint:
+        en: "Break long pages into sections with descriptive H2 headings."
+        sv: "Dela upp långa sidor i avsnitt med beskrivande H2-rubriker."
+    duplicate_h2:
+      name:
+        en: "Duplicate H2"
+        sv: "Dubblett av H2"
+      description:
+        en: "Pages sharing their first H2 with another page."
+        sv: "Sidor vars första H2 är samma som en annan sidas."
+      hint:
+        en: "Write each section heading for the page it sits on. A subheading repeated across the site describes none of them."
+        sv: "Skriv varje avsnittsrubrik för sidan den står på. En underrubrik som upprepas över hela webbplatsen beskriver ingen av sidorna."
+    h2_over_70_characters:
+      name:
+        en: "H2 Over 70 Characters"
+        sv: "H2 över 70 tecken"
+      description:
+        en: "Pages whose H2 runs past 70 characters."
+        sv: "Sidor vars H2 är längre än 70 tecken."
+      hint:
+        en: "A subheading is a label for the section under it. Move the detail into the paragraph and keep the heading scannable."
+        sv: "En underrubrik är en etikett för avsnittet under den. Flytta detaljerna till stycket och håll rubriken lätt att skumma."
+    non_sequential_h2:
+      name:
+        en: "Non-Sequential H2"
+        sv: "H2 i fel ordning"
+      description:
+        en: "Pages that open a section with an H2 before their first H1."
+        sv: "Sidor som inleder ett avsnitt med en H2 före sin första H1."
+      hint:
+        en: "Put the H1 first. Headings are the page's outline, and one that starts at the second level leaves every reader that walks it guessing."
+        sv: "Sätt H1 först. Rubrikerna är sidans disposition, och en som börjar på andra nivån lämnar varje läsare som följer den att gissa."
+    multiple_h1:
+      name:
+        en: "Multiple H1"
+        sv: "Flera H1"
+      description:
+        en: "Pages with more than one H1 heading."
+        sv: "Sidor med mer än en H1-rubrik."
+      hint:
+        en: "Keep one H1 per page for the primary topic and demote the rest to H2."
+        sv: "Behåll en H1 per sida för huvudämnet och gör om resten till H2."
+    page_title_contains_html_entity:
+      name:
+        en: "Page Title Contains HTML Entity"
+        sv: "Sidtitel innehåller HTML-entitet"
+      description:
+        en: "Pages whose title shows an HTML entity such as &amp; or &#39; instead of the character, in the browser tab and in search results."
+        sv: "Sidor vars titel visar en HTML-entitet som &amp; eller &#39; i stället för tecknet, i webbläsarfliken och i sökresultaten."
+      hint:
+        en: "The title was escaped twice, usually because the stored text already holds the entity. Store the plain character and let the template escape it."
+        sv: "Titeln har escapats två gånger, oftast för att den lagrade texten redan innehåller entiteten. Lagra det vanliga tecknet och låt mallen escapa det."
+    meta_description_contains_html_entity:
+      name:
+        en: "Meta Description Contains HTML Entity"
+        sv: "Metabeskrivning innehåller HTML-entitet"
+      description:
+        en: "Pages whose meta description shows an HTML entity such as &amp; or &#39; instead of the character, in the search result snippet."
+        sv: "Sidor vars metabeskrivning visar en HTML-entitet som &amp; eller &#39; i stället för tecknet, i sökresultatets textutdrag."
+      hint:
+        en: "The description was escaped twice, usually because the stored text already holds the entity. Store the plain character and let the template escape it."
+        sv: "Beskrivningen har escapats två gånger, oftast för att den lagrade texten redan innehåller entiteten. Lagra det vanliga tecknet och låt mallen escapa det."
+    h1_contains_html_entity:
+      name:
+        en: "H1 Contains HTML Entity"
+        sv: "H1 innehåller HTML-entitet"
+      description:
+        en: "Pages whose H1 shows an HTML entity such as &amp; or &#39; instead of the character."
+        sv: "Sidor vars H1 visar en HTML-entitet som &amp; eller &#39; i stället för tecknet."
+      hint:
+        en: "The heading was escaped twice, usually because the stored text already holds the entity. Store the plain character and let the template escape it."
+        sv: "Rubriken har escapats två gånger, oftast för att den lagrade texten redan innehåller entiteten. Lagra det vanliga tecknet och låt mallen escapa det."
+    canonicalised:
+      name:
+        en: "Canonicalised"
+        sv: "Kanoniserad"
+      description:
+        en: "Pages whose canonical points at a different URL, keeping them out of the index."
+        sv: "Sidor vars kanoniska länk pekar på en annan URL, vilket håller dem utanför indexet."
+      hint:
+        en: "Confirm each is deliberate. A canonical pointing at the wrong URL silently removes the page from search."
+        sv: "Bekräfta att varje fall är avsiktligt. En kanonisk länk som pekar på fel URL tar tyst bort sidan från sökresultaten."
+    non_200_urls_in_sitemap:
+      name:
+        en: "Non-200 URLs in Sitemap"
+        sv: "URL:er utan 200 i webbplatskartan"
+      description:
+        en: "URLs a sitemap advertises that answered with a redirect or an error."
+        sv: "URL:er som en webbplatskarta anger och som svarade med en omdirigering eller ett fel."
+      hint:
+        en: "A sitemap should list the final, indexable URL. Update the entry or drop it."
+        sv: "En webbplatskarta ska ange den slutliga, indexerbara URL:en. Uppdatera posten eller ta bort den."
+    non_indexable_urls_in_sitemap:
+      name:
+        en: "Non-Indexable URLs in Sitemap"
+        sv: "Icke indexerbara URL:er i webbplatskartan"
+      description:
+        en: "URLs a sitemap advertises that are noindex, canonicalised or redirected."
+        sv: "URL:er som en webbplatskarta anger och som är noindex, kanoniserade eller omdirigerade."
+      hint:
+        en: "A sitemap is a list of URLs you want indexed. Remove the ones you don't."
+        sv: "En webbplatskarta är en lista över URL:er som du vill ha indexerade. Ta bort dem du inte vill ha där."
+    sitemap_urls_not_crawled:
+      name:
+        en: "Sitemap URLs Not Crawled"
+        sv: "URL:er i webbplatskartan som inte crawlats"
+      description:
+        en: "URLs listed in a sitemap that no page on the site links to."
+        sv: "URL:er i en webbplatskarta som ingen sida på webbplatsen länkar till."
+      hint:
+        en: "Either link to them so they can be found, or drop them from the sitemap."
+        sv: "Länka till dem så att de kan hittas, eller ta bort dem från webbplatskartan."
+    images_over_100_kb:
+      name:
+        en: "Images Over 100 kB"
+        sv: "Bilder över 100 kB"
+      description:
+        en: "Pages carrying an image over 100 kB, measured when it was fetched."
+        sv: "Sidor med en bild över 100 kB, mätt när den hämtades."
+      hint:
+        en: "Compress and resize the image, and serve a modern format such as WebP or AVIF."
+        sv: "Komprimera och skala ner bilden och servera ett modernt format som WebP eller AVIF."
+    broken_images:
+      name:
+        en: "Broken Images"
+        sv: "Trasiga bilder"
+      description:
+        en: "Pages referencing an image that did not load when it was fetched."
+        sv: "Sidor som hänvisar till en bild som inte laddades när den hämtades."
+      hint:
+        en: "Fix the src or remove the image. A broken image is a wasted request and a visible hole in the page."
+        sv: "Rätta src eller ta bort bilden. En trasig bild är en bortkastad förfrågan och ett synligt hål i sidan."
+    images_missing_alt_text:
+      name:
+        en: "Images Missing Alt Text"
+        sv: "Bilder saknar alt-text"
+      description:
+        en: "Images carrying an alt attribute that is empty."
+        sv: "Bilder med ett alt-attribut som är tomt."
+      hint:
+        en: "Give every meaningful image descriptive alt text. An empty alt says \"decorative\", which is only right for images that carry no meaning."
+        sv: "Ge varje meningsfull bild en beskrivande alt-text. En tom alt betyder \"dekorativ\", vilket bara stämmer för bilder som inte bär någon mening."
+    images_missing_alt_attribute:
+      name:
+        en: "Images Missing Alt Attribute"
+        sv: "Bilder saknar alt-attribut"
+      description:
+        en: "Pages carrying an image with no alt attribute at all."
+        sv: "Sidor med en bild som saknar alt-attribut helt."
+      hint:
+        en: "Add alt to every image; use alt=\"\" for purely decorative ones."
+        sv: "Lägg till alt på varje bild. Använd alt=\"\" för rent dekorativa bilder."
+    images_missing_size_attributes:
+      name:
+        en: "Images Missing Size Attributes"
+        sv: "Bilder saknar storleksattribut"
+      description:
+        en: "Pages carrying an image without width and height attributes."
+        sv: "Sidor med en bild utan attributen width och height."
+      hint:
+        en: "Set width and height so the browser reserves space, which avoids layout shift."
+        sv: "Ange width och height så att webbläsaren reserverar utrymme, vilket undviker layoutförskjutning."
+    urls_with_parameters:
+      name:
+        en: "URLs with Parameters"
+        sv: "URL:er med parametrar"
+      description:
+        en: "Page URLs carrying a query string. Assets and XHR calls are excluded: an API call's arguments belong in its query string."
+        sv: "Sid-URL:er med en frågesträng. Resurser och XHR-anrop räknas inte: ett API-anrops argument hör hemma i dess frågesträng."
+      hint:
+        en: "Parameterised URLs multiply into near-duplicates. Canonicalise them to the clean URL."
+        sv: "URL:er med parametrar förökar sig till nära dubbletter. Kanonisera dem till den rena URL:en."
+    uppercase_urls:
+      name:
+        en: "Uppercase URLs"
+        sv: "URL:er med versaler"
+      description:
+        en: "Page URLs containing uppercase characters. Assets and XHR calls are excluded: their names are generated, not chosen."
+        sv: "Sid-URL:er som innehåller versaler. Resurser och XHR-anrop räknas inte: deras namn genereras, de väljs inte."
+      hint:
+        en: "Servers usually treat /Page and /page as different URLs. Standardise on lowercase and redirect the rest."
+        sv: "Servrar behandlar oftast /Page och /page som olika URL:er. Använd genomgående gemener och omdirigera resten."
+    missing_x_frame_options:
+      name:
+        en: "Missing X-Frame-Options"
+        sv: "X-Frame-Options saknas"
+      description:
+        en: "URLs missing both X-Frame-Options and a CSP frame-ancestors directive."
+        sv: "URL:er som saknar både X-Frame-Options och ett CSP-direktiv frame-ancestors."
+      hint:
+        en: "Send X-Frame-Options or frame-ancestors to prevent clickjacking."
+        sv: "Skicka X-Frame-Options eller frame-ancestors för att förhindra clickjacking."
+    missing_x_content_type_options:
+      name:
+        en: "Missing X-Content-Type-Options"
+        sv: "X-Content-Type-Options saknas"
+      description:
+        en: "URLs missing the X-Content-Type-Options header."
+        sv: "URL:er som saknar headern X-Content-Type-Options."
+      hint:
+        en: "Send X-Content-Type-Options: nosniff so browsers honour the declared type."
+        sv: "Skicka X-Content-Type-Options: nosniff så att webbläsare respekterar den angivna typen."
+    missing_referrer_policy:
+      name:
+        en: "Missing Referrer-Policy"
+        sv: "Referrer-Policy saknas"
+      description:
+        en: "URLs missing a Referrer-Policy header, or sending one that still leaks the full URL to other origins."
+        sv: "URL:er som saknar en Referrer-Policy-header, eller skickar en som fortfarande läcker hela URL:en till andra ursprung."
+      hint:
+        en: "Send Referrer-Policy: strict-origin-when-cross-origin so paths and query strings stay on your own site."
+        sv: "Skicka Referrer-Policy: strict-origin-when-cross-origin så att sökvägar och frågesträngar stannar på din egen webbplats."
+    multiple_h2:
+      name:
+        en: "Multiple H2"
+        sv: "Flera H2"
+      description:
+        en: "Pages with more than one H2 subheading."
+        sv: "Sidor med mer än en H2-underrubrik."
+      hint:
+        en: "Several H2s are fine on a long page. Check they describe distinct sections rather than repeating the H1."
+        sv: "Flera H2 går bra på en lång sida. Kontrollera att de beskriver olika avsnitt i stället för att upprepa H1."
+    hreflang_missing_self_reference:
+      name:
+        en: "Hreflang Missing Self Reference"
+        sv: "Hreflang saknar självreferens"
+      description:
+        en: "Pages whose hreflang set doesn't list the page itself."
+        sv: "Sidor vars hreflang-uppsättning inte anger sidan själv."
+      hint:
+        en: "Every page in a cluster must reference itself, or search engines may discard the whole set."
+        sv: "Varje sida i en grupp måste referera till sig själv, annars kan sökmotorer bortse från hela uppsättningen."
+    missing_canonical_tag:
+      name:
+        en: "Missing Canonical Tag"
+        sv: "Kanonisk tagg saknas"
+      description:
+        en: "Pages with no canonical link element."
+        sv: "Sidor utan kanoniskt länkelement."
+      hint:
+        en: "Add a self-referencing canonical to every page, so a URL that picks up parameters or a tracking suffix still points at one address."
+        sv: "Lägg till en självrefererande kanonisk länk på varje sida, så att en URL som får parametrar eller ett spårningssuffix ändå pekar på en enda adress."
+    missing_body_tag:
+      name:
+        en: "Missing <body> Tag"
+        sv: "<body>-tagg saknas"
+      description:
+        en: "Pages whose markup has no <body> element, or that answered 2xx with an empty document."
+        sv: "Sidor vars märkning saknar ett <body>-element, eller som svarade 2xx med ett tomt dokument."
+      hint:
+        en: "Wrap the page content in <body>. A browser invents one and renders anyway, so this is easy to ship without noticing, and what every other consumer of the page then reads is a guess. An empty 2xx response is a render or server failure to investigate."
+        sv: "Lägg sidans innehåll i <body>. En webbläsare hittar på en och renderar ändå, så det här är lätt att publicera utan att märka det, och det som alla andra som läser sidan då får är en gissning. Ett tomt 2xx-svar är ett renderings- eller serverfel att undersöka."
+    noindex:
+      name:
+        en: "Noindex"
+        sv: "Noindex"
+      description:
+        en: "Pages carrying a noindex directive, in meta robots or X-Robots-Tag."
+        sv: "Sidor med ett noindex-direktiv, i meta robots eller X-Robots-Tag."
+      hint:
+        en: "Confirm each is deliberate. A noindex left behind from staging removes the page from search entirely."
+        sv: "Bekräfta att varje fall är avsiktligt. En noindex som lämnats kvar från en testmiljö tar bort sidan helt från sökresultaten."
+    missing_content_security_policy:
+      name:
+        en: "Missing Content-Security-Policy"
+        sv: "Content-Security-Policy saknas"
+      description:
+        en: "URLs missing a Content-Security-Policy header."
+        sv: "URL:er som saknar en Content-Security-Policy-header."
+      hint:
+        en: "Add a policy restricting where scripts, styles and frames may load from."
+        sv: "Lägg till en policy som begränsar varifrån skript, stilmallar och ramar får laddas."
+    redirect_chains:
+      name:
+        en: "Redirect Chains"
+        sv: "Omdirigeringskedjor"
+      description:
+        en: "Redirects whose target is itself a redirect."
+        sv: "Omdirigeringar vars mål i sin tur är en omdirigering."
+      hint:
+        en: "Point every redirect, and every internal link, straight at the final URL. Crawlers follow a limited number of hops and each one leaks link equity."
+        sv: "Peka varje omdirigering, och varje intern länk, direkt på den slutliga URL:en. Crawlers följer ett begränsat antal hopp och varje hopp läcker länkvärde."
+    canonical_to_non_indexable_page:
+      name:
+        en: "Canonical to Non-Indexable Page"
+        sv: "Kanonisk till icke indexerbar sida"
+      description:
+        en: "Pages whose canonical points at a redirect, an error, a noindex page or a page that is itself canonicalised elsewhere."
+        sv: "Sidor vars kanoniska länk pekar på en omdirigering, ett fel, en noindex-sida eller en sida som själv är kanoniserad någon annanstans."
+      hint:
+        en: "A canonical target must be the indexable final URL, otherwise the hint is ignored or the page drops out of the index with its target."
+        sv: "Ett kanoniskt mål måste vara den indexerbara slutliga URL:en, annars ignoreras tipset eller så försvinner sidan ur indexet tillsammans med sitt mål."
+    indexable_parameter_urls:
+      name:
+        en: "Indexable Parameter URLs"
+        sv: "Indexerbara URL:er med parametrar"
+      description:
+        en: "Pages with a query string that are indexable as they stand."
+        sv: "Sidor med en frågesträng som är indexerbara som de är."
+      hint:
+        en: "Faceted navigation, sorting and tracking parameters multiply one page into many. Canonicalise or noindex the variants, or block the parameters in robots.txt, so crawl budget goes to real pages."
+        sv: "Facettnavigering, sortering och spårningsparametrar gör en sida till många. Kanonisera varianterna eller sätt noindex på dem, eller blockera parametrarna i robots.txt, så att crawlbudgeten går till riktiga sidor."
+    out_of_stock_products:
+      name:
+        en: "Out of Stock Products"
+        sv: "Produkter slut i lager"
+      description:
+        en: "Indexable product pages whose structured data says out of stock, sold out or discontinued."
+        sv: "Indexerbara produktsidor vars strukturerade data säger slut i lager, slutsåld eller utgången."
+      hint:
+        en: "Keep temporarily unavailable products indexable; a noindex or a removal forfeits the page's rankings and links. Show a restock date, a back-in-stock signup and alternatives, and keep the price and availability markup current. Only a product that will never return should 301 to its successor or the category, or serve a 410."
+        sv: "Behåll tillfälligt otillgängliga produkter indexerbara. En noindex eller en borttagning gör att sidan förlorar sina placeringar och länkar. Visa ett datum för påfyllning, en bevakning för när varan är tillbaka och alternativ, och håll märkningen för pris och tillgänglighet aktuell. Bara en produkt som aldrig kommer tillbaka ska 301-omdirigeras till sin efterföljare eller kategorin, eller svara 410."
+    invalid_gtin:
+      name:
+        en: "Invalid GTIN"
+        sv: "Ogiltigt GTIN"
+      description:
+        en: "Product pages whose GTIN fails its check digit or length."
+        sv: "Produktsidor vars GTIN inte klarar kontrollsiffran eller längden."
+      hint:
+        en: "Google Merchant Center rejects products with a malformed GTIN. Use the 8, 12, 13 or 14 digit code printed under the barcode, without a prefix."
+        sv: "Google Merchant Center avvisar produkter med ett felaktigt GTIN. Använd den 8, 12, 13 eller 14 siffror långa koden som står under streckkoden, utan prefix."
+    product_pages_missing_breadcrumbs:
+      name:
+        en: "Product Pages Missing Breadcrumbs"
+        sv: "Produktsidor saknar brödsmulor"
+      description:
+        en: "Product pages without BreadcrumbList structured data."
+        sv: "Produktsidor utan strukturerad data av typen BreadcrumbList."
+      hint:
+        en: "Breadcrumb markup earns the category path in the search snippet and tells search engines where the product sits in the catalogue."
+        sv: "Märkning av brödsmulor ger kategorisökvägen i sökresultatets textutdrag och berättar för sökmotorer var produkten finns i katalogen."
+    product_layout_without_product_markup:
+      name:
+        en: "Product Layout Without Product Markup"
+        sv: "Produktlayout utan produktmärkning"
+      description:
+        en: "Pages laid out like the site's product pages that carry no Product structured data. Found from the captured layout."
+        sv: "Sidor med samma layout som webbplatsens produktsidor men utan strukturerad data av typen Product. Hittade från den fångade layouten."
+      hint:
+        en: "Without Product markup a product page earns no price, availability or review details in search results. Check the template's markup for the condition that leaves it out on these pages."
+        sv: "Utan Product-märkning får en produktsida inget pris, ingen tillgänglighet och inga omdömen i sökresultaten. Kontrollera mallens märkning efter villkoret som utelämnar den på de här sidorna."
+    temporary_redirects:
+      name:
+        en: "Temporary Redirects"
+        sv: "Tillfälliga omdirigeringar"
+      description:
+        en: "URLs that redirect with a 302, 303 or 307, which says the move is temporary, so search engines keep the old URL indexed."
+        sv: "URL:er som omdirigerar med 302, 303 eller 307, vilket säger att flytten är tillfällig, så att sökmotorer behåller den gamla URL:en i indexet."
+      hint:
+        en: "Use a 301 or 308 for a move that is permanent."
+        sv: "Använd 301 eller 308 för en flytt som är permanent."
+    redirects_to_an_error:
+      name:
+        en: "Redirects to an Error"
+        sv: "Omdirigeringar till ett fel"
+      description:
+        en: "Redirects that, followed to the end, land on a 4xx or 5xx page."
+        sv: "Omdirigeringar som, när de följs till slutet, hamnar på en 4xx- eller 5xx-sida."
+      hint:
+        en: "Point the redirect at a page that answers 200, or let the old URL return 404 or 410 if nothing replaced it."
+        sv: "Peka omdirigeringen på en sida som svarar 200, eller låt den gamla URL:en svara 404 eller 410 om inget har ersatt den."
+    https_pages_linking_to_http:
+      name:
+        en: "HTTPS Pages Linking to HTTP"
+        sv: "HTTPS-sidor som länkar till HTTP"
+      description:
+        en: "Secure pages with links to the site's own pages over plain HTTP."
+        sv: "Säkra sidor med länkar till webbplatsens egna sidor över vanlig HTTP."
+      hint:
+        en: "Change the links to HTTPS, so a click does not leave the secure site or depend on a redirect to get back to it."
+        sv: "Ändra länkarna till HTTPS, så att ett klick inte lämnar den säkra webbplatsen eller behöver en omdirigering för att komma tillbaka."
+    pages_with_one_inlink:
+      name:
+        en: "Pages With One Inlink"
+        sv: "Sidor med en inkommande länk"
+      description:
+        en: "Indexable pages that exactly one other page links to."
+        sv: "Indexerbara sidor som exakt en annan sida länkar till."
+      hint:
+        en: "Link to them from related pages or navigation, so crawlers find them more easily and they get more internal link equity."
+        sv: "Länka till dem från relaterade sidor eller navigeringen, så att crawlers hittar dem lättare och de får mer internt länkvärde."
+    pages_without_internal_outlinks:
+      name:
+        en: "Pages Without Internal Outlinks"
+        sv: "Sidor utan interna utgående länkar"
+      description:
+        en: "Indexable pages that link to no other page of the site."
+        sv: "Indexerbara sidor som inte länkar till någon annan sida på webbplatsen."
+      hint:
+        en: "Add links to related pages, so visitors and crawlers can go on from here."
+        sv: "Lägg till länkar till relaterade sidor, så att besökare och crawlers kan gå vidare härifrån."
+    canonical_points_to_a_redirect:
+      name:
+        en: "Canonical Points to a Redirect"
+        sv: "Kanonisk pekar på en omdirigering"
+      description:
+        en: "Pages whose canonical names a URL that redirects elsewhere."
+        sv: "Sidor vars kanoniska länk anger en URL som omdirigerar någon annanstans."
+      hint:
+        en: "Point the canonical at the redirect's final URL."
+        sv: "Peka den kanoniska länken på omdirigeringens slutliga URL."
+    canonical_points_to_an_error:
+      name:
+        en: "Canonical Points to an Error"
+        sv: "Kanonisk pekar på ett fel"
+      description:
+        en: "Pages whose canonical names a URL that answers 4xx or 5xx."
+        sv: "Sidor vars kanoniska länk anger en URL som svarar 4xx eller 5xx."
+      hint:
+        en: "Point the canonical at a page that answers 200, or make it self referencing."
+        sv: "Peka den kanoniska länken på en sida som svarar 200, eller gör den självrefererande."
+    canonical_points_to_http:
+      name:
+        en: "Canonical Points to HTTP"
+        sv: "Kanonisk pekar på HTTP"
+      description:
+        en: "HTTPS pages whose canonical is an HTTP URL, which asks search engines to index the insecure copy."
+        sv: "HTTPS-sidor vars kanoniska länk är en HTTP-URL, vilket ber sökmotorer att indexera den osäkra kopian."
+      hint:
+        en: "Write canonicals with https://."
+        sv: "Skriv kanoniska länkar med https://."
+    canonical_chains:
+      name:
+        en: "Canonical Chains"
+        sv: "Kanoniska kedjor"
+      description:
+        en: "Pages whose canonical names a page that canonicalises to another URL again."
+        sv: "Sidor vars kanoniska länk anger en sida som i sin tur kanoniserar till en annan URL."
+      hint:
+        en: "Point the canonical straight at the final page. Search engines may ignore a canonical that leads to another one."
+        sv: "Peka den kanoniska länken direkt på den slutliga sidan. Sökmotorer kan ignorera en kanonisk länk som leder till en annan."
+    canonicalised_urls_in_sitemap:
+      name:
+        en: "Canonicalised URLs in Sitemap"
+        sv: "Kanoniserade URL:er i webbplatskartan"
+      description:
+        en: "Pages a sitemap lists whose canonical points at another URL."
+        sv: "Sidor i en webbplatskarta vars kanoniska länk pekar på en annan URL."
+      hint:
+        en: "List the canonical URL in the sitemap instead."
+        sv: "Ange den kanoniska URL:en i webbplatskartan i stället."
+    slow_html_response:
+      name:
+        en: "Slow HTML Response"
+        sv: "Långsamt HTML-svar"
+      description:
+        en: "Pages whose HTML took longer than a second to arrive."
+        sv: "Sidor vars HTML tog längre än en sekund att komma fram."
+      hint:
+        en: "Look at server side rendering time, caching and database queries for these templates."
+        sv: "Se över renderingstid på servern, cachning och databasfrågor för de här mallarna."
+    html_over_2_mb:
+      name:
+        en: "HTML Over 2 MB"
+        sv: "HTML över 2 MB"
+      description:
+        en: "Pages whose HTML document is larger than 2 MB."
+        sv: "Sidor vars HTML-dokument är större än 2 MB."
+      hint:
+        en: "Look for inlined data, base64 images or markup a template repeats, and load what is not needed up front later."
+        sv: "Leta efter inbäddad data, base64-bilder eller märkning som en mall upprepar, och ladda det som inte behövs direkt senare."
+    assets_not_cached:
+      name:
+        en: "Assets Not Cached"
+        sv: "Resurser cachas inte"
+      description:
+        en: "Assets the browser fetched again on later pages instead of reusing its copy, because of the server's caching headers."
+        sv: "Resurser som webbläsaren hämtade igen på senare sidor i stället för att återanvända sin kopia, på grund av serverns cachningsheaders."
+      hint:
+        en: "Send a Cache-Control with a max-age for static files, and a long one with immutable for files whose names change with their content. no-store and max-age=0 send the browser back for them on every page."
+        sv: "Skicka en Cache-Control med max-age för statiska filer, och en lång med immutable för filer vars namn ändras med innehållet. no-store och max-age=0 skickar tillbaka webbläsaren efter dem på varje sida."
+  change:
+    status:
+      en: "status %{before} → %{after}"
+      sv: "status %{before} → %{after}"
+    title_changed:
+      en: "title changed"
+      sv: "titeln ändrad"
+    h1_changed:
+      en: "h1 changed"
+      sv: "h1 ändrad"
+    meta_description_changed:
+      en: "meta description changed"
+      sv: "metabeskrivningen ändrad"
+    words:
+      en: "words %{before} → %{after}"
+      sv: "ord %{before} → %{after}"
+    layout:
+      en: "layout: %{summary}"
+      sv: "layout: %{summary}"
+  indexability:
+    indexable:
+      en: "Indexable"
+      sv: "Indexerbar"
+    non_indexable:
+      en: "Non-Indexable"
+      sv: "Icke indexerbar"

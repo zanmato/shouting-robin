@@ -1,0 +1,9 @@
+_version: 2
+ui:
+  copy:
+    en: Copy
+    sv: Kopiera
+  tab:
+    unnamed:
+      en: Unnamed
+      sv: Namnlös

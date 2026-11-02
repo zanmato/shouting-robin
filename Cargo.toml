@@ -33,6 +33,12 @@ gpui = { package = "gpui-pre", version = "=0.3.9" }
 # theme keys differ.
 gpui-component = { version = "0.8.0", features = ["tree-sitter-html"] }
 
+# Translations. The library gpui-component's own strings use, so one
+# `set_locale` switches the app and the components together.
+rust-i18n = "4.2"
+# The system's preferred languages, to pick the app's locale from.
+sys-locale = "0.3"
+
 # Database
 sqlx = { version = "0.8", features = [
     "runtime-async-std",

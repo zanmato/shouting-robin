@@ -99,15 +99,34 @@ impl Assignment {
         }
     }
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> std::borrow::Cow<'static, str> {
         match self {
-            Self::StructuredData => "Structured data",
-            Self::LayoutWithoutMarkup => "Layout, no markup",
-            Self::LayoutOverType => "Layout, over its own type",
-            Self::Shape => "Layout",
+            Self::StructuredData => t!("crawl.assignment.structured_data"),
+            Self::LayoutWithoutMarkup => t!("crawl.assignment.layout_without_markup"),
+            Self::LayoutOverType => t!("crawl.assignment.layout_over_type"),
+            Self::Shape => t!("crawl.assignment.shape"),
         }
     }
 }
+
+/// A stored template name in the app's language. Layout templates are named
+/// in English when the crawl groups them and the name is kept in the
+/// database, while a typed template is named by its schema.org type, which
+/// stays as it is.
+pub fn template_display_name(name: &str) -> String {
+    if name == OTHER_LAYOUTS {
+        return t!("crawl.template.other_layouts").into_owned();
+    }
+    match name
+        .strip_prefix("Layout ")
+        .and_then(|number| number.parse::<usize>().ok())
+    {
+        Some(number) => t!("crawl.template.layout_number", number = number).into_owned(),
+        None => name.to_string(),
+    }
+}
+
+const OTHER_LAYOUTS: &str = "Other layouts";
 
 /// A page's shape with its paths interned for the run.
 #[derive(Clone, Debug)]
@@ -613,7 +632,7 @@ pub async fn group_crawl(db: &CrawlDb) -> Result<Grouping, sqlx::Error> {
             let id = grouping.templates.len() as i64 + 1;
             grouping.templates.push(TemplateSummary {
                 id,
-                name: "Other layouts".to_string(),
+                name: OTHER_LAYOUTS.to_string(),
                 type_key: None,
                 page_count: unmatched,
             });
@@ -626,7 +645,7 @@ pub async fn group_crawl(db: &CrawlDb) -> Result<Grouping, sqlx::Error> {
             if let Some(template) = grouping
                 .templates
                 .iter_mut()
-                .find(|template| template.id == id && template.name != "Other layouts")
+                .find(|template| template.id == id && template.name != OTHER_LAYOUTS)
             {
                 template.page_count += 1;
             }

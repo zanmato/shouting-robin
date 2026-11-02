@@ -105,7 +105,7 @@ impl CrawlEngine {
                     if let Err(send_err) = tx
                         .send_async(CrawlEvent::Error {
                             url: root_url.clone(),
-                            message: format!("Failed to create crawl: {e}"),
+                            message: t!("crawl.error.create_crawl", error = e).into_owned(),
                         })
                         .await
                     {
@@ -121,7 +121,7 @@ impl CrawlEngine {
                     if let Err(send_err) = tx
                         .send_async(CrawlEvent::Error {
                             url: root_url.clone(),
-                            message: format!("Failed to open the crawl's database: {e}"),
+                            message: t!("crawl.error.open_database", error = e).into_owned(),
                         })
                         .await
                     {
@@ -387,7 +387,7 @@ impl CrawlEngine {
                 if let Err(e) = tx
                     .send_async(CrawlEvent::Error {
                         url: root_url.clone(),
-                        message: "Failed to parse root URL".into(),
+                        message: t!("crawl.error.parse_root_url").into_owned(),
                     })
                     .await
                 {
@@ -963,29 +963,41 @@ impl CrawlEngine {
 
             // A failed pass leaves its columns empty, which reads as "no
             // issues" unless the reader is told otherwise.
-            let passes: [(&str, Result<(), sqlx::Error>); 5] = [
+            let passes: [(&str, &str, Result<(), sqlx::Error>); 5] = [
                 (
                     "near-duplicate analysis",
+                    "crawl.pass.near_duplicates",
                     run_near_duplicate_analysis(&db, config.near_duplicate_threshold).await,
                 ),
                 (
                     "crawl depth analysis",
+                    "crawl.pass.crawl_depth",
                     run_crawl_depth_analysis(&db, &root_url).await,
                 ),
-                ("link score analysis", run_pagerank_analysis(&db).await),
-                ("hreflang validation", run_hreflang_validation(&db).await),
+                (
+                    "link score analysis",
+                    "crawl.pass.link_score",
+                    run_pagerank_analysis(&db).await,
+                ),
+                (
+                    "hreflang validation",
+                    "crawl.pass.hreflang",
+                    run_hreflang_validation(&db).await,
+                ),
                 (
                     "layout template grouping",
+                    "crawl.pass.template_grouping",
                     crate::crawl::layout_groups::run_template_grouping(&db).await,
                 ),
             ];
-            for (pass, outcome) in passes {
+            for (pass, pass_key, outcome) in passes {
                 if let Err(e) = outcome {
                     tracing::warn!(error=%e, pass, "post-crawl pass failed");
                     if let Err(send_error) = tx
                         .send_async(CrawlEvent::Error {
                             url: root_url.clone(),
-                            message: format!("{pass} failed: {e}"),
+                            message: t!("crawl.error.pass_failed", pass = t!(pass_key), error = e)
+                                .into_owned(),
                         })
                         .await
                     {

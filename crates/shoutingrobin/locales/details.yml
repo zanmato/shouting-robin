@@ -1,0 +1,428 @@
+_version: 2
+details:
+  tab:
+    overview:
+      en: "Overview"
+      sv: "Översikt"
+    duplicates:
+      en: "Duplicates"
+      sv: "Dubbletter"
+    images:
+      en: "Images"
+      sv: "Bilder"
+    inlinks:
+      en: "Inlinks"
+      sv: "Inkommande länkar"
+    outlinks:
+      en: "Outlinks"
+      sv: "Utgående länkar"
+    referenced_by:
+      en: "Referenced by"
+      sv: "Refereras av"
+  field:
+    template:
+      en: "Template"
+      sv: "Mall"
+    joined_by:
+      en: "Joined by"
+      sv: "Grupperad efter"
+    markup:
+      en: "Markup"
+      sv: "Märkning"
+    address:
+      en: "Address"
+      sv: "Adress"
+    status:
+      en: "Status"
+      sv: "Status"
+    content_type:
+      en: "Content Type"
+      sv: "Innehållstyp"
+    size:
+      en: "Size"
+      sv: "Storlek"
+    transferred:
+      en: "Transferred"
+      sv: "Överfört"
+    indexability:
+      en: "Indexability"
+      sv: "Indexerbarhet"
+    canonical:
+      en: "Canonical"
+      sv: "Kanonisk"
+    redirect_uri:
+      en: "Redirect URI"
+      sv: "Omdirigerings-URI"
+    redirect_status:
+      en: "Redirect Status"
+      sv: "Omdirigeringsstatus"
+    last_modified:
+      en: "Last Modified"
+      sv: "Senast ändrad"
+    title:
+      en: "Title"
+      sv: "Sidtitel"
+    title_length:
+      en: "Title Length"
+      sv: "Sidtitelns längd"
+    title_pixel_width:
+      en: "Title Pixel Width"
+      sv: "Sidtitelns bredd i pixlar"
+    title_2:
+      en: "Title 2"
+      sv: "Sidtitel 2"
+    meta_description:
+      en: "Meta Desc"
+      sv: "Metabeskrivning"
+    meta_length:
+      en: "Meta Length"
+      sv: "Metabeskrivningens längd"
+    meta_pixel_width:
+      en: "Meta Pixel Width"
+      sv: "Metabeskrivningens bredd i pixlar"
+    meta_description_2:
+      en: "Meta Desc 2"
+      sv: "Metabeskrivning 2"
+    h1_length:
+      en: "H1 Length"
+      sv: "H1-längd"
+    word_count:
+      en: "Word Count"
+      sv: "Antal ord"
+    ssr_words:
+      en: "SSR Words"
+      sv: "SSR-ord"
+    ssr_csr_diff:
+      en: "SSR/CSR Diff"
+      sv: "SSR/CSR-skillnad"
+    meta_robots:
+      en: "Meta Robots"
+      sv: "Meta robots"
+    types:
+      en: "Types"
+      sv: "Typer"
+    microdata:
+      en: "Microdata"
+      sv: "Mikrodata"
+    errors:
+      en: "Errors"
+      sv: "Fel"
+    warnings:
+      en: "Warnings"
+      sv: "Varningar"
+    inlinks:
+      en: "Inlinks"
+      sv: "Inkommande länkar"
+    csr_inlinks:
+      en: "CSR Inlinks"
+      sv: "Inkommande CSR-länkar"
+    csr_in_percent:
+      en: "CSR In %"
+      sv: "CSR in %"
+    outlinks:
+      en: "Outlinks"
+      sv: "Utgående länkar"
+    csr_outlinks:
+      en: "CSR Outlinks"
+      sv: "Utgående CSR-länkar"
+    csr_out_percent:
+      en: "CSR Out %"
+      sv: "CSR ut %"
+    link_score:
+      en: "Link Score"
+      sv: "Länkpoäng"
+    backlinks:
+      en: "Backlinks"
+      sv: "Bakåtlänkar"
+    depth:
+      en: "Depth"
+      sv: "Djup"
+    near_duplicates:
+      en: "Near Duplicates"
+      sv: "Nära dubbletter"
+    closest_similarity:
+      en: "Closest Similarity"
+      sv: "Närmaste likhet"
+    references:
+      en: "References"
+      sv: "Referenser"
+    dimensions:
+      en: "Dimensions"
+      sv: "Mått"
+    missing_alt:
+      en: "Missing alt"
+      sv: "Saknad alt-text"
+  section:
+    layout:
+      en: "Layout"
+      sv: "Layout"
+    url_information:
+      en: "URL Information"
+      sv: "URL-information"
+    page_content:
+      en: "Page Content"
+      sv: "Sidinnehåll"
+    structured_data:
+      en: "Structured Data"
+      sv: "Strukturerad data"
+    accessibility:
+      en: "Accessibility"
+      sv: "Tillgänglighet"
+    link_metrics:
+      en: "Link Metrics"
+      sv: "Länkmått"
+    images:
+      en: "Images"
+      sv: "Bilder"
+    serp_preview:
+      en: "SERP Preview"
+      sv: "SERP-förhandsvisning"
+    hreflang_issues:
+      en: "Hreflang Issues"
+      sv: "Hreflang-problem"
+    http_headers:
+      en: "HTTP Headers"
+      sv: "HTTP-huvuden"
+    image_information:
+      en: "Image Information"
+      sv: "Bildinformation"
+  not_grouped:
+    en: "Not grouped"
+    sv: "Ej grupperad"
+  missing_template_markup:
+    en: "No %{kind} structured data"
+    sv: "Ingen strukturerad data av typen %{kind}"
+  view_layout:
+    en: "View Layout"
+    sv: "Visa layout"
+  menu:
+    copy:
+      en: "Copy"
+      sv: "Kopiera"
+    open_in_browser:
+      en: "Open in Browser"
+      sv: "Öppna i webbläsare"
+    copy_url:
+      en: "Copy URL"
+      sv: "Kopiera URL"
+    copy_anchor_text:
+      en: "Copy Anchor Text"
+      sv: "Kopiera ankartext"
+    copy_alt_text:
+      en: "Copy Alt Text"
+      sv: "Kopiera alt-text"
+  serp:
+    no_title:
+      en: "No title"
+      sv: "Ingen sidtitel"
+    no_meta_description:
+      en: "No meta description"
+      sv: "Ingen metabeskrivning"
+  impact:
+    critical:
+      en: "critical"
+      sv: "kritisk"
+    serious:
+      en: "serious"
+      sv: "allvarlig"
+    moderate:
+      en: "moderate"
+      sv: "måttlig"
+    minor:
+      en: "minor"
+      sv: "mindre"
+  url_details:
+    en: "URL Details"
+    sv: "URL-detaljer"
+  image_details:
+    en: "Image Details"
+    sv: "Bilddetaljer"
+  empty:
+    en: "Select a URL to inspect details."
+    sv: "Välj en URL för att se detaljer."
+  summary:
+    types_one:
+      en: "%{count} type"
+      sv: "%{count} typ"
+    types_other:
+      en: "%{count} types"
+      sv: "%{count} typer"
+    issues_one:
+      en: "%{count} issue"
+      sv: "%{count} problem"
+    issues_other:
+      en: "%{count} issues"
+      sv: "%{count} problem"
+    missing_alt:
+      en: "%{count} missing alt"
+      sv: "%{count} saknar alt-text"
+    images_one:
+      en: "%{count} image"
+      sv: "%{count} bild"
+    images_other:
+      en: "%{count} images"
+      sv: "%{count} bilder"
+    headers_one:
+      en: "%{count} header"
+      sv: "%{count} huvud"
+    headers_other:
+      en: "%{count} headers"
+      sv: "%{count} huvuden"
+  images:
+    none_found:
+      en: "No images found"
+      sv: "Inga bilder hittades"
+    alt_empty:
+      en: "empty"
+      sv: "tom"
+    alt_yes:
+      en: "yes"
+      sv: "ja"
+    alt_missing:
+      en: "missing"
+      sv: "saknas"
+    alt_label:
+      en: "Alt:"
+      sv: "Alt:"
+    no_dimensions:
+      en: "no dimensions"
+      sv: "inga mått"
+  hreflang:
+    missing_return_tag:
+      en: "Missing return tag"
+      sv: "Returtagg saknas"
+    invalid_language_code:
+      en: "Invalid language code"
+      sv: "Ogiltig språkkod"
+    missing_x_default:
+      en: "Missing x-default"
+      sv: "x-default saknas"
+    missing_self_reference:
+      en: "Missing self reference"
+      sv: "Självreferens saknas"
+    non_canonical_target:
+      en: "Non-canonical target"
+      sv: "Icke kanoniskt mål"
+    error:
+      en: "error"
+      sv: "fel"
+    warning:
+      en: "warning"
+      sv: "varning"
+  links:
+    no_anchor:
+      en: "No anchor"
+      sv: "Ingen ankartext"
+    no_anchor_text:
+      en: "No anchor text"
+      sv: "Ingen ankartext"
+  references:
+    missing_alt:
+      en: "missing alt"
+      sv: "alt saknas"
+    empty_alt:
+      en: "empty alt"
+      sv: "tom alt"
+    alt:
+      en: "alt"
+      sv: "alt"
+  sidebar:
+    historic_crawls:
+      en: "Historic Crawls"
+      sv: "Tidigare crawlningar"
+    running:
+      en: "running"
+      sv: "pågår"
+    urls_recorded:
+      en: "%{count} URLs recorded"
+      sv: "%{count} URL:er registrerade"
+    html_pages:
+      en: "HTML pages"
+      sv: "HTML-sidor"
+    resources_and_other_urls:
+      en: "Resources and other URLs"
+      sv: "Resurser och andra URL:er"
+    discovered_not_fetched:
+      en: "Discovered, not fetched"
+      sv: "Upptäckta, inte hämtade"
+    aborted:
+      en: "aborted"
+      sv: "avbruten"
+    recrawl:
+      en: "Recrawl"
+      sv: "Crawla om"
+    delete:
+      en: "Delete"
+      sv: "Ta bort"
+  status:
+    crawling:
+      en: "Crawling"
+      sv: "Crawlar"
+    idle:
+      en: "Idle"
+      sv: "Inaktiv"
+    pages:
+      en: "Pages %{count}"
+      sv: "Sidor %{count}"
+    resources:
+      en: "Resources %{count}"
+      sv: "Resurser %{count}"
+    errors:
+      en: "Errors %{count}"
+      sv: "Fel %{count}"
+  layout:
+    list:
+      en: "list"
+      sv: "lista"
+    and_more:
+      en: "and %{count} more"
+      sv: "och %{count} till"
+    no_baseline:
+      en: "The baseline crawl has no comparable layout for this page."
+      sv: "Baslinjecrawlningen har ingen jämförbar layout för den här sidan."
+    no_changes:
+      en: "No changes since the baseline crawl."
+      sv: "Inga ändringar sedan baslinjecrawlningen."
+    layout_changes_one:
+      en: "%{count} layout change"
+      sv: "%{count} layoutändring"
+    layout_changes_other:
+      en: "%{count} layout changes"
+      sv: "%{count} layoutändringar"
+    content_changes_one:
+      en: "%{count} text or image change"
+      sv: "%{count} text- eller bildändring"
+    content_changes_other:
+      en: "%{count} text or image changes"
+      sv: "%{count} text- eller bildändringar"
+    consequences_one:
+      en: ". %{count} change that follow from these are not listed"
+      sv: ". %{count} följdändring visas inte"
+    consequences_other:
+      en: ". %{count} changes that follow from these are not listed"
+      sv: ". %{count} följdändringar visas inte"
+    nothing_to_list:
+      en: "Nothing to list."
+      sv: "Inget att visa."
+    baseline_crawl:
+      en: "Baseline crawl"
+      sv: "Baslinjecrawlning"
+    this_crawl:
+      en: "This crawl"
+      sv: "Den här crawlningen"
+    legend:
+      added:
+        en: "added"
+        sv: "tillagd"
+      removed:
+        en: "removed"
+        sv: "borttagen"
+      moved_or_resized:
+        en: "moved or resized"
+        sv: "flyttad eller storleksändrad"
+      restyled:
+        en: "restyled"
+        sv: "ny stil"
+      text_or_image:
+        en: "text or image"
+        sv: "text eller bild"

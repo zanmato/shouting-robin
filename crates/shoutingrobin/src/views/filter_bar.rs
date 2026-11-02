@@ -93,14 +93,14 @@ impl EventEmitter<FilterBarEvent> for FilterBar {}
 impl FilterBar {
     pub fn new(grid: Entity<ResultsGrid>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| {
-            InputState::new(window, cx)
-                .placeholder("Search the address, title and every text column")
+            InputState::new(window, cx).placeholder(t!("filters.bar.search_placeholder"))
         });
         let columns = column_list(&grid, cx);
         let subscriptions = vec![
             cx.subscribe_in(&search, window, Self::on_input_event),
             // The row counts the bar shows change with the grid's rows.
             cx.observe(&grid, |_, _, cx| cx.notify()),
+            cx.observe_global_in::<crate::locale::Locale>(window, Self::on_locale_change),
         ];
         Self {
             grid,
@@ -167,10 +167,7 @@ impl FilterBar {
             )
             .searchable(true)
         });
-        let operators: Vec<SharedString> = FilterOperator::ALL
-            .iter()
-            .map(|operator| SharedString::from(operator.label()))
-            .collect();
+        let operators = operator_labels();
         let operator_index = FilterOperator::ALL
             .iter()
             .position(|candidate| *candidate == operator);
@@ -184,7 +181,7 @@ impl FilterBar {
         });
         let value = cx.new(|cx| {
             InputState::new(window, cx)
-                .placeholder("Value")
+                .placeholder(t!("filters.bar.value_placeholder"))
                 .default_value(value.to_string())
         });
         self._subscriptions.extend([
@@ -271,6 +268,30 @@ impl FilterBar {
         }
     }
 
+    /// The placeholders and operator names live in the inputs' and selects'
+    /// own state, so they are made again in the new language. The column
+    /// names come translated from the grid.
+    fn on_locale_change(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.search.update(cx, |search, cx| {
+            search.set_placeholder(t!("filters.bar.search_placeholder"), window, cx)
+        });
+        let operators = operator_labels();
+        for row in &self.rows {
+            row.value.update(cx, |value, cx| {
+                value.set_placeholder(t!("filters.bar.value_placeholder"), window, cx)
+            });
+            row.operator.update(cx, |select, cx| {
+                // Items are matched by label, which the new language changes,
+                // so the selection is carried over by position.
+                let selected = select.selected_index(cx);
+                select.set_items(operators.clone(), window, cx);
+                select.set_selected_index(selected, window, cx);
+            });
+        }
+        self.sync_columns(window, cx);
+        cx.notify();
+    }
+
     fn emit_change(&mut self, cx: &mut Context<Self>) {
         self.pending_change = None;
         cx.emit(FilterBarEvent::Changed(self.filter(cx)));
@@ -289,9 +310,9 @@ impl FilterBar {
     ) -> impl IntoElement + use<> {
         let takes_value = row_operator(row, cx).is_none_or(FilterOperator::takes_value);
         let join = match (index, self.join) {
-            (0, _) => "Where",
-            (_, FilterJoin::All) => "and",
-            (_, FilterJoin::Any) => "or",
+            (0, _) => t!("filters.bar.where"),
+            (_, FilterJoin::All) => t!("filters.bar.and"),
+            (_, FilterJoin::Any) => t!("filters.bar.or"),
         };
         h_flex()
             .gap_1()
@@ -301,13 +322,13 @@ impl FilterBar {
                     .w(px(44.))
                     .text_xs()
                     .text_color(cx.theme().muted_foreground)
-                    .child(join),
+                    .child(SharedString::from(join)),
             )
             .child(
                 div().w(px(200.)).child(
                     Select::new(&row.column)
                         .xsmall()
-                        .search_placeholder("Search columns")
+                        .search_placeholder(t!("filters.bar.search_columns"))
                         .menu_width(px(260.)),
                 ),
             )
@@ -327,7 +348,7 @@ impl FilterBar {
                     .ghost()
                     .xsmall()
                     .icon(IconName::Minus)
-                    .tooltip("Remove Condition")
+                    .tooltip(t!("filters.bar.remove_condition"))
                     .on_click(cx.listener(move |bar, _, _, cx| bar.remove_condition(index, cx))),
             )
     }
@@ -341,11 +362,18 @@ fn column_list(grid: &Entity<ResultsGrid>, cx: &App) -> Vec<FilterColumn> {
         .collect()
 }
 
+/// The operator select lists [`FilterOperator::ALL`] in order. It is read by
+/// position because its labels are in the language they were made in.
 fn row_operator(row: &ConditionRow, cx: &App) -> Option<FilterOperator> {
-    let label = row.operator.read(cx).selected_value()?;
+    let index = row.operator.read(cx).selected_index(cx)?;
+    FilterOperator::ALL.get(index.row).copied()
+}
+
+fn operator_labels() -> Vec<SharedString> {
     FilterOperator::ALL
-        .into_iter()
-        .find(|operator| operator.label() == label.as_ref())
+        .iter()
+        .map(|operator| operator.label())
+        .collect()
 }
 
 impl Render for FilterBar {
@@ -389,12 +417,12 @@ impl Render for FilterBar {
                                 .xsmall()
                                 .child(
                                     Button::new("row-filter-join-all")
-                                        .label("Match All")
+                                        .label(t!("filters.bar.match_all"))
                                         .selected(join == FilterJoin::All),
                                 )
                                 .child(
                                     Button::new("row-filter-join-any")
-                                        .label("Match Any")
+                                        .label(t!("filters.bar.match_any"))
                                         .selected(join == FilterJoin::Any),
                                 )
                                 .on_click(cx.listener(|bar, selected: &Vec<usize>, _, cx| {
@@ -411,24 +439,31 @@ impl Render for FilterBar {
                             .ghost()
                             .xsmall()
                             .icon(IconName::Plus)
-                            .label("Add Condition")
+                            .label(t!("filters.bar.add_condition"))
                             .on_click(cx.listener(|bar, _, window, cx| {
                                 bar.add_condition(None, FilterOperator::Contains, "", window, cx);
                             })),
                     )
-                    .child(div().flex_shrink_0().text_xs().text_color(muted).child(
-                        if shown == total {
-                            format!("{} rows", group_digits(total))
-                        } else {
-                            format!("{} of {} rows", group_digits(shown), group_digits(total))
-                        },
-                    ))
+                    .child(
+                        div().flex_shrink_0().text_xs().text_color(muted).child(
+                            if shown == total {
+                                t!("filters.bar.rows_total", total = group_digits(total))
+                            } else {
+                                t!(
+                                    "filters.bar.rows_shown",
+                                    shown = group_digits(shown),
+                                    total = group_digits(total)
+                                )
+                            }
+                            .to_string(),
+                        ),
+                    )
                     .child(
                         Button::new("close-row-filter")
                             .ghost()
                             .xsmall()
                             .icon(IconName::Close)
-                            .tooltip("Clear and Close the Filter")
+                            .tooltip(t!("filters.bar.clear_and_close"))
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(FilterBarEvent::Close))),
                     ),
             )

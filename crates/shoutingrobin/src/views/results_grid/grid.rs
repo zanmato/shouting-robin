@@ -104,14 +104,14 @@ pub enum LoadingStage {
 }
 
 impl LoadingStage {
-    fn label(self) -> &'static str {
+    fn label(self) -> SharedString {
         match self {
             LoadingStage::Reading {
                 with_baseline: true,
                 ..
-            } => "Reading the crawl and the previous one to compare with",
-            LoadingStage::Reading { .. } => "Reading the crawl",
-            LoadingStage::Counting { .. } => "Counting issues",
+            } => t!("results_grid.loading.reading_with_baseline").into(),
+            LoadingStage::Reading { .. } => t!("results_grid.loading.reading").into(),
+            LoadingStage::Counting { .. } => t!("results_grid.loading.counting").into(),
         }
     }
 
@@ -143,7 +143,7 @@ pub struct ResultsGrid {
     /// The counting pass in flight, or waiting out `COUNTS_INTERVAL`.
     counts_task: Option<Task<()>>,
     counts_started_at: Option<Instant>,
-    _subscription: Subscription,
+    _subscriptions: [Subscription; 2],
 }
 
 /// What the layout views need to know about the crawl on screen.
@@ -193,6 +193,12 @@ impl ResultsGrid {
                 cx.emit(ResultsGridEvent::Selected(*row_ix))
             }
         });
+        let locale_subscription = cx.observe_global::<crate::locale::Locale>(|this, cx| {
+            this.state.update(cx, |state, cx| {
+                state.delegate_mut().relabel_columns();
+                cx.notify();
+            });
+        });
         Self {
             state,
             loading: false,
@@ -200,7 +206,7 @@ impl ResultsGrid {
             layout: LayoutContext::default(),
             counts_task: None,
             counts_started_at: None,
-            _subscription: sub,
+            _subscriptions: [sub, locale_subscription],
         }
     }
 
@@ -554,12 +560,10 @@ impl Render for ResultsGrid {
                 .gap_3()
                 .text_color(cx.theme().muted_foreground)
                 .child(shouting_bird(cx.theme().muted_foreground))
-                .child(
-                    div().text_sm().child(
-                        self.loading_stage
-                            .map_or("Loading crawl…", LoadingStage::label),
-                    ),
-                )
+                .child(div().text_sm().child(self.loading_stage.map_or_else(
+                    || SharedString::from(t!("results_grid.loading.loading_crawl")),
+                    LoadingStage::label,
+                )))
                 .when_some(self.loading_stage, |el, stage| {
                     el.child(
                         Progress::new("crawl-loading-progress")

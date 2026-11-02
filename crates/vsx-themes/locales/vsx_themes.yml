@@ -1,0 +1,138 @@
+_version: 2
+vsx_themes:
+  group:
+    title:
+      en: VS Code Themes
+      sv: VS Code-teman
+    description:
+      en: Find VS Code color themes on Open VSX, the open extension registry. Try shows one across the app until you revert it or close Settings. Install adds it to the theme lists above.
+      sv: Hitta färgteman för VS Code på Open VSX, det öppna tilläggsregistret. Prova visar ett tema i hela appen tills du återställer det eller stänger Inställningar. Installera lägger till det i temalistorna ovan.
+  search_placeholder:
+    en: Search Open VSX
+    sv: Sök på Open VSX
+  status:
+    converting:
+      en: Converting…
+      sv: Konverterar…
+    installing:
+      en: Installing…
+      sv: Installerar…
+    installed_after_restart:
+      en: Installed. A theme of the same name was already loaded, so the new one takes over after a restart.
+      sv: Installerat. Ett tema med samma namn var redan inläst, så det nya används efter en omstart.
+    removed:
+      en: Removed.
+      sv: Borttaget.
+    removed_after_restart:
+      en: Removed. Its themes leave the lists after a restart.
+      sv: Borttaget. Dess teman försvinner från listorna efter en omstart.
+  entry:
+    themes_one:
+      en: 1 theme
+      sv: 1 tema
+    themes_other:
+      en: "%{count} themes"
+      sv: "%{count} teman"
+    by:
+      en: by %{publisher}
+      sv: av %{publisher}
+    installs:
+      en: "%{count} installs"
+      sv: "%{count} installationer"
+  variant:
+    light:
+      en: "%{name} (light)"
+      sv: "%{name} (ljust)"
+    dark:
+      en: "%{name} (dark)"
+      sv: "%{name} (mörkt)"
+  button:
+    preview:
+      en: Preview
+      sv: Förhandsgranska
+    install:
+      en: Install
+      sv: Installera
+    reinstall:
+      en: Reinstall
+      sv: Installera om
+    remove:
+      en: Remove
+      sv: Ta bort
+    try:
+      en: Try
+      sv: Prova
+    revert:
+      en: Revert
+      sv: Återställ
+    use:
+      en: Use
+      sv: Använd
+    load_more:
+      en: Load more
+      sv: Läs in fler
+  summary:
+    none:
+      en: No themes found
+      sv: Inga teman hittades
+    extensions:
+      en: "%{shown} of %{total} extensions"
+      sv: "%{shown} av %{total} tillägg"
+    icon_themes_hidden:
+      en: ", %{count} icon themes hidden"
+      sv: ", %{count} ikonteman dolda"
+  error:
+    not_in_gallery:
+      en: "%{id} is not in the gallery"
+      sv: "%{id} finns inte i galleriet"
+    search_failed:
+      en: Gallery search failed
+      sv: Sökningen i galleriet misslyckades
+    unexpected_answer:
+      en: The gallery answered the search with something unexpected
+      sv: Galleriet svarade på sökningen med något oväntat
+    no_asset:
+      en: "%{id} has no %{asset}"
+      sv: "%{id} saknar %{asset}"
+    downloading:
+      en: downloading %{asset} of %{id}
+      sv: hämtar %{asset} för %{id}
+    too_large:
+      en: "%{id} is too large"
+      sv: "%{id} är för stort"
+    rate_limited:
+      en: the gallery is rate limiting requests, try again in %{seconds} seconds
+      sv: galleriet begränsar antalet förfrågningar, försök igen om %{seconds} sekunder
+    creating:
+      en: creating %{path}
+      sv: skapar %{path}
+    writing:
+      en: writing %{path}
+      sv: skriver %{path}
+    removing:
+      en: removing %{path}
+      sv: tar bort %{path}
+    no_color_themes:
+      en: the extension contributes no color themes
+      sv: tillägget innehåller inga färgteman
+    not_vsix:
+      en: not a .vsix archive
+      sv: inte ett .vsix-arkiv
+    not_in_package:
+      en: "%{path} is not in the package"
+      sv: "%{path} finns inte i paketet"
+    file_too_large:
+      en: "%{path} is too large to be a theme"
+      sv: "%{path} är för stort för att vara ett tema"
+    not_utf8:
+      en: "%{path} is not UTF-8"
+      sv: "%{path} är inte UTF-8"
+    include_too_deep:
+      en: "%{path}: include chain is too deep"
+      sv: "%{path}: kedjan av include är för djup"
+    outside_package:
+      en: "%{path} points outside the package"
+      sv: "%{path} pekar utanför paketet"
+    tm_theme_no_settings:
+      en: tmTheme has no settings
+      sv: tmTheme saknar inställningar

@@ -2,6 +2,11 @@
 // dependency here, so it has to answer to that name.
 extern crate gpui_kit as gpui;
 
+#[macro_use]
+extern crate rust_i18n;
+
+rust_i18n::i18n!("locales", fallback = "en");
+
 pub mod html_view;
 pub mod json_view;
 pub mod tab;
@@ -56,7 +61,12 @@ fn with_copy_button(
                     .right_0p5()
                     .rounded_sm()
                     .bg(background)
-                    .child(Clipboard::new("copy").value(text).tooltip("Copy").xsmall()),
+                    .child(
+                        Clipboard::new("copy")
+                            .value(text)
+                            .tooltip(t!("ui.copy"))
+                            .xsmall(),
+                    ),
             )
         })
         .into_any_element()

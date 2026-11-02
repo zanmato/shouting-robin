@@ -21,4 +21,4 @@ pub use grid::{BaselineInput, LayoutContext, LoadingStage, PreparedCrawl, Result
 pub use row_filter::{FilterCondition, FilterJoin, FilterOperator, RowFilter};
 #[cfg(test)]
 pub(crate) use types::tab_is_flattened;
-pub use types::{IssueFilter, ResultsGridEvent};
+pub use types::{IssueFilter, IssuePriority, IssueType, ResultsGridEvent};

@@ -45,22 +45,22 @@ impl FilterOperator {
         Self::IsNotEmpty,
     ];
 
-    pub fn label(self) -> &'static str {
+    pub fn label(self) -> SharedString {
         match self {
-            Self::Contains => "contains",
-            Self::NotContains => "does not contain",
-            Self::Equals => "=",
-            Self::NotEquals => "≠",
-            Self::Less => "<",
-            Self::LessOrEqual => "≤",
-            Self::Greater => ">",
-            Self::GreaterOrEqual => "≥",
-            Self::StartsWith => "starts with",
-            Self::EndsWith => "ends with",
-            Self::In => "is one of",
-            Self::NotIn => "is none of",
-            Self::IsEmpty => "is empty",
-            Self::IsNotEmpty => "is not empty",
+            Self::Contains => t!("filters.operator.contains").into(),
+            Self::NotContains => t!("filters.operator.not_contains").into(),
+            Self::Equals => SharedString::new_static("="),
+            Self::NotEquals => SharedString::new_static("≠"),
+            Self::Less => SharedString::new_static("<"),
+            Self::LessOrEqual => SharedString::new_static("≤"),
+            Self::Greater => SharedString::new_static(">"),
+            Self::GreaterOrEqual => SharedString::new_static("≥"),
+            Self::StartsWith => t!("filters.operator.starts_with").into(),
+            Self::EndsWith => t!("filters.operator.ends_with").into(),
+            Self::In => t!("filters.operator.in").into(),
+            Self::NotIn => t!("filters.operator.not_in").into(),
+            Self::IsEmpty => t!("filters.operator.is_empty").into(),
+            Self::IsNotEmpty => t!("filters.operator.is_not_empty").into(),
         }
     }
 

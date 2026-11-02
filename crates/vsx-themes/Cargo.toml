@@ -17,6 +17,9 @@ anyhow = { workspace = true }
 gpui = { workspace = true }
 gpui-component = { workspace = true }
 plist = "1.7"
+# The translation library gpui-component uses, so the app's `set_locale`
+# reaches this crate's strings too.
+rust-i18n = { workspace = true }
 # Blocking, so the crate runs its requests on GPUI's background executor and
 # needs no tokio runtime from the app.
 reqwest = { workspace = true, features = ["blocking", "json"] }

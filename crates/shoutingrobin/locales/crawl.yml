@@ -1,0 +1,561 @@
+_version: 2
+crawl:
+  error:
+    create_crawl:
+      en: "Failed to create crawl: %{error}"
+      sv: "Det gick inte att skapa crawlningen: %{error}"
+    open_database:
+      en: "Failed to open the crawl's database: %{error}"
+      sv: "Det gick inte att öppna crawlningens databas: %{error}"
+    parse_root_url:
+      en: "Failed to parse root URL"
+      sv: "Det gick inte att tolka start-URL:en"
+    pass_failed:
+      en: "%{pass} failed: %{error}"
+      sv: "%{pass} misslyckades: %{error}"
+  pass:
+    near_duplicates:
+      en: "near-duplicate analysis"
+      sv: "Analysen av nära dubbletter"
+    crawl_depth:
+      en: "crawl depth analysis"
+      sv: "Analysen av crawldjup"
+    link_score:
+      en: "link score analysis"
+      sv: "Analysen av länkpoäng"
+    hreflang:
+      en: "hreflang validation"
+      sv: "Valideringen av hreflang"
+    template_grouping:
+      en: "layout template grouping"
+      sv: "Grupperingen i layoutmallar"
+  pattern:
+    too_large:
+      en: "the pattern is too large"
+      sv: "mönstret är för stort"
+    invalid_because:
+      en: "Not a valid pattern: %{reason}"
+      sv: "Inte ett giltigt mönster: %{reason}"
+    invalid:
+      en: "Not a valid pattern"
+      sv: "Inte ett giltigt mönster"
+  header:
+    missing_name:
+      en: "Add a name for this header"
+      sv: "Ange ett namn på headern"
+    name_with_spaces:
+      en: "Header names can't contain spaces. Did you mean %{suggestion}?"
+      sv: "Headernamn får inte innehålla mellanslag. Menade du %{suggestion}?"
+    invalid_name:
+      en: "%{name} isn't a valid header name"
+      sv: "%{name} är inte ett giltigt headernamn"
+    missing_value:
+      en: "Add a value for %{name}, or remove it"
+      sv: "Ange ett värde för %{name} eller ta bort den"
+    invalid_value:
+      en: "The value for %{name} can't contain line breaks or control characters"
+      sv: "Värdet för %{name} får inte innehålla radbrytningar eller styrtecken"
+  indexability:
+    indexable:
+      en: "Indexable"
+      sv: "Indexerbar"
+    non_indexable:
+      en: "Non-Indexable"
+      sv: "Icke indexerbar"
+    non_indexable_status:
+      en: "Non-Indexable (%{status})"
+      sv: "Icke indexerbar (%{status})"
+    not_applicable:
+      en: "N/A"
+      sv: "E/T"
+    redirected:
+      en: "Redirected"
+      sv: "Omdirigerad"
+    noindex:
+      en: "Noindex"
+      sv: "Noindex"
+    canonicalised:
+      en: "Canonicalised"
+      sv: "Kanoniserad"
+  hreflang_source:
+    sitemap:
+      en: "Sitemap"
+      sv: "Webbplatskarta"
+  assignment:
+    structured_data:
+      en: "Structured data"
+      sv: "Strukturerad data"
+    layout_without_markup:
+      en: "Layout, no markup"
+      sv: "Layout, ingen märkning"
+    layout_over_type:
+      en: "Layout, over its own type"
+      sv: "Layout, i stället för sin egen typ"
+    shape:
+      en: "Layout"
+      sv: "Layout"
+  template:
+    other_layouts:
+      en: "Other layouts"
+      sv: "Övriga layouter"
+    layout_number:
+      en: "Layout %{number}"
+      sv: "Layout %{number}"
+  layout_capture:
+    off:
+      en: "Layout not captured"
+      sv: "Layouten registrerades inte"
+    loaded:
+      en: "Layout captured, without scrolling"
+      sv: "Layouten registrerades utan rullning"
+    scrolled:
+      en: "Layout captured, with scrolling"
+      sv: "Layouten registrerades med rullning"
+  layout_change:
+    added:
+      en: "added"
+      sv: "tillagd"
+    removed:
+      en: "removed"
+      sv: "borttagen"
+    moved:
+      en: "moved"
+      sv: "flyttad"
+    resized:
+      en: "resized"
+      sv: "ändrad storlek"
+    restyled:
+      en: "restyled"
+      sv: "ändrad stil"
+    count:
+      en: "item count"
+      sv: "antal objekt"
+    text:
+      en: "text"
+      sv: "text"
+    image:
+      en: "image"
+      sv: "bild"
+    summary_more:
+      en: "%{changes}; and %{count} more"
+      sv: "%{changes} och %{count} till"
+    moved_by:
+      en: "moved %{x}, %{y}"
+      sv: "flyttad %{x}, %{y}"
+    text_changed:
+      en: "text changed"
+      sv: "texten ändrades"
+    image_changed:
+      en: "image source changed"
+      sv: "bildkällan ändrades"
+    items_one:
+      en: "%{count} item"
+      sv: "%{count} objekt"
+    items_other:
+      en: "%{count} items"
+      sv: "%{count} objekt"
+    in_most_items:
+      en: "in most items"
+      sv: "i de flesta objekt"
+    from_most_items:
+      en: "from most items"
+      sv: "från de flesta objekt"
+    items_before_after:
+      en: "%{before} → %{after} items"
+      sv: "%{before} → %{after} objekt"
+    typical_size:
+      en: "typical %{before} → %{after}"
+      sv: "typiskt %{before} → %{after}"
+  sd_issue:
+    unknown_type:
+      en: "Unknown schema.org type '%{type_name}'"
+      sv: "Okänd schema.org-typ '%{type_name}'"
+    missing_required:
+      en: "Required property '%{property}' is missing from %{type_name}"
+      sv: "Den obligatoriska egenskapen '%{property}' saknas i %{type_name}"
+    missing_recommended:
+      en: "Recommended property '%{property}' is missing from %{type_name}"
+      sv: "Den rekommenderade egenskapen '%{property}' saknas i %{type_name}"
+    relative_url:
+      en: "Property '%{property}' of %{type_name} is the relative URL '%{url}'; Google expects an absolute URL here"
+      sv: "Egenskapen '%{property}' i %{type_name} är den relativa URL:en '%{url}'. Google förväntar sig en absolut URL här"
+    invalid_url:
+      en: "Invalid URL '%{url}' in property '%{property}' of %{type_name}: %{reason}"
+      sv: "Ogiltig URL '%{url}' i egenskapen '%{property}' i %{type_name}: %{reason}"
+    invalid_url_value:
+      en: "Invalid URL in property '%{property}' of %{type_name}: %{value} is not a URL"
+      sv: "Ogiltig URL i egenskapen '%{property}' i %{type_name}: %{value} är ingen URL"
+    breadcrumb_not_a_list:
+      en: "Property 'itemListElement' of BreadcrumbList must be a list of ListItem objects"
+      sv: "Egenskapen 'itemListElement' i BreadcrumbList måste vara en lista med ListItem-objekt"
+    breadcrumb_empty:
+      en: "BreadcrumbList has an empty 'itemListElement' and produces no breadcrumb"
+      sv: "BreadcrumbList har en tom 'itemListElement' och ger ingen brödsmulestig"
+    breadcrumb_level_not_an_object:
+      en: "Breadcrumb level %{level} is not a ListItem object"
+      sv: "Brödsmulenivå %{level} är inget ListItem-objekt"
+    breadcrumb_level_wrong_type:
+      en: "Breadcrumb level %{level} is a '%{type_name}'; Google reads only ListItem entries"
+      sv: "Brödsmulenivå %{level} är en '%{type_name}'. Google läser bara ListItem-poster"
+    breadcrumb_level_missing_position:
+      en: "Breadcrumb level %{level} is missing its 'position'"
+      sv: "Brödsmulenivå %{level} saknar sin 'position'"
+    breadcrumb_level_invalid_position:
+      en: "Breadcrumb level %{level} has the non-numeric position '%{value}'"
+      sv: "Brödsmulenivå %{level} har den icke numeriska positionen '%{value}'"
+    breadcrumb_level_missing_name:
+      en: "Breadcrumb level %{level} is missing its 'name'"
+      sv: "Brödsmulenivå %{level} saknar sitt 'name'"
+    breadcrumb_level_missing_item:
+      en: "Breadcrumb level %{level} is missing its 'item' URL; only the last level may omit it"
+      sv: "Brödsmulenivå %{level} saknar sin 'item'-URL. Bara den sista nivån får utelämna den"
+    breadcrumb_level_item_without_id:
+      en: "Breadcrumb level %{level} has an 'item' object without an '@id' or 'url'"
+      sv: "Brödsmulenivå %{level} har ett 'item'-objekt utan '@id' eller 'url'"
+    breadcrumb_level_invalid_item:
+      en: "Breadcrumb level %{level} has an 'item' that is neither a URL nor an entity: %{value}"
+      sv: "Brödsmulenivå %{level} har ett 'item' som varken är en URL eller en entitet: %{value}"
+    breadcrumb_position_order:
+      en: "Breadcrumb positions are not the consecutive run 1, 2, 3 ... that Google orders the trail by"
+      sv: "Brödsmulornas positioner är inte den löpande serien 1, 2, 3 ... som Google ordnar stigen efter"
+    product_needs_offer:
+      en: "Product needs one of 'offers', 'review' or 'aggregateRating' to be eligible for rich results"
+      sv: "Product behöver en av 'offers', 'review' eller 'aggregateRating' för att kunna ge rika resultat"
+    url_reason:
+      empty:
+        en: "the value is empty"
+        sv: "värdet är tomt"
+      whitespace:
+        en: "the value contains whitespace"
+        sv: "värdet innehåller blanksteg"
+      placeholder:
+        en: "the value is a placeholder, not a URL"
+        sv: "värdet är en platshållare, inte en URL"
+      scheme:
+        en: "the scheme is not http or https"
+        sv: "schemat är inte http eller https"
+      no_host:
+        en: "the URL has no host"
+        sv: "URL:en saknar värd"
+      no_scheme:
+        en: "the URL is missing its scheme"
+        sv: "URL:en saknar schema"
+      not_a_url:
+        en: "the value is not a URL"
+        sv: "värdet är ingen URL"
+  a11y_rule:
+    area_alt:
+      en: "Ensure <area> elements of image maps have alternative text"
+      sv: "Se till att <area>-element i bildkartor har alternativtext"
+    aria_allowed_attr:
+      en: "Ensure an element's role supports its ARIA attributes"
+      sv: "Se till att elementets roll stöder dess ARIA-attribut"
+    aria_braille_equivalent:
+      en: "Ensure aria-braillelabel and aria-brailleroledescription have a non-braille equivalent"
+      sv: "Se till att aria-braillelabel och aria-brailleroledescription har en motsvarighet som inte är punktskrift"
+    aria_command_name:
+      en: "Ensure every ARIA button, link and menuitem has an accessible name"
+      sv: "Se till att varje ARIA-knapp, ARIA-länk och ARIA-menyalternativ har ett tillgängligt namn"
+    aria_conditional_attr:
+      en: "Ensure ARIA attributes are used as described in the specification of the element's role"
+      sv: "Se till att ARIA-attribut används som specifikationen för elementets roll beskriver"
+    aria_deprecated_role:
+      en: "Ensure elements do not use deprecated roles"
+      sv: "Se till att element inte använder föråldrade roller"
+    aria_hidden_body:
+      en: "Ensure aria-hidden=\"true\" is not present on the document body."
+      sv: "Se till att aria-hidden=\"true\" inte finns på dokumentets body."
+    aria_hidden_focus:
+      en: "Ensure aria-hidden elements are not focusable nor contain focusable elements"
+      sv: "Se till att element med aria-hidden inte kan få fokus och inte innehåller element som kan få fokus"
+    aria_input_field_name:
+      en: "Ensure every ARIA input field has an accessible name"
+      sv: "Se till att varje ARIA-inmatningsfält har ett tillgängligt namn"
+    aria_meter_name:
+      en: "Ensure every ARIA meter node has an accessible name"
+      sv: "Se till att varje ARIA-meter har ett tillgängligt namn"
+    aria_progressbar_name:
+      en: "Ensure every ARIA progressbar node has an accessible name"
+      sv: "Se till att varje ARIA-förloppsindikator har ett tillgängligt namn"
+    aria_prohibited_attr:
+      en: "Ensure ARIA attributes are not prohibited for an element's role"
+      sv: "Se till att ARIA-attributen inte är förbjudna för elementets roll"
+    aria_required_attr:
+      en: "Ensure elements with ARIA roles have all required ARIA attributes"
+      sv: "Se till att element med ARIA-roller har alla obligatoriska ARIA-attribut"
+    aria_required_children:
+      en: "Ensure elements with an ARIA role that require child roles contain them"
+      sv: "Se till att element med en ARIA-roll som kräver underordnade roller innehåller dem"
+    aria_required_parent:
+      en: "Ensure elements with an ARIA role that require parent roles are contained by them"
+      sv: "Se till att element med en ARIA-roll som kräver överordnade roller ligger i dem"
+    aria_roles:
+      en: "Ensure all elements with a role attribute use a valid value"
+      sv: "Se till att alla element med ett role-attribut använder ett giltigt värde"
+    aria_tab_name:
+      en: "Ensure every ARIA tab node has an accessible name"
+      sv: "Se till att varje ARIA-flik har ett tillgängligt namn"
+    aria_toggle_field_name:
+      en: "Ensure every ARIA toggle field has an accessible name"
+      sv: "Se till att varje ARIA-växlingsfält har ett tillgängligt namn"
+    aria_tooltip_name:
+      en: "Ensure every ARIA tooltip node has an accessible name"
+      sv: "Se till att varje ARIA-verktygstips har ett tillgängligt namn"
+    aria_valid_attr_value:
+      en: "Ensure all ARIA attributes have valid values"
+      sv: "Se till att alla ARIA-attribut har giltiga värden"
+    aria_valid_attr:
+      en: "Ensure attributes that begin with aria- are valid ARIA attributes"
+      sv: "Se till att attribut som börjar med aria- är giltiga ARIA-attribut"
+    blink:
+      en: "Ensure <blink> elements are not used"
+      sv: "Se till att <blink>-element inte används"
+    button_name:
+      en: "Ensure buttons have discernible text"
+      sv: "Se till att knappar har urskiljbar text"
+    bypass:
+      en: "Ensure each page has at least one mechanism for a user to bypass navigation and jump straight to the content"
+      sv: "Se till att varje sida har minst ett sätt för användaren att hoppa förbi navigeringen direkt till innehållet"
+    color_contrast:
+      en: "Ensure the contrast between foreground and background colors meets WCAG 2 AA minimum contrast ratio thresholds"
+      sv: "Se till att kontrasten mellan förgrunds- och bakgrundsfärger når WCAG 2 AA:s lägsta kontrastkvoter"
+    definition_list:
+      en: "Ensure <dl> elements are structured correctly"
+      sv: "Se till att <dl>-element har rätt struktur"
+    dlitem:
+      en: "Ensure <dt> and <dd> elements are contained by a <dl>"
+      sv: "Se till att <dt>- och <dd>-element ligger i en <dl>"
+    document_title:
+      en: "Ensure each HTML document contains a non-empty <title> element"
+      sv: "Se till att varje HTML-dokument har ett <title>-element som inte är tomt"
+    duplicate_id_aria:
+      en: "Ensure every id attribute value used in ARIA and in labels is unique"
+      sv: "Se till att varje id-värde som används i ARIA och i etiketter är unikt"
+    form_field_multiple_labels:
+      en: "Ensure form field does not have multiple label elements"
+      sv: "Se till att formulärfält inte har flera label-element"
+    frame_focusable_content:
+      en: "Ensure <frame> and <iframe> elements with focusable content do not have tabindex=-1"
+      sv: "Se till att <frame>- och <iframe>-element med innehåll som kan få fokus inte har tabindex=-1"
+    frame_title_unique:
+      en: "Ensure <iframe> and <frame> elements contain a unique title attribute"
+      sv: "Se till att <iframe>- och <frame>-element har ett unikt title-attribut"
+    frame_title:
+      en: "Ensure <iframe> and <frame> elements have an accessible name"
+      sv: "Se till att <iframe>- och <frame>-element har ett tillgängligt namn"
+    html_has_lang:
+      en: "Ensure every HTML document has a lang attribute"
+      sv: "Se till att varje HTML-dokument har ett lang-attribut"
+    html_lang_valid:
+      en: "Ensure the lang attribute of the <html> element has a valid value"
+      sv: "Se till att lang-attributet på <html>-elementet har ett giltigt värde"
+    html_xml_lang_mismatch:
+      en: "Ensure that HTML elements with both valid lang and xml:lang attributes agree on the base language of the page"
+      sv: "Se till att HTML-element med både giltigt lang och xml:lang anger samma grundspråk för sidan"
+    image_alt:
+      en: "Ensure <img> elements have alternative text or a role of none or presentation"
+      sv: "Se till att <img>-element har alternativtext eller rollen none eller presentation"
+    input_button_name:
+      en: "Ensure input buttons have discernible text"
+      sv: "Se till att inmatningsknappar har urskiljbar text"
+    input_image_alt:
+      en: "Ensure <input type=\"image\"> elements have alternative text"
+      sv: "Se till att <input type=\"image\">-element har alternativtext"
+    label:
+      en: "Ensure every form element has a label"
+      sv: "Se till att varje formulärelement har en etikett"
+    link_in_text_block:
+      en: "Ensure links are distinguished from surrounding text in a way that does not rely on color"
+      sv: "Se till att länkar skiljer sig från omgivande text på ett sätt som inte bara bygger på färg"
+    link_name:
+      en: "Ensure links have discernible text"
+      sv: "Se till att länkar har urskiljbar text"
+    list:
+      en: "Ensure that lists are structured correctly"
+      sv: "Se till att listor har rätt struktur"
+    listitem:
+      en: "Ensure <li> elements are used semantically"
+      sv: "Se till att <li>-element används semantiskt"
+    marquee:
+      en: "Ensure <marquee> elements are not used"
+      sv: "Se till att <marquee>-element inte används"
+    meta_refresh:
+      en: "Ensure <meta http-equiv=\"refresh\"> is not used for delayed refresh"
+      sv: "Se till att <meta http-equiv=\"refresh\"> inte används för fördröjd uppdatering"
+    meta_viewport:
+      en: "Ensure <meta name=\"viewport\"> does not disable text scaling and zooming"
+      sv: "Se till att <meta name=\"viewport\"> inte hindrar textskalning och zoomning"
+    nested_interactive:
+      en: "Ensure interactive controls are not nested as they are not always announced by screen readers or can cause focus problems for assistive technologies"
+      sv: "Se till att interaktiva kontroller inte är nästlade, eftersom skärmläsare inte alltid läser upp dem och de kan ge fokusproblem för hjälpmedel"
+    no_autoplay_audio:
+      en: "Ensure <video> or <audio> elements do not autoplay audio for more than 3 seconds without a control mechanism to stop or mute the audio"
+      sv: "Se till att <video>- eller <audio>-element inte spelar upp ljud automatiskt i mer än 3 sekunder utan en kontroll för att stoppa eller stänga av ljudet"
+    object_alt:
+      en: "Ensure <object> elements have alternative text"
+      sv: "Se till att <object>-element har alternativtext"
+    role_img_alt:
+      en: "Ensure [role=\"img\"] elements have alternative text"
+      sv: "Se till att [role=\"img\"]-element har alternativtext"
+    scrollable_region_focusable:
+      en: "Ensure elements that have scrollable content are accessible by keyboard in Safari"
+      sv: "Se till att element med rullbart innehåll går att nå med tangentbordet i Safari"
+    select_name:
+      en: "Ensure select element has an accessible name"
+      sv: "Se till att select-element har ett tillgängligt namn"
+    server_side_image_map:
+      en: "Ensure that server-side image maps are not used"
+      sv: "Se till att serverbaserade bildkartor inte används"
+    summary_name:
+      en: "Ensure summary elements have discernible text"
+      sv: "Se till att summary-element har urskiljbar text"
+    svg_img_alt:
+      en: "Ensure <svg> elements with an img, graphics-document or graphics-symbol role have accessible text"
+      sv: "Se till att <svg>-element med rollen img, graphics-document eller graphics-symbol har tillgänglig text"
+    td_headers_attr:
+      en: "Ensure that each cell in a table that uses the headers attribute refers only to other <th> elements in that table"
+      sv: "Se till att varje tabellcell som använder headers-attributet bara hänvisar till andra <th>-element i samma tabell"
+    th_has_data_cells:
+      en: "Ensure that <th> elements and elements with role=columnheader/rowheader have data cells they describe"
+      sv: "Se till att <th>-element och element med role=columnheader/rowheader har dataceller som de beskriver"
+    valid_lang:
+      en: "Ensure lang attributes have valid values"
+      sv: "Se till att lang-attribut har giltiga värden"
+    video_caption:
+      en: "Ensure <video> elements have captions"
+      sv: "Se till att <video>-element har undertexter"
+    autocomplete_valid:
+      en: "Ensure the autocomplete attribute is correct and suitable for the form field"
+      sv: "Se till att autocomplete-attributet är korrekt och passar formulärfältet"
+    avoid_inline_spacing:
+      en: "Ensure that text spacing set through style attributes can be adjusted with custom stylesheets"
+      sv: "Se till att textavstånd som anges med style-attribut kan ändras med egna stilmallar"
+    target_size:
+      en: "Ensure touch targets have sufficient size and space"
+      sv: "Se till att pekytor har tillräcklig storlek och tillräckligt avstånd"
+    accesskeys:
+      en: "Ensure every accesskey attribute value is unique"
+      sv: "Se till att varje accesskey-värde är unikt"
+    aria_allowed_role:
+      en: "Ensure role attribute has an appropriate value for the element"
+      sv: "Se till att role-attributet har ett lämpligt värde för elementet"
+    aria_dialog_name:
+      en: "Ensure every ARIA dialog and alertdialog node has an accessible name"
+      sv: "Se till att varje ARIA-dialog och ARIA-alertdialog har ett tillgängligt namn"
+    aria_text:
+      en: "Ensure role=\"text\" is used on elements with no focusable descendants"
+      sv: "Se till att role=\"text\" används på element utan underordnade element som kan få fokus"
+    aria_treeitem_name:
+      en: "Ensure every ARIA treeitem node has an accessible name"
+      sv: "Se till att varje ARIA-trädobjekt har ett tillgängligt namn"
+    empty_heading:
+      en: "Ensure headings have discernible text"
+      sv: "Se till att rubriker har urskiljbar text"
+    empty_table_header:
+      en: "Ensure table headers have discernible text"
+      sv: "Se till att tabellrubriker har urskiljbar text"
+    frame_tested:
+      en: "Ensure <iframe> and <frame> elements contain the axe-core script"
+      sv: "Se till att <iframe>- och <frame>-element innehåller axe-core-skriptet"
+    heading_order:
+      en: "Ensure the order of headings is semantically correct"
+      sv: "Se till att rubrikernas ordning är semantiskt korrekt"
+    image_redundant_alt:
+      en: "Ensure image alternative is not repeated as text"
+      sv: "Se till att bildens alternativtext inte upprepas som text"
+    label_title_only:
+      en: "Ensure that every form element has a visible label and is not solely labeled using hidden labels, or the title or aria-describedby attributes"
+      sv: "Se till att varje formulärelement har en synlig etikett och inte bara märks med dolda etiketter, title eller aria-describedby"
+    landmark_banner_is_top_level:
+      en: "Ensure the banner landmark is at top level"
+      sv: "Se till att banner-landmärket ligger på översta nivån"
+    landmark_contentinfo_is_top_level:
+      en: "Ensure the contentinfo landmark is at top level"
+      sv: "Se till att contentinfo-landmärket ligger på översta nivån"
+    landmark_main_is_top_level:
+      en: "Ensure the main landmark is at top level"
+      sv: "Se till att main-landmärket ligger på översta nivån"
+    landmark_no_duplicate_banner:
+      en: "Ensure the document has at most one banner landmark"
+      sv: "Se till att dokumentet har högst ett banner-landmärke"
+    landmark_no_duplicate_contentinfo:
+      en: "Ensure the document has at most one contentinfo landmark"
+      sv: "Se till att dokumentet har högst ett contentinfo-landmärke"
+    landmark_no_duplicate_main:
+      en: "Ensure the document has at most one main landmark"
+      sv: "Se till att dokumentet har högst ett main-landmärke"
+    landmark_one_main:
+      en: "Ensure the document has a main landmark"
+      sv: "Se till att dokumentet har ett main-landmärke"
+    landmark_unique:
+      en: "Ensure landmarks are unique"
+      sv: "Se till att landmärken är unika"
+    meta_viewport_large:
+      en: "Ensure <meta name=\"viewport\"> can scale a significant amount"
+      sv: "Se till att <meta name=\"viewport\"> tillåter betydande skalning"
+    page_has_heading_one:
+      en: "Ensure that the page, or at least one of its frames contains a level-one heading"
+      sv: "Se till att sidan, eller minst en av dess ramar, har en rubrik på nivå ett"
+    presentation_role_conflict:
+      en: "Ensure elements marked as presentational do not have global ARIA or tabindex so that all screen readers ignore them"
+      sv: "Se till att element markerade som presentation inte har globala ARIA-attribut eller tabindex, så att alla skärmläsare ignorerar dem"
+    region:
+      en: "Ensure all page content is contained by landmarks"
+      sv: "Se till att allt innehåll på sidan ligger i landmärken"
+    scope_attr_valid:
+      en: "Ensure the scope attribute is used correctly on tables"
+      sv: "Se till att scope-attributet används korrekt i tabeller"
+    skip_link:
+      en: "Ensure all skip links have a focusable target"
+      sv: "Se till att alla hopplänkar har ett mål som kan få fokus"
+    tabindex:
+      en: "Ensure tabindex attribute values are not greater than 0"
+      sv: "Se till att tabindex-värden inte är större än 0"
+    table_duplicate_name:
+      en: "Ensure the <caption> element does not contain the same text as the summary attribute"
+      sv: "Se till att <caption>-elementet inte innehåller samma text som summary-attributet"
+    color_contrast_enhanced:
+      en: "Ensure the contrast between foreground and background colors meets WCAG 2 AAA enhanced contrast ratio thresholds"
+      sv: "Se till att kontrasten mellan förgrunds- och bakgrundsfärger når WCAG 2 AAA:s förhöjda kontrastkvoter"
+    identical_links_same_purpose:
+      en: "Ensure that links with the same accessible name serve a similar purpose"
+      sv: "Se till att länkar med samma tillgängliga namn har liknande syfte"
+    meta_refresh_no_exceptions:
+      en: "Ensure <meta http-equiv=\"refresh\"> is not used for delayed refresh"
+      sv: "Se till att <meta http-equiv=\"refresh\"> inte används för fördröjd uppdatering"
+    css_orientation_lock:
+      en: "Ensure content is not locked to any specific display orientation, and the content is operable in all display orientations"
+      sv: "Se till att innehållet inte är låst till en viss skärmorientering och att det går att använda i alla orienteringar"
+    focus_order_semantics:
+      en: "Ensure elements in the focus order have a role appropriate for interactive content"
+      sv: "Se till att element i fokusordningen har en roll som passar interaktivt innehåll"
+    hidden_content:
+      en: "Inform users about hidden content."
+      sv: "Informera användare om dolt innehåll."
+    label_content_name_mismatch:
+      en: "Ensure that elements labelled through their content must have their visible text as part of their accessible name"
+      sv: "Se till att element som får sin etikett från sitt innehåll har sin synliga text som en del av sitt tillgängliga namn"
+    p_as_heading:
+      en: "Ensure bold, italic text and font-size is not used to style <p> elements as a heading"
+      sv: "Se till att fet eller kursiv text och teckenstorlek inte används för att få <p>-element att se ut som rubriker"
+    table_fake_caption:
+      en: "Ensure that tables with a caption use the <caption> element."
+      sv: "Se till att tabeller med bildtext använder <caption>-elementet."
+    td_has_header:
+      en: "Ensure that each non-empty data cell in a <table> larger than 3 by 3 has one or more table headers"
+      sv: "Se till att varje datacell som inte är tom i en <table> större än 3 gånger 3 har en eller flera tabellrubriker"
+    aria_roledescription:
+      en: "Ensure aria-roledescription is only used on elements with an implicit or explicit role"
+      sv: "Se till att aria-roledescription bara används på element med en implicit eller explicit roll"
+    audio_caption:
+      en: "Ensure <audio> elements have captions"
+      sv: "Se till att <audio>-element har textning"
+    duplicate_id_active:
+      en: "Ensure every id attribute value of active elements is unique"
+      sv: "Se till att varje id-värde på aktiva element är unikt"
+    duplicate_id:
+      en: "Ensure every id attribute value is unique"
+      sv: "Se till att varje id-värde är unikt"
+    landmark_complementary_is_top_level:
+      en: "Ensure the complementary landmark or aside is at top level"
+      sv: "Se till att complementary-landmärket eller aside ligger på översta nivån"

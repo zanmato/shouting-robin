@@ -67,22 +67,39 @@ fn verify_sha256(path: &std::path::Path, asset_name: &str, checksums: &str) -> a
             (name == asset_name).then(|| digest.to_ascii_lowercase())
         })
         .next()
-        .ok_or_else(|| anyhow::anyhow!("{CHECKSUMS_ASSET} has no entry for {asset_name}"))?;
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                t!(
+                    "app.update.error.no_checksum",
+                    file = CHECKSUMS_ASSET,
+                    asset = asset_name
+                )
+                .into_owned()
+            )
+        })?;
     let actual = sha256_of_file(path)?;
     if actual != expected {
-        anyhow::bail!("SHA-256 mismatch for {asset_name}: expected {expected}, got {actual}");
+        anyhow::bail!(
+            t!(
+                "app.update.error.checksum_mismatch",
+                asset = asset_name,
+                expected = expected,
+                actual = actual
+            )
+            .into_owned()
+        );
     }
     Ok(())
 }
 
 fn verify_minisign(public_key: &str, message: &[u8], signature: &str) -> anyhow::Result<()> {
     let public_key = minisign_verify::PublicKey::from_base64(public_key)
-        .context("embedded update public key is malformed")?;
-    let signature =
-        minisign_verify::Signature::decode(signature).context("release signature is malformed")?;
+        .context(t!("app.update.error.key_malformed").into_owned())?;
+    let signature = minisign_verify::Signature::decode(signature)
+        .context(t!("app.update.error.signature_malformed").into_owned())?;
     public_key
         .verify(message, &signature, false)
-        .context("release signature does not verify against the embedded key")
+        .context(t!("app.update.error.signature_invalid").into_owned())
 }
 
 impl UpdateManager {
@@ -237,7 +254,9 @@ impl UpdateManager {
     /// caller to show.
     pub fn download_update(cx: &mut App) -> Task<anyhow::Result<()>> {
         let Some(state) = Self::try_global(cx).map(|this| this.state.clone()) else {
-            return Task::ready(Err(anyhow::anyhow!("Updates are not available")));
+            return Task::ready(Err(anyhow::anyhow!(
+                t!("app.update.error.not_available").into_owned()
+            )));
         };
         let UpdateState::Available(version) = state.read(cx).clone() else {
             return Task::ready(Ok(()));
@@ -265,7 +284,7 @@ impl UpdateManager {
 
     fn updates_dir() -> anyhow::Result<PathBuf> {
         Ok(dirs::data_local_dir()
-            .context("Failed to get local data directory")?
+            .context(t!("app.update.error.no_data_directory").into_owned())?
             .join("shoutingrobin")
             .join("updates"))
     }
@@ -296,7 +315,9 @@ impl UpdateManager {
             ("linux", "x86_64") => Ok("shoutingrobin-linux-x86_64"),
             ("windows", "x86_64") => Ok("shoutingrobin-windows-x86_64.exe"),
             ("macos", "aarch64") => Ok("shoutingrobin-macos-arm64.tar.gz"),
-            (os, arch) => anyhow::bail!("no release build is published for {os}/{arch}"),
+            (os, arch) => {
+                anyhow::bail!(t!("app.update.error.no_build", os = os, arch = arch).into_owned())
+            }
         }
     }
 
@@ -319,7 +340,16 @@ impl UpdateManager {
                 .iter()
                 .find(|a| a.name == name)
                 .cloned()
-                .ok_or_else(|| anyhow::anyhow!("release {} has no asset {name}", release.version))
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        t!(
+                            "app.update.error.no_asset",
+                            version = release.version,
+                            name = name
+                        )
+                        .into_owned()
+                    )
+                })
         };
         let asset = find_asset(asset_name)?;
         let checksums = find_asset(CHECKSUMS_ASSET)?;
@@ -362,7 +392,7 @@ impl UpdateManager {
             if let Err(remove_error) = std::fs::remove_dir_all(&download_dir) {
                 tracing::warn!("Failed to remove rejected download: {}", remove_error);
             }
-            return Err(e.context("downloaded update failed verification"));
+            return Err(e.context(t!("app.update.error.verification_failed").into_owned()));
         }
 
         let verified = if cfg!(target_os = "macos") {
@@ -407,18 +437,20 @@ impl UpdateManager {
     /// success the app is quitting when this returns.
     pub fn apply_pending_update(cx: &mut App) -> anyhow::Result<()> {
         let state = Self::try_global(cx)
-            .context("Updates are not available")?
+            .context(t!("app.update.error.not_available").into_owned())?
             .state
             .clone();
         let UpdateState::Ready(version) = state.read(cx).clone() else {
-            anyhow::bail!("No update has been downloaded");
+            anyhow::bail!(t!("app.update.error.none_downloaded").into_owned());
         };
         let staged = Self::staged_binary_path(&version)?;
         if !staged.exists() {
-            anyhow::bail!("No staged update found at {staged:?}");
+            anyhow::bail!(
+                t!("app.update.error.none_staged", path = format!("{staged:?}")).into_owned()
+            );
         }
         let expected = std::fs::read_to_string(Self::staged_digest_path(&version)?)
-            .context("staged update has no recorded digest; download it again")?;
+            .context(t!("app.update.error.no_digest").into_owned())?;
         let actual = sha256_of_file(&staged)?;
         if actual != expected.trim() {
             if let Err(e) = std::fs::remove_file(&staged) {
@@ -429,15 +461,21 @@ impl UpdateManager {
                 *state = UpdateState::Available(version);
                 cx.notify();
             });
-            anyhow::bail!("staged update does not match the verified download; discarded it");
+            anyhow::bail!(t!("app.update.error.digest_mismatch").into_owned());
         }
 
         // Resolved before the swap: on Linux the path of a replaced executable
         // reads back with a " (deleted)" suffix.
-        let executable = std::env::current_exe().context("Failed to get current exe path")?;
+        let executable =
+            std::env::current_exe().context(t!("app.update.error.no_executable").into_owned())?;
 
-        self_update::self_replace::self_replace(&staged)
-            .with_context(|| format!("Failed to replace {}", executable.display()))?;
+        self_update::self_replace::self_replace(&staged).with_context(|| {
+            t!(
+                "app.update.error.replace_failed",
+                path = executable.display()
+            )
+            .into_owned()
+        })?;
 
         // Written only once the binary is in place, so a failed replace does
         // not announce an update that never happened.

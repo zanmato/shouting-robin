@@ -1513,6 +1513,210 @@ fn filter_derived_entry(
     })
 }
 
+/// The key under `results_data.issue` of each Overview rule's texts, by the
+/// English name the rule is stored, counted against its baseline and clicked
+/// through under.
+const ISSUE_TEXT_KEYS: &[(&str, &str)] = &[
+    ("Missing Page Title", "missing_page_title"),
+    ("Duplicate Page Title", "duplicate_page_title"),
+    (
+        "Page Title Over 60 Characters",
+        "page_title_over_60_characters",
+    ),
+    ("Missing Meta Description", "missing_meta_description"),
+    ("Duplicate Meta Description", "duplicate_meta_description"),
+    ("Missing H1", "missing_h1"),
+    ("Duplicate H1", "duplicate_h1"),
+    ("Non-Indexable Pages", "non_indexable_pages"),
+    ("HTTP Errors (4xx/5xx)", "http_errors_4xx_5xx"),
+    ("Redirects", "redirects"),
+    ("Structured Data Errors", "structured_data_errors"),
+    ("Near Duplicate Content", "near_duplicate_content"),
+    ("Low Content Pages", "low_content_pages"),
+    (
+        "Content Requires JavaScript (SSR)",
+        "content_requires_javascript_ssr",
+    ),
+    ("Blocked by robots.txt", "blocked_by_robots_txt"),
+    (
+        "Slow Largest Contentful Paint",
+        "slow_largest_contentful_paint",
+    ),
+    (
+        "High Cumulative Layout Shift",
+        "high_cumulative_layout_shift",
+    ),
+    (
+        "Accessibility Critical & Serious Issues",
+        "accessibility_critical_serious_issues",
+    ),
+    ("Missing HTTPS", "missing_https"),
+    ("Missing HSTS Header", "missing_hsts_header"),
+    ("Mixed Content", "mixed_content"),
+    (
+        "Hreflang Missing Return Tags",
+        "hreflang_missing_return_tags",
+    ),
+    (
+        "Hreflang Invalid Language Codes",
+        "hreflang_invalid_language_codes",
+    ),
+    ("Hreflang Missing x-default", "hreflang_missing_x_default"),
+    (
+        "Hreflang Non-Canonical Targets",
+        "hreflang_non_canonical_targets",
+    ),
+    (
+        "Internal Outlinks With No Anchor Text",
+        "internal_outlinks_with_no_anchor_text",
+    ),
+    (
+        "Page Title Below 30 Characters",
+        "page_title_below_30_characters",
+    ),
+    ("Page Title Below 200 Pixels", "page_title_below_200_pixels"),
+    (
+        "Meta Description Below 70 Characters",
+        "meta_description_below_70_characters",
+    ),
+    (
+        "Meta Description Below 400 Pixels",
+        "meta_description_below_400_pixels",
+    ),
+    ("Missing H2", "missing_h2"),
+    ("Duplicate H2", "duplicate_h2"),
+    ("H2 Over 70 Characters", "h2_over_70_characters"),
+    ("Non-Sequential H2", "non_sequential_h2"),
+    ("Multiple H1", "multiple_h1"),
+    (
+        "Page Title Contains HTML Entity",
+        "page_title_contains_html_entity",
+    ),
+    (
+        "Meta Description Contains HTML Entity",
+        "meta_description_contains_html_entity",
+    ),
+    ("H1 Contains HTML Entity", "h1_contains_html_entity"),
+    ("Canonicalised", "canonicalised"),
+    ("Non-200 URLs in Sitemap", "non_200_urls_in_sitemap"),
+    (
+        "Non-Indexable URLs in Sitemap",
+        "non_indexable_urls_in_sitemap",
+    ),
+    ("Sitemap URLs Not Crawled", "sitemap_urls_not_crawled"),
+    ("Images Over 100 kB", "images_over_100_kb"),
+    ("Broken Images", "broken_images"),
+    ("Images Missing Alt Text", "images_missing_alt_text"),
+    (
+        "Images Missing Alt Attribute",
+        "images_missing_alt_attribute",
+    ),
+    (
+        "Images Missing Size Attributes",
+        "images_missing_size_attributes",
+    ),
+    ("URLs with Parameters", "urls_with_parameters"),
+    ("Uppercase URLs", "uppercase_urls"),
+    ("Missing X-Frame-Options", "missing_x_frame_options"),
+    (
+        "Missing X-Content-Type-Options",
+        "missing_x_content_type_options",
+    ),
+    ("Missing Referrer-Policy", "missing_referrer_policy"),
+    ("Multiple H2", "multiple_h2"),
+    (
+        "Hreflang Missing Self Reference",
+        "hreflang_missing_self_reference",
+    ),
+    ("Missing Canonical Tag", "missing_canonical_tag"),
+    ("Missing <body> Tag", "missing_body_tag"),
+    ("Noindex", "noindex"),
+    (
+        "Missing Content-Security-Policy",
+        "missing_content_security_policy",
+    ),
+    ("Redirect Chains", "redirect_chains"),
+    (
+        "Canonical to Non-Indexable Page",
+        "canonical_to_non_indexable_page",
+    ),
+    ("Indexable Parameter URLs", "indexable_parameter_urls"),
+    ("Out of Stock Products", "out_of_stock_products"),
+    ("Invalid GTIN", "invalid_gtin"),
+    (
+        "Product Pages Missing Breadcrumbs",
+        "product_pages_missing_breadcrumbs",
+    ),
+    (
+        "Product Layout Without Product Markup",
+        "product_layout_without_product_markup",
+    ),
+    ("Temporary Redirects", "temporary_redirects"),
+    ("Redirects to an Error", "redirects_to_an_error"),
+    ("HTTPS Pages Linking to HTTP", "https_pages_linking_to_http"),
+    ("Pages With One Inlink", "pages_with_one_inlink"),
+    (
+        "Pages Without Internal Outlinks",
+        "pages_without_internal_outlinks",
+    ),
+    (
+        "Canonical Points to a Redirect",
+        "canonical_points_to_a_redirect",
+    ),
+    (
+        "Canonical Points to an Error",
+        "canonical_points_to_an_error",
+    ),
+    ("Canonical Points to HTTP", "canonical_points_to_http"),
+    ("Canonical Chains", "canonical_chains"),
+    (
+        "Canonicalised URLs in Sitemap",
+        "canonicalised_urls_in_sitemap",
+    ),
+    ("Slow HTML Response", "slow_html_response"),
+    ("HTML Over 2 MB", "html_over_2_mb"),
+    ("Assets Not Cached", "assets_not_cached"),
+];
+
+fn issue_text_key(name: &str) -> Option<&'static str> {
+    ISSUE_TEXT_KEYS
+        .iter()
+        .find(|(english, _)| *english == name)
+        .map(|(_, key)| *key)
+}
+
+/// An Overview rule's name in the app's language. The entry keeps the English
+/// name because that is what identifies the rule, in the stored counts of a
+/// finished crawl among others, so it is translated as it is shown. A name no
+/// rule carries any more shows as it was stored.
+pub(super) fn issue_display_name(name: &str) -> String {
+    match issue_text_key(name) {
+        Some(key) => t!(format!("results_data.issue.{key}.name")).into_owned(),
+        None => name.to_string(),
+    }
+}
+
+/// An Overview entry's description in the app's language, see
+/// [`issue_display_name`].
+pub(super) fn issue_display_description(entry: &IssueEntry) -> String {
+    match issue_text_key(&entry.name) {
+        Some(key) => t!(
+            format!("results_data.issue.{key}.description"),
+            count = super::filter::LOW_CONTENT_WORD_COUNT
+        )
+        .into_owned(),
+        None => entry.description.clone(),
+    }
+}
+
+/// An Overview entry's hint in the app's language, see [`issue_display_name`].
+pub(super) fn issue_display_hint(entry: &IssueEntry) -> String {
+    match issue_text_key(&entry.name) {
+        Some(key) => t!(format!("results_data.issue.{key}.hint")).into_owned(),
+        None => entry.hint.clone(),
+    }
+}
+
 /// Compares the loaded crawl's internal pages against a baseline crawl, keyed by
 /// URL, producing one entry per page that was added, removed, or changed.
 pub(super) fn build_change_entries(
@@ -1544,7 +1748,9 @@ pub(super) fn build_change_entries(
                 let mut changes = describe_changes(previous, page);
                 let layout = layout_changes.get(*url).cloned();
                 if let Some(layout) = &layout {
-                    changes.push(format!("layout: {}", layout.summary));
+                    changes.push(
+                        t!("results_data.change.layout", summary = layout.summary).into_owned(),
+                    );
                 }
                 if !changes.is_empty() {
                     entries.push(ChangeEntry {
@@ -1687,36 +1893,53 @@ fn describe_changes(before: &super::delegate::BaselinePage, after: &PageRecord) 
 
     let mut out = Vec::new();
     if before.status != after.status {
-        out.push(format!(
-            "status {} → {}",
-            opt_status(before.status),
-            opt_status(after.status)
-        ));
+        out.push(
+            t!(
+                "results_data.change.status",
+                before = opt_status(before.status),
+                after = opt_status(after.status)
+            )
+            .into_owned(),
+        );
     }
     if before.indexability != after.indexability {
         out.push(format!(
             "{} → {}",
-            before.indexability.as_deref().unwrap_or("-"),
-            after.indexability.as_deref().unwrap_or("-")
+            indexability_text(before.indexability.as_deref()),
+            indexability_text(after.indexability.as_deref())
         ));
     }
     if before.title != after.title {
-        out.push("title changed".into());
+        out.push(t!("results_data.change.title_changed").into_owned());
     }
     if before.h1 != after.h1 {
-        out.push("h1 changed".into());
+        out.push(t!("results_data.change.h1_changed").into_owned());
     }
     if before.meta_description != after.meta_description {
-        out.push("meta description changed".into());
+        out.push(t!("results_data.change.meta_description_changed").into_owned());
     }
     if before.word_count != after.word_count {
-        out.push(format!(
-            "words {} → {}",
-            opt_num(before.word_count),
-            opt_num(after.word_count)
-        ));
+        out.push(
+            t!(
+                "results_data.change.words",
+                before = opt_num(before.word_count),
+                after = opt_num(after.word_count)
+            )
+            .into_owned(),
+        );
     }
     out
+}
+
+/// The crawl stores indexability as English, which other code compares
+/// against, so the known values are translated only for the change text.
+fn indexability_text(value: Option<&str>) -> String {
+    match value {
+        Some("Indexable") => t!("results_data.indexability.indexable").into_owned(),
+        Some("Non-Indexable") => t!("results_data.indexability.non_indexable").into_owned(),
+        Some(other) => other.to_string(),
+        None => "-".to_string(),
+    }
 }
 
 pub(super) fn build_issues_rows(pages: &[Arc<PageRecord>]) -> Vec<FlatRow> {
@@ -2490,5 +2713,96 @@ mod filter_derived_rule_tests {
             !entries.iter().any(|e| e.name == "Missing H2"),
             "a zero count must not produce a row"
         );
+    }
+}
+
+#[cfg(test)]
+mod issue_text_tests {
+    use super::*;
+
+    fn english(path: &str) -> String {
+        t!(path, locale = "en").into_owned()
+    }
+
+    #[test]
+    fn every_issue_text_key_names_a_rule_and_has_its_english() {
+        for (name, key) in ISSUE_TEXT_KEYS {
+            assert!(overview_issue_target(name).is_some(), "{name} is no rule");
+            assert_eq!(english(&format!("results_data.issue.{key}.name")), *name);
+            for field in ["description", "hint"] {
+                let path = format!("results_data.issue.{key}.{field}");
+                assert_ne!(english(&path), path, "{name} lacks its {field}");
+            }
+        }
+    }
+
+    #[test]
+    fn filter_derived_rules_show_the_english_they_store() {
+        for rule in FILTER_DERIVED_RULES {
+            let key = issue_text_key(rule.name)
+                .unwrap_or_else(|| panic!("{} has no text key", rule.name));
+            assert_eq!(
+                english(&format!("results_data.issue.{key}.description")),
+                rule.description
+            );
+            assert_eq!(
+                english(&format!("results_data.issue.{key}.hint")),
+                rule.hint
+            );
+        }
+    }
+
+    /// The hand-built rules write their texts inline, so a fixture that fires
+    /// them checks the locale file against what they store.
+    #[test]
+    fn hand_built_rules_show_the_english_they_store() {
+        let mut bare = PageRecord {
+            url: "http://a.test/bare".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            word_count: Some(20),
+            lcp_ms: Some(5000),
+            cls: Some(0.5),
+            sd_errors: 1,
+            near_duplicate_count: Some(1),
+            ssr_content_missing: Some(true),
+            has_mixed_content: true,
+            headers: thin_vec::thin_vec![("content-type".into(), "text/html".into())],
+            ..Default::default()
+        };
+        bare.compute_indexability();
+        let missing = PageRecord {
+            url: "http://a.test/missing".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(404),
+            ..Default::default()
+        };
+        let mut redirected = PageRecord {
+            url: "http://a.test/old".into(),
+            is_internal: true,
+            is_page: true,
+            status: Some(301),
+            redirect_url: Some("http://a.test/new".into()),
+            ..Default::default()
+        };
+        redirected.compute_indexability();
+        let entries = build_issues_entries(&shared([bare, missing, redirected]));
+        assert!(entries.len() > 5, "the fixture fired too few rules");
+        for entry in &entries {
+            let key = issue_text_key(&entry.name)
+                .unwrap_or_else(|| panic!("{} has no text key", entry.name));
+            let description = t!(
+                format!("results_data.issue.{key}.description"),
+                locale = "en",
+                count = super::super::filter::LOW_CONTENT_WORD_COUNT
+            );
+            assert_eq!(description, entry.description);
+            assert_eq!(
+                english(&format!("results_data.issue.{key}.hint")),
+                entry.hint
+            );
+        }
     }
 }

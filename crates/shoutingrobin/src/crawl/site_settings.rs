@@ -100,12 +100,12 @@ fn regex_problem(error: &regex::Error) -> String {
             .rev()
             .find_map(|line| line.trim().strip_prefix("error: "))
             .map(str::to_string),
-        regex::Error::CompiledTooBig(_) => Some("the pattern is too large".to_string()),
+        regex::Error::CompiledTooBig(_) => Some(t!("crawl.pattern.too_large").into_owned()),
         _ => None,
     };
     match reason {
-        Some(reason) => format!("Not a valid pattern: {reason}"),
-        None => "Not a valid pattern".to_string(),
+        Some(reason) => t!("crawl.pattern.invalid_because", reason = reason).into_owned(),
+        None => t!("crawl.pattern.invalid").into_owned(),
     }
 }
 
@@ -145,25 +145,24 @@ pub fn header_problem(name: &str, value: &str) -> Option<String> {
     let name = name.trim();
     let value = value.trim();
     if name.is_empty() {
-        return (!value.is_empty()).then(|| "Add a name for this header".to_string());
+        return (!value.is_empty()).then(|| t!("crawl.header.missing_name").into_owned());
     }
     if reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_err() {
         return Some(if name.contains(' ') {
-            format!(
-                "Header names can't contain spaces. Did you mean {}?",
-                name.split_whitespace().collect::<Vec<_>>().join("-")
+            t!(
+                "crawl.header.name_with_spaces",
+                suggestion = name.split_whitespace().collect::<Vec<_>>().join("-")
             )
+            .into_owned()
         } else {
-            format!("{name} isn't a valid header name")
+            t!("crawl.header.invalid_name", name = name).into_owned()
         });
     }
     if value.is_empty() {
-        return Some(format!("Add a value for {name}, or remove it"));
+        return Some(t!("crawl.header.missing_value", name = name).into_owned());
     }
     if reqwest::header::HeaderValue::from_str(value).is_err() {
-        return Some(format!(
-            "The value for {name} can't contain line breaks or control characters"
-        ));
+        return Some(t!("crawl.header.invalid_value", name = name).into_owned());
     }
     None
 }

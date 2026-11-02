@@ -10,6 +10,7 @@
 //! theme is applied to [`Theme`] directly, never registered, since the
 //! registry has no way to drop a theme again.
 
+use std::borrow::Cow;
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -57,12 +58,8 @@ pub struct ThemeBrowserOptions {
 /// The browser as a group for a gpui-component settings page.
 pub fn setting_group(browser: Entity<ThemeBrowser>) -> SettingGroup {
     SettingGroup::new()
-        .title("VS Code Themes")
-        .description(
-            "Find VS Code color themes on Open VSX, the open extension registry. Try shows \
-             one across the app until you revert it or close Settings. Install adds it to the \
-             theme lists above.",
-        )
+        .title(SharedString::from(t!("vsx_themes.group.title")))
+        .description(SharedString::from(t!("vsx_themes.group.description")))
         .items(vec![SettingItem::render(move |_, _, _| browser.clone())])
 }
 
@@ -115,14 +112,49 @@ enum Kind {
 
 enum Status {
     Idle,
-    Working(&'static str),
-    Note(SharedString),
+    Working(Work),
+    Note(Note),
     Failed(SharedString),
+}
+
+enum Work {
+    Converting,
+    Installing,
+}
+
+impl Work {
+    fn label(&self) -> Cow<'static, str> {
+        match self {
+            Work::Converting => t!("vsx_themes.status.converting"),
+            Work::Installing => t!("vsx_themes.status.installing"),
+        }
+    }
+}
+
+enum Note {
+    /// The registry keeps the first theme of a name, and the app does not
+    /// rebuild it from the folder.
+    InstalledAfterRestart,
+    Removed,
+    RemovedAfterRestart,
+}
+
+impl Note {
+    fn text(&self) -> Cow<'static, str> {
+        match self {
+            Note::InstalledAfterRestart => t!("vsx_themes.status.installed_after_restart"),
+            Note::Removed => t!("vsx_themes.status.removed"),
+            Note::RemovedAfterRestart => t!("vsx_themes.status.removed_after_restart"),
+        }
+    }
 }
 
 impl ThemeBrowser {
     pub fn new(options: ThemeBrowserOptions, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let search_input = cx.new(|cx| InputState::new(window, cx).placeholder("Search Open VSX"));
+        let search_input = cx.new(|cx| {
+            InputState::new(window, cx)
+                .placeholder(SharedString::from(t!("vsx_themes.search_placeholder")))
+        });
         let subscription = cx.subscribe(&search_input, |this, _, event: &InputEvent, cx| {
             if let InputEvent::Change = event {
                 this.schedule_search(cx);
@@ -291,7 +323,11 @@ impl ThemeBrowser {
         };
         let extension = entry.extension.clone();
         let converted = entry.converted.clone();
-        entry.status = Status::Working(if install { "Installing" } else { "Converting" });
+        entry.status = Status::Working(if install {
+            Work::Installing
+        } else {
+            Work::Converting
+        });
         cx.notify();
 
         let work = cx.background_spawn({
@@ -333,11 +369,7 @@ impl ThemeBrowser {
                         }
                         entry.status = match registered {
                             Some(Err(error)) => Status::Failed(format!("{error:#}").into()),
-                            Some(Ok(true)) if !watched => Status::Note(
-                                "Installed. A theme of the same name was already loaded, so \
-                                 the new one takes over after a restart."
-                                    .into(),
-                            ),
+                            Some(Ok(true)) if !watched => Status::Note(Note::InstalledAfterRestart),
                             _ => Status::Idle,
                         };
                         entry.converted = Some(converted);
@@ -408,9 +440,9 @@ impl ThemeBrowser {
                 // The registry has no way to drop a theme, so unless the app
                 // rebuilds it from the folder, it stays until the next start.
                 entry.status = if watched {
-                    Status::Note("Removed.".into())
+                    Status::Note(Note::Removed)
                 } else {
-                    Status::Note("Removed. Its themes leave the lists after a restart.".into())
+                    Status::Note(Note::RemovedAfterRestart)
                 };
             }
             Err(error) => entry.status = Status::Failed(format!("{error:#}").into()),
@@ -435,13 +467,21 @@ impl ThemeBrowser {
             _ => None,
         };
         let variants = match count {
-            Some(1) => "1 theme".to_string(),
-            Some(count) => format!("{count} themes"),
+            Some(1) => t!("vsx_themes.entry.themes_one").to_string(),
+            Some(count) => t!("vsx_themes.entry.themes_other", count = count).to_string(),
             None => String::new(),
         };
         let byline = [
-            format!("by {}", extension.publisher_display_name),
-            format!("{} installs", short_count(extension.installs)),
+            t!(
+                "vsx_themes.entry.by",
+                publisher = extension.publisher_display_name
+            )
+            .to_string(),
+            t!(
+                "vsx_themes.entry.installs",
+                count = short_count(extension.installs)
+            )
+            .to_string(),
             format!("v{}", extension.version),
             variants,
         ]
@@ -468,7 +508,7 @@ impl ThemeBrowser {
                     Button::new(("vscode-theme-preview", index))
                         .small()
                         .outline()
-                        .label("Preview")
+                        .label(SharedString::from(t!("vsx_themes.button.preview")))
                         .disabled(busy)
                         .on_click(cx.listener({
                             let id = id.clone();
@@ -481,7 +521,11 @@ impl ThemeBrowser {
                     .small()
                     .when(!is_installed, |this| this.primary())
                     .when(is_installed, |this| this.outline())
-                    .label(if is_installed { "Reinstall" } else { "Install" })
+                    .label(SharedString::from(if is_installed {
+                        t!("vsx_themes.button.reinstall")
+                    } else {
+                        t!("vsx_themes.button.install")
+                    }))
                     .disabled(busy)
                     .on_click(cx.listener({
                         let id = id.clone();
@@ -493,7 +537,7 @@ impl ThemeBrowser {
                     Button::new(("vscode-theme-remove", index))
                         .small()
                         .ghost()
-                        .label("Remove")
+                        .label(SharedString::from(t!("vsx_themes.button.remove")))
                         .disabled(busy)
                         .on_click(cx.listener({
                             let id = id.clone();
@@ -504,11 +548,10 @@ impl ThemeBrowser {
 
         let status = match &entry.status {
             Status::Idle => None,
-            Status::Working(what) => Some((
-                SharedString::from(format!("{what}…")),
-                theme.muted_foreground,
-            )),
-            Status::Note(note) => Some((note.clone(), theme.muted_foreground)),
+            Status::Working(work) => {
+                Some((SharedString::from(work.label()), theme.muted_foreground))
+            }
+            Status::Note(note) => Some((SharedString::from(note.text()), theme.muted_foreground)),
             Status::Failed(error) => Some((error.clone(), theme.danger)),
         };
 
@@ -602,17 +645,26 @@ impl ThemeBrowser {
                                         div().w(px(16.)).h(px(18.)).bg(gpui_color(*color))
                                     })),
                             )
-                            .child(div().flex_1().min_w_0().text_sm().truncate().child(format!(
-                                "{} ({})",
-                                summary.name,
-                                if summary.light { "light" } else { "dark" }
-                            )))
+                            .child(
+                                div().flex_1().min_w_0().text_sm().truncate().child(
+                                    if summary.light {
+                                        t!("vsx_themes.variant.light", name = summary.name)
+                                    } else {
+                                        t!("vsx_themes.variant.dark", name = summary.name)
+                                    }
+                                    .to_string(),
+                                ),
+                            )
                             .child(
                                 Button::new(("vscode-theme-try", index * 100 + variant))
                                     .xsmall()
                                     .when(previewing, |this| this.primary())
                                     .when(!previewing, |this| this.outline())
-                                    .label(if previewing { "Revert" } else { "Try" })
+                                    .label(SharedString::from(if previewing {
+                                        t!("vsx_themes.button.revert")
+                                    } else {
+                                        t!("vsx_themes.button.try")
+                                    }))
                                     .on_click(cx.listener({
                                         let name = name.clone();
                                         let converted = converted.clone();
@@ -633,7 +685,7 @@ impl ThemeBrowser {
                                         Button::new(("vscode-theme-use", index * 100 + variant))
                                             .xsmall()
                                             .outline()
-                                            .label("Use")
+                                            .label(SharedString::from(t!("vsx_themes.button.use")))
                                             .on_click(cx.listener(move |this, _, window, cx| {
                                                 // The chosen theme replaces the preview
                                                 // rather than ending it.
@@ -650,7 +702,15 @@ impl ThemeBrowser {
 }
 
 impl Render for ThemeBrowser {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // The input keeps its placeholder, and this crate cannot observe the
+        // app's locale, so it is checked as the browser renders.
+        let placeholder = SharedString::from(t!("vsx_themes.search_placeholder"));
+        if *self.search_input.read(cx).presentation().placeholder() != placeholder {
+            self.search_input.update(cx, |state, cx| {
+                state.set_placeholder(placeholder, window, cx)
+            });
+        }
         let theme = cx.theme();
         let hidden = self
             .entries
@@ -658,15 +718,16 @@ impl Render for ThemeBrowser {
             .filter(|entry| entry.kind == Kind::NoColorThemes)
             .count();
         let summary = if self.entries.is_empty() && !self.searching {
-            "No themes found".to_string()
+            t!("vsx_themes.summary.none").to_string()
         } else {
-            let mut summary = format!(
-                "{} of {} extensions",
-                self.entries.len(),
-                short_count(self.total)
-            );
+            let mut summary = t!(
+                "vsx_themes.summary.extensions",
+                shown = self.entries.len(),
+                total = short_count(self.total)
+            )
+            .to_string();
             if hidden > 0 {
-                summary.push_str(&format!(", {hidden} icon themes hidden"));
+                summary.push_str(&t!("vsx_themes.summary.icon_themes_hidden", count = hidden));
             }
             summary
         };
@@ -707,7 +768,7 @@ impl Render for ThemeBrowser {
                         Button::new("vscode-theme-more")
                             .small()
                             .outline()
-                            .label("Load more")
+                            .label(SharedString::from(t!("vsx_themes.button.load_more")))
                             .disabled(self.searching)
                             .on_click(cx.listener(|this, _, _, cx| this.search(true, cx))),
                     ),

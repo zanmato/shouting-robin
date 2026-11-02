@@ -19,12 +19,14 @@ use takumi_core::{Fonts, resources::font::FontResource};
 use takumi_html::{FromHtmlOptions, from_html};
 use takumi_pdf::{PageOptions, PdfMetadata, PdfOptions, render};
 
+use crate::views::results_grid::{IssuePriority, IssueType};
+
 /// One rule of the Overview, with the URLs it lands on.
 #[derive(Clone, Debug)]
 pub struct ReportIssue {
     pub name: String,
-    pub issue_type: String,
-    pub priority: String,
+    pub issue_type: IssueType,
+    pub priority: IssuePriority,
     pub count: usize,
     pub pct: f32,
     pub description: String,
@@ -80,19 +82,19 @@ fn truncate(value: &str, max: usize) -> String {
 }
 
 /// The colour a type reads in, matching the tag tones in the app.
-fn type_color(issue_type: &str) -> &'static str {
+fn type_color(issue_type: IssueType) -> &'static str {
     match issue_type {
-        "Issue" => "#dc2626",
-        "Opportunity" => "#d97706",
-        _ => "#64748b",
+        IssueType::Issue => "#dc2626",
+        IssueType::Opportunity => "#d97706",
+        IssueType::Warning => "#64748b",
     }
 }
 
-fn priority_color(priority: &str) -> &'static str {
+fn priority_color(priority: IssuePriority) -> &'static str {
     match priority {
-        "High" => "#dc2626",
-        "Medium" => "#d97706",
-        _ => "#64748b",
+        IssuePriority::High => "#dc2626",
+        IssuePriority::Medium => "#d97706",
+        IssuePriority::Low => "#64748b",
     }
 }
 
@@ -143,16 +145,13 @@ fn report_html(report: &Report) -> String {
             table_row(
                 [
                     &truncate(&issue.name, 46),
-                    &issue.issue_type,
-                    &issue.priority,
+                    &issue.issue_type.label(),
+                    &issue.priority.label(),
                     &issue.count.to_string(),
                     &format!("{:.1}%", issue.pct),
                 ],
                 "font-size:12px;border-top:1px solid #f1f5f9",
-                (
-                    type_color(&issue.issue_type),
-                    priority_color(&issue.priority),
-                ),
+                (type_color(issue.issue_type), priority_color(issue.priority)),
             )
         })
         .collect();
@@ -174,8 +173,11 @@ fn report_html(report: &Report) -> String {
                 .collect();
             let more = if issue.count > issue.offenders.len() {
                 format!(
-                    r#"<div style="font-size:11px;color:#94a3b8">and {} more</div>"#,
-                    issue.count - issue.offenders.len()
+                    r#"<div style="font-size:11px;color:#94a3b8">{}</div>"#,
+                    escape(&t!(
+                        "app.report.and_more",
+                        count = issue.count - issue.offenders.len()
+                    ))
                 )
             } else {
                 String::new()
@@ -194,15 +196,15 @@ fn report_html(report: &Report) -> String {
                 r#"<div style="display:flex;flex-direction:column;gap:3px;padding-bottom:14px;break-inside:avoid">
                      <div style="display:flex;flex-direction:row;gap:8px;align-items:baseline">
                        <div style="font-size:13px;font-weight:600;color:{color}">{name}</div>
-                       <div style="font-size:12px;color:#64748b">{count} URLs</div>
+                       <div style="font-size:12px;color:#64748b">{count}</div>
                      </div>
                      <div style="font-size:11px;color:#475569">{description}</div>
                      <div style="font-size:11px;color:#64748b">{hint}</div>
                      {urls}{more}
                    </div>"#,
-                color = type_color(&issue.issue_type),
+                color = type_color(issue.issue_type),
                 name = escape(&truncate(&issue.name, 60)),
-                count = issue.count,
+                count = escape(&t!("app.report.url_count", count = issue.count)),
                 description = escape(&issue.description),
                 hint = escape(&issue.hint),
             )
@@ -210,18 +212,29 @@ fn report_html(report: &Report) -> String {
         .collect();
 
     let issues_section = if report.issues.is_empty() {
-        r#"<div style="font-size:13px;color:#64748b;padding-top:16px">No rule fired on this crawl.</div>"#.to_string()
+        format!(
+            r#"<div style="font-size:13px;color:#64748b;padding-top:16px">{}</div>"#,
+            escape(&t!("app.report.no_rule_fired"))
+        )
     } else {
         format!(
-            r#"<h2 style="font-size:17px;font-weight:600;margin:0;padding-top:18px;padding-bottom:8px">Issues found</h2>
+            r#"<h2 style="font-size:17px;font-weight:600;margin:0;padding-top:18px;padding-bottom:8px">{issues_found}</h2>
                <div style="height:1px;background-color:#e2e8f0;margin-bottom:6px"></div>
                {header}
                {rows}
-               <h2 style="font-size:17px;font-weight:600;margin:0;padding-top:22px;padding-bottom:8px">The URLs behind each issue</h2>
+               <h2 style="font-size:17px;font-weight:600;margin:0;padding-top:22px;padding-bottom:8px">{urls_behind}</h2>
                <div style="height:1px;background-color:#e2e8f0;margin-bottom:10px"></div>
                {details}"#,
+            issues_found = escape(&t!("app.report.issues_found")),
+            urls_behind = escape(&t!("app.report.urls_behind")),
             header = table_row(
-                ["ISSUE", "TYPE", "PRIORITY", "URLS", "% OF TOTAL"],
+                [
+                    &t!("app.report.column.issue"),
+                    &t!("app.report.column.type"),
+                    &t!("app.report.column.priority"),
+                    &t!("app.report.column.urls"),
+                    &t!("app.report.column.percent_of_total"),
+                ],
                 "font-size:10px;color:#64748b",
                 ("#64748b", "#64748b"),
             ),
@@ -230,12 +243,13 @@ fn report_html(report: &Report) -> String {
 
     format!(
         r#"<main style="display:flex;flex-direction:column;width:100%;font-family:'Google Sans';color:#0f172a">
-             <div style="font-size:11px;color:#64748b">SEO CRAWL REPORT</div>
+             <div style="font-size:11px;color:#64748b">{heading}</div>
              <h1 style="font-size:28px;font-weight:700;margin:0;padding-top:4px">{site}</h1>
              <div style="font-size:12px;color:#64748b;padding-top:4px;padding-bottom:18px">{generated} · {mode}</div>
              <div style="display:flex;flex-direction:row;gap:10px">{tiles}</div>
              {issues_section}
            </main>"#,
+        heading = escape(&t!("app.report.heading")),
         site = escape(&truncate(&report.site, 60)),
         generated = escape(&report.generated_at),
         mode = escape(&report.render_mode),
@@ -249,10 +263,12 @@ fn footer_html(report: &Report) -> String {
         r#"<div style="display:flex;flex-direction:row;justify-content:space-between;width:100%;padding:0 {margin}px;font-family:'Google Sans';font-size:10px;color:#94a3b8">
              <div>{site}</div>
              <div style="display:flex;flex-direction:row;gap:3px">
-               <div>Page</div><div class="pageNumber"></div><div>of</div><div class="totalPages"></div>
+               <div>{page}</div><div class="pageNumber"></div><div>{of}</div><div class="totalPages"></div>
              </div>
            </div>"#,
         margin = PAGE_MARGIN,
+        page = escape(&t!("app.report.page")),
+        of = escape(&t!("app.report.of")),
         site = escape(&truncate(&report.site, 60)),
     )
 }
@@ -264,7 +280,7 @@ fn report_fonts() -> Result<Fonts> {
     for face in [crate::ui::fonts::REGULAR, crate::ui::fonts::BOLD] {
         fonts
             .register(FontResource::new(face))
-            .map_err(|err| anyhow!("failed to register the report font: {err}"))?;
+            .map_err(|err| anyhow!(t!("app.report.error.font", error = err).into_owned()))?;
     }
     Ok(fonts)
 }
@@ -273,9 +289,9 @@ fn report_fonts() -> Result<Fonts> {
 pub fn render_pdf(report: &Report) -> Result<Vec<u8>> {
     let fonts = report_fonts()?;
     let node = from_html(&report_html(report), FromHtmlOptions::default())
-        .map_err(|err| anyhow!("the report markup is not usable: {err}"))?;
+        .map_err(|err| anyhow!(t!("app.report.error.markup", error = err).into_owned()))?;
     let footer = from_html(&footer_html(report), FromHtmlOptions::default())
-        .map_err(|err| anyhow!("the report footer is not usable: {err}"))?;
+        .map_err(|err| anyhow!(t!("app.report.error.footer", error = err).into_owned()))?;
 
     render(
         PdfOptions::builder()
@@ -287,13 +303,13 @@ pub fn render_pdf(report: &Report) -> Result<Vec<u8>> {
             // list of its own sections.
             .outline(true)
             .metadata(PdfMetadata {
-                title: Some(format!("SEO crawl report · {}", report.site)),
+                title: Some(t!("app.report.pdf_title", site = report.site).into_owned()),
                 creator: Some("Shouting Robin".to_string()),
                 ..Default::default()
             })
             .build(),
     )
-    .map_err(|err| anyhow!("failed to write the report: {err}"))
+    .map_err(|err| anyhow!(t!("app.report.error.write", error = err).into_owned()))
 }
 
 #[cfg(test)]
@@ -303,8 +319,8 @@ mod tests {
     fn issue(name: &str, offenders: usize) -> ReportIssue {
         ReportIssue {
             name: name.into(),
-            issue_type: "Issue".into(),
-            priority: "High".into(),
+            issue_type: IssueType::Issue,
+            priority: IssuePriority::High,
             count: offenders,
             pct: 12.5,
             description: "A description of the rule.".into(),

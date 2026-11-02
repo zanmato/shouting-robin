@@ -1,0 +1,93 @@
+_version: 2
+filters:
+  bar:
+    search_placeholder:
+      en: "Search the address, title and every text column"
+      sv: "Sök i adressen, sidtiteln och alla textkolumner"
+    value_placeholder:
+      en: "Value"
+      sv: "Värde"
+    where:
+      en: "Where"
+      sv: "Där"
+    and:
+      en: "and"
+      sv: "och"
+    or:
+      en: "or"
+      sv: "eller"
+    search_columns:
+      en: "Search columns"
+      sv: "Sök kolumner"
+    remove_condition:
+      en: "Remove Condition"
+      sv: "Ta bort villkor"
+    match_all:
+      en: "Match All"
+      sv: "Matcha alla"
+    match_any:
+      en: "Match Any"
+      sv: "Matcha någon"
+    add_condition:
+      en: "Add Condition"
+      sv: "Lägg till villkor"
+    rows_total:
+      en: "%{total} rows"
+      sv: "%{total} rader"
+    rows_shown:
+      en: "%{shown} of %{total} rows"
+      sv: "%{shown} av %{total} rader"
+    clear_and_close:
+      en: "Clear and Close the Filter"
+      sv: "Rensa och stäng filtret"
+  operator:
+    contains:
+      en: "contains"
+      sv: "innehåller"
+    not_contains:
+      en: "does not contain"
+      sv: "innehåller inte"
+    starts_with:
+      en: "starts with"
+      sv: "börjar med"
+    ends_with:
+      en: "ends with"
+      sv: "slutar med"
+    in:
+      en: "is one of"
+      sv: "är något av"
+    not_in:
+      en: "is none of"
+      sv: "är inget av"
+    is_empty:
+      en: "is empty"
+      sv: "är tom"
+    is_not_empty:
+      en: "is not empty"
+      sv: "är inte tom"
+  menu:
+    copy:
+      en: "Copy"
+      sv: "Kopiera"
+    filter_by_value:
+      en: "Filter by This Value"
+      sv: "Filtrera på detta värde"
+    exclude_value:
+      en: "Exclude This Value"
+      sv: "Uteslut detta värde"
+  report:
+    urls_recorded:
+      en: "URLs recorded"
+      sv: "Registrerade URL:er"
+    documents:
+      en: "Documents"
+      sv: "Dokument"
+    indexable:
+      en: "Indexable"
+      sv: "Indexerbara"
+    rules_firing:
+      en: "Rules firing"
+      sv: "Utlösta regler"
+    issues_of_those:
+      en: "Of those, issues"
+      sv: "Varav problem"

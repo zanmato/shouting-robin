@@ -19,12 +19,18 @@ static GLOBAL: gpui::CountingAllocator = gpui::CountingAllocator::new(std::alloc
 // dependency here, so it has to answer to that name.
 extern crate gpui_kit as gpui;
 
+#[macro_use]
+extern crate rust_i18n;
+
+rust_i18n::i18n!("locales", fallback = "en");
+
 mod a11y_rules;
 mod app;
 mod app_database;
 mod app_settings;
 mod assets;
 mod crawl;
+mod locale;
 mod report;
 mod result_ext;
 #[cfg(all(feature = "scene-export", not(target_os = "windows")))]
@@ -102,6 +108,9 @@ fn main() {
         {
             app_settings.appearance.theme = u.theme.clone();
         }
+
+        locale::init();
+        locale::apply(&app_settings.general.locale, cx);
 
         let theme_name = SharedString::from(app_settings.appearance.theme.clone());
 

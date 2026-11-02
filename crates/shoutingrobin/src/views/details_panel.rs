@@ -90,15 +90,16 @@ pub enum DetailsTab {
 }
 
 impl DetailsTab {
-    fn label(self) -> &'static str {
+    fn label(self) -> SharedString {
         match self {
-            Self::Overview => "Overview",
-            Self::NearDuplicates => "Duplicates",
-            Self::Images => "Images",
-            Self::Inlinks => "Inlinks",
-            Self::Outlinks => "Outlinks",
-            Self::References => "Referenced by",
+            Self::Overview => t!("details.tab.overview"),
+            Self::NearDuplicates => t!("details.tab.duplicates"),
+            Self::Images => t!("details.tab.images"),
+            Self::Inlinks => t!("details.tab.inlinks"),
+            Self::Outlinks => t!("details.tab.outlinks"),
+            Self::References => t!("details.tab.referenced_by"),
         }
+        .into()
     }
 }
 
@@ -276,32 +277,38 @@ fn layout_section(
     let layout = rec.layout.as_ref()?;
     let template = layout
         .template
-        .clone()
-        .unwrap_or_else(|| "Not grouped".to_string());
+        .as_deref()
+        .map(crate::crawl::layout_groups::template_display_name)
+        .unwrap_or_else(|| t!("details.not_grouped").to_string());
     let joined_by = layout
         .assignment
         .map(|assignment| assignment.label())
-        .unwrap_or("");
+        .unwrap_or_default();
     let url = rec.url.clone();
     let panel = panel.clone();
     let body = div()
         .flex()
         .flex_col()
         .gap_1()
-        .child(row(order, "Template", SharedString::from(template), muted))
         .child(row(
             order,
-            "Joined by",
+            t!("details.field.template"),
+            SharedString::from(template),
+            muted,
+        ))
+        .child(row(
+            order,
+            t!("details.field.joined_by"),
             SharedString::from(joined_by),
             muted,
         ))
         .when(layout.misses_template_markup(), |body| {
             body.child(row(
                 order,
-                "Markup",
-                SharedString::from(format!(
-                    "No {} structured data",
-                    layout.template_type.clone().unwrap_or_default()
+                t!("details.field.markup"),
+                SharedString::from(t!(
+                    "details.missing_template_markup",
+                    kind = layout.template_type.clone().unwrap_or_default()
                 )),
                 muted,
             ))
@@ -311,7 +318,7 @@ fn layout_section(
                 Button::new("view-layout")
                     .xsmall()
                     .outline()
-                    .label("View Layout")
+                    .label(t!("details.view_layout"))
                     .on_click(move |_, _, cx| {
                         let url = url.clone();
                         panel.update(cx, |_, cx| {
@@ -322,7 +329,7 @@ fn layout_section(
         )
         .into_any_element();
     Some(section(
-        "Layout",
+        &t!("details.section.layout"),
         Some(Icon::LayoutPanelLeft),
         None,
         muted,
@@ -426,7 +433,7 @@ fn row(
 /// menu or the click itself may have cleared the selection.
 fn copy_selection_item(window: &mut Window, cx: &mut App) -> PopupMenuItem {
     let selected = TextSelection::selected_text(window, cx).trim().to_string();
-    PopupMenuItem::new("Copy")
+    PopupMenuItem::new(t!("details.menu.copy"))
         .icon(IconName::Copy)
         .disabled(selected.is_empty())
         .on_click(move |_, _, cx| {
@@ -434,7 +441,7 @@ fn copy_selection_item(window: &mut Window, cx: &mut App) -> PopupMenuItem {
         })
 }
 
-fn copy_text_item(label: &'static str, text: SharedString) -> PopupMenuItem {
+fn copy_text_item(label: SharedString, text: SharedString) -> PopupMenuItem {
     PopupMenuItem::new(label)
         .icon(IconName::Copy)
         .on_click(move |_, _, cx| {
@@ -443,7 +450,7 @@ fn copy_text_item(label: &'static str, text: SharedString) -> PopupMenuItem {
 }
 
 fn open_url_item(url: SharedString) -> PopupMenuItem {
-    PopupMenuItem::new("Open in Browser")
+    PopupMenuItem::new(t!("details.menu.open_in_browser"))
         .icon(Icon::ExternalLink)
         .on_click(move |_, _, cx| cx.open_url(&url))
 }
@@ -455,11 +462,14 @@ fn link_menu(
     window: &mut Window,
     cx: &mut App,
     url: &SharedString,
-    detail: Option<(&'static str, SharedString)>,
+    detail: Option<(SharedString, SharedString)>,
 ) -> PopupMenu {
     menu.item(copy_selection_item(window, cx))
         .separator()
-        .item(copy_text_item("Copy URL", url.clone()))
+        .item(copy_text_item(
+            t!("details.menu.copy_url").into(),
+            url.clone(),
+        ))
         .when_some(detail, |menu, (label, text)| {
             menu.item(copy_text_item(label, text))
         })
@@ -511,6 +521,18 @@ fn section(
         .into_any_element()
 }
 
+/// axe's impact levels are stored as axe names them, so they are matched here
+/// to be shown in the app's language, and anything else is shown as stored.
+fn a11y_impact_label(impact: &str) -> SharedString {
+    match impact {
+        "critical" => t!("details.impact.critical").into(),
+        "serious" => t!("details.impact.serious").into(),
+        "moderate" => t!("details.impact.moderate").into(),
+        "minor" => t!("details.impact.minor").into(),
+        _ => SharedString::from(impact.to_string()),
+    }
+}
+
 fn a11y_impact_tone(impact: &str) -> Tone {
     match impact {
         "critical" | "serious" => Tone::Err,
@@ -524,13 +546,15 @@ fn serp_preview(rec: &PageRecord, order: &TextOrder, cx: &App) -> AnyElement {
         .title
         .as_deref()
         .filter(|t| !t.is_empty())
-        .unwrap_or("No title");
+        .map(str::to_string)
+        .unwrap_or_else(|| t!("details.serp.no_title").to_string());
     let url_display = rec.url.clone();
     let desc = rec
         .meta_description
         .as_deref()
         .filter(|d| !d.is_empty())
-        .unwrap_or("No meta description");
+        .map(str::to_string)
+        .unwrap_or_else(|| t!("details.serp.no_meta_description").to_string());
 
     div()
         .flex()
@@ -546,7 +570,7 @@ fn serp_preview(rec: &PageRecord, order: &TextOrder, cx: &App) -> AnyElement {
                 .font_family(crate::ui::fonts::FAMILY)
                 .text_size(px(18.))
                 .text_color(cx.theme().blue)
-                .child(order.text(title.to_string())),
+                .child(order.text(title)),
         )
         .child(
             div()
@@ -558,7 +582,7 @@ fn serp_preview(rec: &PageRecord, order: &TextOrder, cx: &App) -> AnyElement {
             div()
                 .text_xs()
                 .text_color(cx.theme().muted_foreground)
-                .child(order.text(desc.to_string())),
+                .child(order.text(desc)),
         )
         .into_any_element()
 }
@@ -574,12 +598,12 @@ fn a11y_issue_row(
     border: Hsla,
     cx: &App,
 ) -> AnyElement {
-    let impact_tag = tone_tag(a11y_impact_tone(&issue.impact), cx)
-        .child(SharedString::from(issue.impact.clone()));
+    let impact_tag =
+        tone_tag(a11y_impact_tone(&issue.impact), cx).child(a11y_impact_label(&issue.impact));
     let rule_name = SharedString::from(issue.rule.clone());
     let rule_el: AnyElement = match rule_description(&issue.rule) {
         Some(desc) => {
-            let desc = SharedString::from(desc.to_string());
+            let desc = SharedString::from(desc);
             div()
                 .id(("a11y-rule-tip", index))
                 .text_color(fg)
@@ -711,7 +735,7 @@ fn header_block(rec: &PageRecord, order: &TextOrder, muted: Hsla, border: Hsla) 
                             div()
                                 .text_sm()
                                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                .child("URL Details"),
+                                .child(SharedString::from(t!("details.url_details"))),
                         ),
                 )
                 .child(
@@ -753,7 +777,9 @@ fn url_information_section(
         div().into_any_element()
     } else {
         tone_tag(indexability_tone(&indexability_value), cx)
-            .child(SharedString::from(indexability_value.clone()))
+            .child(SharedString::from(
+                crate::crawl::event::indexability_status_text(&indexability_value),
+            ))
             .into_any_element()
     };
     let url_info = div()
@@ -763,43 +789,53 @@ fn url_information_section(
         .gap_1()
         .child(row(
             order,
-            "Address",
+            t!("details.field.address"),
             SharedString::from(rec.url.clone()),
             muted,
         ))
-        .child(row(order, "Status", status_tag, muted))
+        .child(row(order, t!("details.field.status"), status_tag, muted))
         .child(row(
             order,
-            "Content Type",
+            t!("details.field.content_type"),
             or_blank(&rec.content_type),
             muted,
         ))
         .child(row(
             order,
-            "Size",
+            t!("details.field.size"),
             SharedString::from(crate::ui::tag::format_bytes(rec.size_bytes)),
             muted,
         ))
         .when_some(rec.transfer_bytes, |el, bytes| {
             el.child(row(
                 order,
-                "Transferred",
+                t!("details.field.transferred"),
                 SharedString::from(crate::ui::tag::format_bytes(bytes)),
                 muted,
             ))
         })
-        .child(row(order, "Indexability", indexability_tag, muted))
-        .child(row(order, "Canonical", or_blank(&rec.canonical), muted))
+        .child(row(
+            order,
+            t!("details.field.indexability"),
+            indexability_tag,
+            muted,
+        ))
+        .child(row(
+            order,
+            t!("details.field.canonical"),
+            or_blank(&rec.canonical),
+            muted,
+        ))
         .when_some(rec.redirect_url.clone(), |el, redirect| {
             el.child(row(
                 order,
-                "Redirect URI",
+                t!("details.field.redirect_uri"),
                 SharedString::from(redirect),
                 muted,
             ))
             .child(row(
                 order,
-                "Redirect Status",
+                t!("details.field.redirect_status"),
                 SharedString::from(
                     rec.redirect_status
                         .map(|s| s.to_string())
@@ -815,7 +851,7 @@ fn url_information_section(
             |el| {
                 el.child(row(
                     order,
-                    "Last Modified",
+                    t!("details.field.last_modified"),
                     SharedString::from(
                         rec.headers
                             .iter()
@@ -829,7 +865,14 @@ fn url_information_section(
         )
         .into_any_element();
 
-    section("URL Information", None, None, muted, border, url_info)
+    section(
+        &t!("details.section.url_information"),
+        None,
+        None,
+        muted,
+        border,
+        url_info,
+    )
 }
 
 fn page_content_section(
@@ -842,10 +885,15 @@ fn page_content_section(
         .flex()
         .flex_col()
         .gap_1()
-        .child(row(order, "Title", or_blank(&rec.title), muted))
         .child(row(
             order,
-            "Title Length",
+            t!("details.field.title"),
+            or_blank(&rec.title),
+            muted,
+        ))
+        .child(row(
+            order,
+            t!("details.field.title_length"),
             SharedString::from(
                 rec.title
                     .as_ref()
@@ -856,7 +904,7 @@ fn page_content_section(
         ))
         .child(row(
             order,
-            "Title Pixel Width",
+            t!("details.field.title_pixel_width"),
             SharedString::from(
                 rec.title_pixel_width
                     .map(|w| w.to_string())
@@ -865,17 +913,22 @@ fn page_content_section(
             muted,
         ))
         .when_some(rec.title_2.clone(), |el, t2| {
-            el.child(row(order, "Title 2", SharedString::from(t2), muted))
+            el.child(row(
+                order,
+                t!("details.field.title_2"),
+                SharedString::from(t2),
+                muted,
+            ))
         })
         .child(row(
             order,
-            "Meta Desc",
+            t!("details.field.meta_description"),
             or_blank(&rec.meta_description),
             muted,
         ))
         .child(row(
             order,
-            "Meta Length",
+            t!("details.field.meta_length"),
             SharedString::from(
                 rec.meta_description
                     .as_ref()
@@ -886,7 +939,7 @@ fn page_content_section(
         ))
         .child(row(
             order,
-            "Meta Pixel Width",
+            t!("details.field.meta_pixel_width"),
             SharedString::from(
                 rec.meta_description_pixel_width
                     .map(|w| w.to_string())
@@ -895,12 +948,17 @@ fn page_content_section(
             muted,
         ))
         .when_some(rec.meta_description_2.clone(), |el, md2| {
-            el.child(row(order, "Meta Desc 2", SharedString::from(md2), muted))
+            el.child(row(
+                order,
+                t!("details.field.meta_description_2"),
+                SharedString::from(md2),
+                muted,
+            ))
         })
         .child(row(order, "H1", or_blank(&rec.h1), muted))
         .child(row(
             order,
-            "H1 Length",
+            t!("details.field.h1_length"),
             SharedString::from(
                 rec.h1
                     .as_ref()
@@ -915,14 +973,14 @@ fn page_content_section(
         .child(row(order, "H2", or_blank(&rec.h2), muted))
         .child(row(
             order,
-            "Word Count",
+            t!("details.field.word_count"),
             SharedString::from(rec.word_count.map(|w| w.to_string()).unwrap_or_default()),
             muted,
         ))
         .when(rec.ssr_word_count.is_some(), |el| {
             el.child(row(
                 order,
-                "SSR Words",
+                t!("details.field.ssr_words"),
                 SharedString::from(
                     rec.ssr_word_count
                         .map(|w| w.to_string())
@@ -932,15 +990,27 @@ fn page_content_section(
             ))
             .child(row(
                 order,
-                "SSR/CSR Diff",
+                t!("details.field.ssr_csr_diff"),
                 SharedString::from(ssr_diff_label(rec)),
                 muted,
             ))
         })
-        .child(row(order, "Meta Robots", or_blank(&rec.robots), muted))
+        .child(row(
+            order,
+            t!("details.field.meta_robots"),
+            or_blank(&rec.robots),
+            muted,
+        ))
         .into_any_element();
 
-    section("Page Content", None, None, muted, border, page_content)
+    section(
+        &t!("details.section.page_content"),
+        None,
+        None,
+        muted,
+        border,
+        page_content,
+    )
 }
 
 fn structured_data_section(
@@ -957,7 +1027,11 @@ fn structured_data_section(
     } else {
         Some(
             tone_tag(Tone::Accent, cx)
-                .child(SharedString::from(format!("{} types", rec.sd_items.len())))
+                .child(SharedString::from(if rec.sd_items.len() == 1 {
+                    t!("details.summary.types_one", count = rec.sd_items.len())
+                } else {
+                    t!("details.summary.types_other", count = rec.sd_items.len())
+                }))
                 .into_any_element(),
         )
     };
@@ -966,8 +1040,8 @@ fn structured_data_section(
     let mut sd_items_body = div().flex().flex_col().gap_1();
     for (item, json_view) in rec.sd_items.iter().zip(json_views.iter()) {
         let format_label = match item.format {
-            SdFormat::JsonLd => "JSON-LD",
-            SdFormat::Microdata => "Microdata",
+            SdFormat::JsonLd => "JSON-LD".into(),
+            SdFormat::Microdata => t!("details.field.microdata"),
         };
         let format_tag = tone_tag(
             if item.format == SdFormat::JsonLd {
@@ -1023,7 +1097,7 @@ fn structured_data_section(
                     div()
                         .text_xs()
                         .text_color(muted)
-                        .child(order.text(issue.message.clone())),
+                        .child(order.text(issue.translated_message())),
                 ),
         );
     }
@@ -1032,7 +1106,7 @@ fn structured_data_section(
         .flex()
         .flex_col()
         .gap_1()
-        .child(row(order, "Types", sd_types_text, muted))
+        .child(row(order, t!("details.field.types"), sd_types_text, muted))
         .child(row(
             order,
             "JSON-LD",
@@ -1041,7 +1115,7 @@ fn structured_data_section(
         ))
         .child(row(
             order,
-            "Microdata",
+            t!("details.field.microdata"),
             SharedString::from(rec.sd_microdata_count.to_string()),
             muted,
         ))
@@ -1055,7 +1129,7 @@ fn structured_data_section(
         })
         .child(row(
             order,
-            "Errors",
+            t!("details.field.errors"),
             if rec.sd_errors > 0 {
                 tone_tag(Tone::Err, cx)
                     .child(SharedString::from(rec.sd_errors.to_string()))
@@ -1067,7 +1141,7 @@ fn structured_data_section(
         ))
         .child(row(
             order,
-            "Warnings",
+            t!("details.field.warnings"),
             if rec.sd_warnings > 0 {
                 tone_tag(Tone::Warn, cx)
                     .child(SharedString::from(rec.sd_warnings.to_string()))
@@ -1084,7 +1158,7 @@ fn structured_data_section(
         .into_any_element();
 
     section(
-        "Structured Data",
+        &t!("details.section.structured_data"),
         Some(Icon::Braces),
         sd_summary,
         muted,
@@ -1113,7 +1187,11 @@ fn accessibility_section(
         };
         Some(
             tone_tag(tone, cx)
-                .child(SharedString::from(format!("{} issues", total_a11y)))
+                .child(SharedString::from(if total_a11y == 1 {
+                    t!("details.summary.issues_one", count = total_a11y)
+                } else {
+                    t!("details.summary.issues_other", count = total_a11y)
+                }))
                 .into_any_element(),
         )
     };
@@ -1123,7 +1201,7 @@ fn accessibility_section(
         .gap_1()
         .child(row(
             order,
-            "Errors",
+            t!("details.field.errors"),
             if rec.a11y_errors > 0 {
                 tone_tag(Tone::Err, cx)
                     .child(SharedString::from(rec.a11y_errors.to_string()))
@@ -1135,7 +1213,7 @@ fn accessibility_section(
         ))
         .child(row(
             order,
-            "Warnings",
+            t!("details.field.warnings"),
             if rec.a11y_warnings > 0 {
                 tone_tag(Tone::Warn, cx)
                     .child(SharedString::from(rec.a11y_warnings.to_string()))
@@ -1160,7 +1238,7 @@ fn accessibility_section(
     let a11y_body = a11y_body.into_any_element();
 
     section(
-        "Accessibility",
+        &t!("details.section.accessibility"),
         Some(Icon::Accessibility),
         a11y_summary,
         muted,
@@ -1232,19 +1310,19 @@ fn link_metrics_section(
         .gap_1()
         .child(row(
             order,
-            "Inlinks",
+            t!("details.field.inlinks"),
             SharedString::from(rec.inlinks_count.to_string()),
             muted,
         ))
         .child(row(
             order,
-            "CSR Inlinks",
+            t!("details.field.csr_inlinks"),
             SharedString::from(rec.csr_inlinks_count.to_string()),
             muted,
         ))
         .child(row(
             order,
-            "CSR In %",
+            t!("details.field.csr_in_percent"),
             SharedString::from(if rec.inlinks_count > 0 && rec.csr_inlinks_count > 0 {
                 format!(
                     "{}%",
@@ -1258,13 +1336,13 @@ fn link_metrics_section(
         ))
         .child(row(
             order,
-            "Outlinks",
+            t!("details.field.outlinks"),
             SharedString::from(rec.outlinks.len().to_string()),
             muted,
         ))
         .child(row(
             order,
-            "CSR Outlinks",
+            t!("details.field.csr_outlinks"),
             SharedString::from(
                 rec.outlinks
                     .iter()
@@ -1276,7 +1354,7 @@ fn link_metrics_section(
         ))
         .child(row(
             order,
-            "CSR Out %",
+            t!("details.field.csr_out_percent"),
             SharedString::from({
                 let total = rec.outlinks.len();
                 let csr_out = rec.outlinks.iter().filter(|o| o.csr_only).count();
@@ -1293,19 +1371,19 @@ fn link_metrics_section(
         ))
         .child(row(
             order,
-            "Link Score",
+            t!("details.field.link_score"),
             SharedString::from(link_score_str),
             muted,
         ))
         .child(row(
             order,
-            "Backlinks",
+            t!("details.field.backlinks"),
             SharedString::from(backlink_count(rec).to_string()),
             muted,
         ))
         .child(row(
             order,
-            "Depth",
+            t!("details.field.depth"),
             SharedString::from(rec.depth.map(|d| d.to_string()).unwrap_or_default()),
             muted,
         ))
@@ -1317,7 +1395,7 @@ fn link_metrics_section(
         ))
         .child(row(
             order,
-            "Near Duplicates",
+            t!("details.field.near_duplicates"),
             SharedString::from(
                 rec.near_duplicate_count
                     .map(|c| c.to_string())
@@ -1327,7 +1405,7 @@ fn link_metrics_section(
         ))
         .child(row(
             order,
-            "Closest Similarity",
+            t!("details.field.closest_similarity"),
             SharedString::from(
                 rec.closest_similarity
                     .map(|s| format!("{s}%"))
@@ -1337,7 +1415,14 @@ fn link_metrics_section(
         ))
         .into_any_element();
 
-    section("Link Metrics", None, None, muted, border, links_body)
+    section(
+        &t!("details.section.link_metrics"),
+        None,
+        None,
+        muted,
+        border,
+        links_body,
+    )
 }
 
 fn images_section(
@@ -1359,13 +1444,20 @@ fn images_section(
         if missing_alt > 0 {
             Some(
                 tone_tag(Tone::Warn, cx)
-                    .child(SharedString::from(format!("{} missing alt", missing_alt)))
+                    .child(SharedString::from(t!(
+                        "details.summary.missing_alt",
+                        count = missing_alt
+                    )))
                     .into_any_element(),
             )
         } else {
             Some(
                 tone_tag(Tone::Ok, cx)
-                    .child(SharedString::from(format!("{} images", rec.images.len())))
+                    .child(SharedString::from(if rec.images.len() == 1 {
+                        t!("details.summary.images_one", count = rec.images.len())
+                    } else {
+                        t!("details.summary.images_other", count = rec.images.len())
+                    }))
                     .into_any_element(),
             )
         }
@@ -1373,17 +1465,23 @@ fn images_section(
 
     let mut images_body = div().flex().flex_col().gap_1();
     if rec.images.is_empty() {
-        images_body = images_body.child(div().text_color(muted).text_sm().child("No images found"));
+        images_body = images_body.child(
+            div()
+                .text_color(muted)
+                .text_sm()
+                .child(SharedString::from(t!("details.images.none_found"))),
+        );
     } else {
         for image in &rec.images {
             let alt_tag = if image.has_alt_attr {
                 if image.alt.as_deref().is_none_or(|a| a.is_empty()) {
-                    tone_tag(Tone::Warn, cx).child(SharedString::from("empty"))
+                    tone_tag(Tone::Warn, cx)
+                        .child(SharedString::from(t!("details.images.alt_empty")))
                 } else {
-                    tone_tag(Tone::Ok, cx).child(SharedString::from("yes"))
+                    tone_tag(Tone::Ok, cx).child(SharedString::from(t!("details.images.alt_yes")))
                 }
             } else {
-                tone_tag(Tone::Err, cx).child(SharedString::from("missing"))
+                tone_tag(Tone::Err, cx).child(SharedString::from(t!("details.images.alt_missing")))
             };
             images_body = images_body.child(
                 div()
@@ -1411,7 +1509,11 @@ fn images_section(
                                     .flex()
                                     .items_center()
                                     .gap_1()
-                                    .child(div().text_color(muted).child("Alt:"))
+                                    .child(
+                                        div().text_color(muted).child(SharedString::from(t!(
+                                            "details.images.alt_label"
+                                        ))),
+                                    )
                                     .child(alt_tag)
                                     .when_some(image.alt.clone(), |el, alt| {
                                         el.child(div().text_color(fg).child(order.text(alt)))
@@ -1440,7 +1542,9 @@ fn images_section(
                                         )
                                     })
                                     .when(image.width.is_none() && image.height.is_none(), |el| {
-                                        el.child(div().text_color(muted).child("no dimensions"))
+                                        el.child(div().text_color(muted).child(SharedString::from(
+                                            t!("details.images.no_dimensions"),
+                                        )))
                                     }),
                             ),
                     ),
@@ -1450,7 +1554,7 @@ fn images_section(
     let images_section_body = images_body.into_any_element();
 
     section(
-        "Images",
+        &t!("details.section.images"),
         Some(Icon::Image),
         images_summary,
         muted,
@@ -1467,7 +1571,7 @@ fn serp_section(
     cx: &App,
 ) -> AnyElement {
     section(
-        "SERP Preview",
+        &t!("details.section.serp_preview"),
         None,
         None,
         muted,
@@ -1496,21 +1600,25 @@ fn hreflang_section(
         let (tone, name, detail) = match issue {
             crate::crawl::event::HreflangIssue::MissingReturnTag { lang, target_url } => (
                 Tone::Warn,
-                "Missing return tag",
+                t!("details.hreflang.missing_return_tag"),
                 Some(format!("{lang} -> {target_url}")),
             ),
-            crate::crawl::event::HreflangIssue::InvalidLanguageCode { code } => {
-                (Tone::Err, "Invalid language code", Some(code.clone()))
-            }
+            crate::crawl::event::HreflangIssue::InvalidLanguageCode { code } => (
+                Tone::Err,
+                t!("details.hreflang.invalid_language_code"),
+                Some(code.clone()),
+            ),
             crate::crawl::event::HreflangIssue::MissingXDefault => {
-                (Tone::Warn, "Missing x-default", None)
+                (Tone::Warn, t!("details.hreflang.missing_x_default"), None)
             }
-            crate::crawl::event::HreflangIssue::MissingSelfReference => {
-                (Tone::Warn, "Missing self reference", None)
-            }
+            crate::crawl::event::HreflangIssue::MissingSelfReference => (
+                Tone::Warn,
+                t!("details.hreflang.missing_self_reference"),
+                None,
+            ),
             crate::crawl::event::HreflangIssue::NonCanonicalUrl { hreflang_url } => (
                 Tone::Warn,
-                "Non-canonical target",
+                t!("details.hreflang.non_canonical_target"),
                 Some(hreflang_url.clone()),
             ),
         };
@@ -1525,8 +1633,8 @@ fn hreflang_section(
                         .items_center()
                         .gap_1()
                         .child(tone_tag(tone, cx).child(SharedString::from(match tone {
-                            Tone::Err => "error",
-                            _ => "warning",
+                            Tone::Err => t!("details.hreflang.error"),
+                            _ => t!("details.hreflang.warning"),
                         })))
                         .child(div().text_xs().text_color(fg).child(order.text(name))),
                 )
@@ -1536,7 +1644,7 @@ fn hreflang_section(
         );
     }
     Some(section(
-        "Hreflang Issues",
+        &t!("details.section.hreflang_issues"),
         None,
         Some(
             div()
@@ -1571,7 +1679,7 @@ fn link_row(
     row_index: usize,
     url: SharedString,
     detail: SharedString,
-    copyable_detail: Option<(&'static str, SharedString)>,
+    copyable_detail: Option<(SharedString, SharedString)>,
     leading: Option<AnyElement>,
     trailing: Option<AnyElement>,
     muted: Hsla,
@@ -1710,12 +1818,16 @@ fn headers_section(
         );
     }
     Some(section(
-        "HTTP Headers",
+        &t!("details.section.http_headers"),
         None,
         Some(
             div()
                 .text_xs()
-                .child(SharedString::from(format!("{} headers", rec.headers.len())))
+                .child(SharedString::from(if rec.headers.len() == 1 {
+                    t!("details.summary.headers_one", count = rec.headers.len())
+                } else {
+                    t!("details.summary.headers_other", count = rec.headers.len())
+                }))
                 .into_any_element(),
         ),
         muted,
@@ -1752,7 +1864,7 @@ fn image_header_block(
                             div()
                                 .text_sm()
                                 .font_weight(gpui_kit::FontWeight::SEMIBOLD)
-                                .child("Image Details"),
+                                .child(SharedString::from(t!("details.image_details"))),
                         ),
                 )
                 .child(
@@ -1803,24 +1915,31 @@ fn image_information_section(
         .gap_1()
         .child(row(
             order,
-            "References",
+            t!("details.field.references"),
             SharedString::from(image.references.len().to_string()),
             muted,
         ))
         .child(row(
             order,
-            "Dimensions",
+            t!("details.field.dimensions"),
             SharedString::from(dimensions),
             muted,
         ))
         .child(row(
             order,
-            "Missing alt",
+            t!("details.field.missing_alt"),
             SharedString::from(missing_alt.to_string()),
             muted,
         ))
         .into_any_element();
-    section("Image Information", None, None, muted, border, body)
+    section(
+        &t!("details.section.image_information"),
+        None,
+        None,
+        muted,
+        border,
+        body,
+    )
 }
 
 /// The tabs a selection has, in order, with the number of rows behind each.
@@ -1892,7 +2011,7 @@ fn tab_strip(
                 el.text_color(cx.theme().tab_foreground)
                     .hover(|el| el.text_color(cx.theme().tab_active_foreground))
             })
-            .child(SharedString::from(tab.label()))
+            .child(tab.label())
             .when(count > 0, |el| {
                 // The same chip the grid's tabs and filter segments carry their
                 // counts in, so a count reads the same wherever it appears.
@@ -1961,7 +2080,7 @@ impl Render for DetailsPanel {
                         .p_4()
                         .text_sm()
                         .text_color(muted)
-                        .child("Select a URL to inspect details."),
+                        .child(SharedString::from(t!("details.empty"))),
                 )
                 .into_any_element();
         };
@@ -2055,10 +2174,12 @@ impl Render for DetailsPanel {
                         .map(|(offset, backlink)| {
                             let anchor =
                                 backlink.anchor.as_deref().filter(|a| !a.trim().is_empty());
-                            let shown_anchor = anchor.unwrap_or("No anchor");
+                            let shown_anchor = anchor
+                                .map(str::to_string)
+                                .unwrap_or_else(|| t!("details.links.no_anchor").to_string());
                             let detail = match backlink.rel.as_deref() {
                                 Some(rel) => format!("{shown_anchor} · rel={rel}"),
-                                None => shown_anchor.to_string(),
+                                None => shown_anchor,
                             };
                             link_row(
                                 "inlinks",
@@ -2066,7 +2187,10 @@ impl Render for DetailsPanel {
                                 SharedString::from(backlink.source_url.clone()),
                                 SharedString::from(detail),
                                 anchor.map(|anchor| {
-                                    ("Copy Anchor Text", SharedString::from(anchor.to_string()))
+                                    (
+                                        t!("details.menu.copy_anchor_text").into(),
+                                        SharedString::from(anchor.to_string()),
+                                    )
                                 }),
                                 None,
                                 None,
@@ -2125,9 +2249,14 @@ impl Render for DetailsPanel {
                                 "outlinks",
                                 first + offset,
                                 SharedString::from(link.dst_url.clone()),
-                                SharedString::from(anchor.unwrap_or("No anchor text").to_string()),
+                                SharedString::from(anchor.map(str::to_string).unwrap_or_else(
+                                    || t!("details.links.no_anchor_text").to_string(),
+                                )),
                                 anchor.map(|anchor| {
-                                    ("Copy Anchor Text", SharedString::from(anchor.to_string()))
+                                    (
+                                        t!("details.menu.copy_anchor_text").into(),
+                                        SharedString::from(anchor.to_string()),
+                                    )
                                 }),
                                 leading,
                                 trailing,
@@ -2161,11 +2290,11 @@ impl Render for DetailsPanel {
                             // something is: this row is about the alt text this
                             // page gives the image, and nothing else.
                             let (tone, label) = if !reference.has_alt_attr {
-                                (Tone::Err, "missing alt")
+                                (Tone::Err, t!("details.references.missing_alt"))
                             } else if reference.alt.as_deref().is_none_or(|alt| alt.is_empty()) {
-                                (Tone::Warn, "empty alt")
+                                (Tone::Warn, t!("details.references.empty_alt"))
                             } else {
-                                (Tone::Ok, "alt")
+                                (Tone::Ok, t!("details.references.alt"))
                             };
                             let trailing = tone_tag(tone, cx)
                                 .child(SharedString::from(label))
@@ -2176,7 +2305,8 @@ impl Render for DetailsPanel {
                                 first + offset,
                                 SharedString::from(reference.page_url.clone()),
                                 alt.clone(),
-                                (!alt.is_empty()).then_some(("Copy Alt Text", alt)),
+                                (!alt.is_empty())
+                                    .then(|| (t!("details.menu.copy_alt_text").into(), alt)),
                                 None,
                                 Some(trailing),
                                 muted,
