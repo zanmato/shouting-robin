@@ -1472,6 +1472,9 @@ fn expectation(tab: ResultTab, filter: IssueFilter) -> Expect {
         F::Multiple => both(&["/multiple-all"], &["/"]),
         F::SameAsH1 => both(&["/title-eq-h1"], &["/"]),
         F::HtmlEntity => both(&["/html-entity"], &["/", "/title-eq-h1"]),
+        // The fixture titles share no suffix, so the site has no name to repeat.
+        // `site_name_tests` in the grid's filter covers a site that has one.
+        F::RepeatsSiteName => both(&[], &["/", "/dup-a", "/html-entity"]),
 
         // Content
         F::ExactDuplicates => both(&["/exact-dup-a", "/exact-dup-b"], &["/"]),

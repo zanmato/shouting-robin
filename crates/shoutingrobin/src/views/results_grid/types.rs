@@ -151,9 +151,8 @@ pub enum IssueFilter {
     UnderLength,
     Multiple,
     SameAsH1,
-    /// The text shows an HTML entity (`&amp;`, `&#39;`) instead of the
-    /// character it stands for: it was escaped twice on the way out.
     HtmlEntity,
+    RepeatsSiteName,
     NonSequential,
     NonIndexable,
     Html,
@@ -309,6 +308,7 @@ impl IssueFilter {
             IssueFilter::Multiple => t!("results_grid.filter.multiple").into(),
             IssueFilter::SameAsH1 => t!("results_grid.filter.same_as_h1").into(),
             IssueFilter::HtmlEntity => t!("results_grid.filter.html_entity").into(),
+            IssueFilter::RepeatsSiteName => t!("results_grid.filter.repeats_site_name").into(),
             IssueFilter::NonSequential => t!("results_grid.filter.non_sequential").into(),
             IssueFilter::NonIndexable => t!("results_grid.filter.non_indexable").into(),
             IssueFilter::Html => "HTML".into(),
@@ -579,6 +579,7 @@ impl IssueFilter {
             | Self::Multiple
             | Self::SameAsH1
             | Self::HtmlEntity
+            | Self::RepeatsSiteName
             | Self::NonSequential
             | Self::Canonicalised
             | Self::MissingCanonical

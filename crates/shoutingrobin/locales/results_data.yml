@@ -361,6 +361,16 @@ results_data:
       hint:
         en: "The title was escaped twice, usually because the stored text already holds the entity. Store the plain character and let the template escape it."
         sv: "Titeln har escapats två gånger, oftast för att den lagrade texten redan innehåller entiteten. Lagra det vanliga tecknet och låt mallen escapa det."
+    page_title_repeats_site_name:
+      name:
+        en: "Page Title Repeats Site Name"
+        sv: "Sidtitel upprepar webbplatsens namn"
+      description:
+        en: "Pages whose title holds the site name more than once, usually because the page's own title already ends in it and the template appends it again."
+        sv: "Sidor vars titel innehåller webbplatsens namn mer än en gång, oftast för att sidans egen titel redan slutar med det och mallen lägger till det igen."
+      hint:
+        en: "Leave the site name out of the page's own title and let the template add it once."
+        sv: "Ta bort webbplatsens namn ur sidans egen titel och låt mallen lägga till det en gång."
     meta_description_contains_html_entity:
       name:
         en: "Meta Description Contains HTML Entity"

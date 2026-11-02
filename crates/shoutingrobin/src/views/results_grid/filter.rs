@@ -32,7 +32,7 @@ use super::types::{
 /// counting differently. Stored counts under another version are counted
 /// again. `the_filter_version_moves_with_the_counting_code` fails when the
 /// main counting functions change, as a reminder.
-pub const FILTER_VERSION: i64 = 2;
+pub const FILTER_VERSION: i64 = 3;
 
 /// The tabs whose counts depend on the baseline and on the layout changes
 /// found against it. They are not stored, since the baseline can change, and
@@ -95,6 +95,7 @@ pub fn filters_for_tab(tab: ResultTab) -> &'static [IssueFilter] {
             IssueFilter::Multiple,
             IssueFilter::SameAsH1,
             IssueFilter::HtmlEntity,
+            IssueFilter::RepeatsSiteName,
         ],
         ResultTab::MetaDesc => &[
             IssueFilter::All,
@@ -402,6 +403,7 @@ fn reads_other_pages(filter: IssueFilter) -> bool {
     matches!(
         filter,
         IssueFilter::Duplicate
+            | IssueFilter::RepeatsSiteName
             | IssueFilter::ExactDuplicates
             | IssueFilter::ImageOver100Kb
             | IssueFilter::ImageBroken
@@ -788,6 +790,112 @@ pub(super) fn contains_html_entity(text: &str) -> bool {
     })
 }
 
+/// Separators sites put between a page's own title and the site name. Each
+/// has spaces around it, so the hyphen in "USB-C" does not split a title.
+const TITLE_SEPARATORS: &[&str] = &[
+    " | ",
+    " - ",
+    " \u{2013} ",
+    " \u{2014} ",
+    " \u{00b7} ",
+    " \u{2022} ",
+    " \u{00bb} ",
+    " :: ",
+    " / ",
+];
+
+/// How many pages have to end in the same name before it is taken for the
+/// site's name. On a small site a handful of pages ending alike says nothing.
+const SITE_NAME_MIN_PAGES: usize = 5;
+
+/// A text's words, lowercased and stripped of punctuation.
+fn title_words(text: &str) -> Vec<String> {
+    text.split(|character: char| !character.is_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .map(str::to_lowercase)
+        .collect()
+}
+
+/// A title's last segment after a separator, as one run of lowercase letters
+/// and digits, so "De Batterij Pro" and "DeBatterijPro" give the same name.
+/// `None` when the title has no separator: the whole title is no suffix.
+fn title_suffix(title: &str) -> Option<String> {
+    let start = TITLE_SEPARATORS
+        .iter()
+        .filter_map(|separator| {
+            title
+                .rfind(separator)
+                .map(|position| position + separator.len())
+        })
+        .max()?;
+    let name: String = title_words(title.get(start..)?).concat();
+    name.chars().any(char::is_alphabetic).then_some(name)
+}
+
+/// The site's name as its titles end in it: the suffix more than half of the
+/// eligible titled pages share. A site that names itself in the title does so
+/// on nearly every page, so a majority is the template's suffix and not a
+/// word some titles happen to end in.
+pub(super) fn site_name_in_titles(pages: &[Arc<PageRecord>]) -> Option<String> {
+    let mut titled = 0usize;
+    let mut suffix_counts: HashMap<String, usize> = HashMap::new();
+    for page in pages
+        .iter()
+        .filter(|page| page.is_internal && is_content_eligible(page))
+    {
+        let Some(title) = page.title.as_deref().filter(|title| !title.is_empty()) else {
+            continue;
+        };
+        titled += 1;
+        if let Some(suffix) = title_suffix(title) {
+            *suffix_counts.entry(suffix).or_insert(0) += 1;
+        }
+    }
+    let (name, count) =
+        suffix_counts
+            .into_iter()
+            .max_by(|(a_name, a_count), (b_name, b_count)| {
+                a_count.cmp(b_count).then_with(|| b_name.cmp(a_name))
+            })?;
+    (count >= SITE_NAME_MIN_PAGES && count * 2 > titled).then_some(name)
+}
+
+/// True when the title holds the site name more than once. The name matches
+/// whole words only, written as one word or several, so "De Batterij Pro"
+/// counts as "DeBatterijPro" while "Prostore" does not count as "Pro".
+pub(super) fn names_site_twice(title: &str, site_name: &str) -> bool {
+    let words = title_words(title);
+    let mut found = 0;
+    let mut start = 0;
+    while start < words.len() {
+        let mut joined = String::new();
+        let mut end = start;
+        let matched = loop {
+            let Some(word) = words.get(end) else {
+                break false;
+            };
+            joined.push_str(word);
+            end += 1;
+            if joined == site_name {
+                break true;
+            }
+            if !site_name.starts_with(joined.as_str()) {
+                break false;
+            }
+        };
+        if matched {
+            found += 1;
+            if found > 1 {
+                return true;
+            }
+            start = end;
+        } else {
+            start += 1;
+        }
+    }
+    false
+}
+
 /// A page with fewer than this many words of body text counts as thin.
 ///
 /// 200 rather than the 100 we used before: at 100 a page had to be nearly empty
@@ -837,6 +945,7 @@ fn is_content_issue_filter(filter: IssueFilter) -> bool {
             | IssueFilter::Multiple
             | IssueFilter::SameAsH1
             | IssueFilter::HtmlEntity
+            | IssueFilter::RepeatsSiteName
             | IssueFilter::NonSequential
             | IssueFilter::MissingBodyTag
             | IssueFilter::MissingCanonical
@@ -1440,6 +1549,15 @@ pub(super) fn filter_for_tab(
                     .iter()
                     .any(|i| &*i.rule == "heading-order")
             }),
+            IssueFilter::RepeatsSiteName => match site_name_in_titles(pages) {
+                Some(site_name) => indices.retain(|&idx| {
+                    pages[idx]
+                        .title
+                        .as_deref()
+                        .is_some_and(|title| names_site_twice(title, &site_name))
+                }),
+                None => indices.clear(),
+            },
             IssueFilter::ExactDuplicates => {
                 let mut hash_counts: HashMap<&str, usize> = HashMap::new();
                 for page in pages.iter().filter(|p| is_content_eligible(p)) {
@@ -2485,6 +2603,115 @@ mod html_entity_tests {
 }
 
 #[cfg(test)]
+mod site_name_tests {
+    use super::*;
+
+    fn titled(path: &str, title: &str) -> PageRecord {
+        PageRecord {
+            url: format!("https://shop.example{path}"),
+            is_internal: true,
+            is_page: true,
+            status: Some(200),
+            title: Some(title.into()),
+            ..Default::default()
+        }
+    }
+
+    fn site(titles: &[&str]) -> Vec<PageRecord> {
+        titles
+            .iter()
+            .enumerate()
+            .map(|(index, title)| titled(&format!("/page-{index}"), title))
+            .collect()
+    }
+
+    #[test]
+    fn the_suffix_most_titles_share_is_the_site_name() {
+        let pages = shared(site(&[
+            "AA batterijen | DeBatterijPro",
+            "AAA batterijen | DeBatterijPro",
+            "Laders | DeBatterijPro",
+            "Kabels | DeBatterijPro",
+            "Lampen \u{2013} DeBatterijPro",
+            "Over ons",
+            "Contact | Klantenservice",
+        ]));
+        assert_eq!(
+            site_name_in_titles(&pages).as_deref(),
+            Some("debatterijpro")
+        );
+    }
+
+    #[test]
+    fn no_site_name_without_a_majority() {
+        let pages = shared(site(&[
+            "AA | DeBatterijPro",
+            "AAA | DeBatterijPro",
+            "Laders | DeBatterijPro",
+            "Kabels | DeBatterijPro",
+            "Lampen | DeBatterijPro",
+            "Over ons",
+            "Contact",
+            "Retouren",
+            "Verzending",
+            "Betalen",
+        ]));
+        assert_eq!(site_name_in_titles(&pages), None);
+    }
+
+    #[test]
+    fn no_site_name_from_a_handful_of_pages() {
+        let pages = shared(site(&["A | Shop", "B | Shop", "C | Shop"]));
+        assert_eq!(site_name_in_titles(&pages), None);
+    }
+
+    #[test]
+    fn titles_naming_the_site_twice_are_found() {
+        for title in [
+            "Lichtslingers LED \u{2013} Binnen & Buiten | DeBatterijPro | DeBatterijPro",
+            "AA-batterijen (LR6) alkalisch \u{2013} DeBatterijPro | DeBatterijPro",
+            "Inktcartridges | DeBatterijPro - Pagina 3 | DeBatterijPro",
+            "Zakelijke klant bij DeBatterijPro | DeBatterijPro",
+            "Over De Batterij Pro | DeBatterijPro",
+        ] {
+            assert!(names_site_twice(title, "debatterijpro"), "{title}");
+        }
+    }
+
+    #[test]
+    fn titles_naming_the_site_once_are_not() {
+        for title in [
+            "AA batterijen | DeBatterijPro",
+            "De Batterij Professional | DeBatterijPro",
+            "USB-C kabels | DeBatterijPro",
+            "",
+        ] {
+            assert!(!names_site_twice(title, "debatterijpro"), "{title}");
+        }
+        assert!(!names_site_twice("Prostore tips | Pro", "pro"));
+    }
+
+    #[test]
+    fn the_filter_flags_only_titles_naming_the_site_twice() {
+        let mut pages = site(&[
+            "AA | DeBatterijPro",
+            "AAA | DeBatterijPro",
+            "Laders | DeBatterijPro",
+            "Kabels | DeBatterijPro",
+        ]);
+        pages.push(titled("/twice", "Lampen | DeBatterijPro | DeBatterijPro"));
+        let pages = shared(pages);
+        let found = filter_for_tab(
+            ResultTab::PageTitles,
+            IssueFilter::RepeatsSiteName,
+            &pages,
+            &HashMap::new(),
+        );
+        assert_eq!(found, vec![4]);
+    }
+}
+
+#[cfg(test)]
 mod low_content_tests {
     use super::*;
     use crate::crawl::event::PageRecord;
@@ -2897,8 +3124,8 @@ mod filter_version_tests {
     /// The filter version and the fingerprint of the counting functions it was
     /// set for.
     const COUNTED_WITH: (i64, &str) = (
-        2,
-        "8e14255e1fa8f7970420e5e3948ddfb613939f4fa163271231cf5b8a99055f36",
+        3,
+        "3b9963c89e76fabf06fa628645e0a205bb92addacee105aa4550442d9f8c4355",
     );
 
     /// A function's text from its signature to its closing brace, without

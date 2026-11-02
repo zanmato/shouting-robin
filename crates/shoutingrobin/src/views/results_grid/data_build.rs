@@ -166,6 +166,9 @@ pub fn overview_issue_target(label: &str) -> Option<(ResultTab, IssueFilter)> {
         "Non-Sequential H2" => Some((ResultTab::H2, IssueFilter::NonSequential)),
         "Multiple H1" => Some((ResultTab::H1, IssueFilter::Multiple)),
         "Page Title Contains HTML Entity" => Some((ResultTab::PageTitles, IssueFilter::HtmlEntity)),
+        "Page Title Repeats Site Name" => {
+            Some((ResultTab::PageTitles, IssueFilter::RepeatsSiteName))
+        }
         "Meta Description Contains HTML Entity" => {
             Some((ResultTab::MetaDesc, IssueFilter::HtmlEntity))
         }
@@ -980,6 +983,17 @@ static FILTER_DERIVED_RULES: &[FilterDerivedRule] = &[
                holds the entity. Store the plain character and let the template escape it.",
     },
     FilterDerivedRule {
+        name: "Page Title Repeats Site Name",
+        tab: ResultTab::PageTitles,
+        filter: IssueFilter::RepeatsSiteName,
+        issue_type: IssueType::Warning,
+        priority: IssuePriority::Low,
+        denominator: Denominator::Documents,
+        description: "Pages whose title holds the site name more than once, usually because \
+                      the page's own title already ends in it and the template appends it again.",
+        hint: "Leave the site name out of the page's own title and let the template add it once.",
+    },
+    FilterDerivedRule {
         name: "Meta Description Contains HTML Entity",
         tab: ResultTab::MetaDesc,
         filter: IssueFilter::HtmlEntity,
@@ -1591,6 +1605,10 @@ const ISSUE_TEXT_KEYS: &[(&str, &str)] = &[
     (
         "Page Title Contains HTML Entity",
         "page_title_contains_html_entity",
+    ),
+    (
+        "Page Title Repeats Site Name",
+        "page_title_repeats_site_name",
     ),
     (
         "Meta Description Contains HTML Entity",
