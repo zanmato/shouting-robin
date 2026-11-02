@@ -2,10 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.2.4] - 2026-11-02
 
 ### Features
 
+- Translated the app into Swedish. It follows the system language unless
+  Settings, General, Language names one
+- Flagged page titles that repeat the site name, in a Repeats Site Name
+  filter on the Page Titles tab
 - Searched and filtered a tab's rows from a bar under its filters, opened
   with Ctrl+F or the Filter button. It takes column conditions such as
   Code = 200 joined by Match All or Match Any, and a cell's context menu
